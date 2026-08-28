@@ -784,8 +784,9 @@ bb automation run <automationId> --project <id> [--idempotency-key <key>]
 bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>]
 bb automation delete <automationId> --project <id> --yes
 
-Agent create/update validates model and advertised reasoning support against
-the selected environment or machine before saving; run validates again.
+Agent automations that spawn threads validate model and advertised reasoning
+support before selection-bearing saves; prompt-only edits and target-thread
+automations skip the unused catalog probe. Spawn validates again at run time.
 `;
 }
 

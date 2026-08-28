@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   listQueuedThreadCommands,
   reportQueuedCommandError,
@@ -29,6 +30,7 @@ import {
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -52,7 +54,7 @@ function seedForkSource(
     serviceTier?: string;
   } = {},
 ) {
-  const { host } = seedHostSession(harness.deps);
+  const { host, session } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
     path: "/tmp/public-thread-fork",
@@ -86,7 +88,7 @@ function seedForkSource(
     threadId: sourceThread.id,
     turnId: "turn-fork-source",
   });
-  return { environment, host, project, sourceThread };
+  return { environment, host, project, session, sourceThread };
 }
 
 function seedPersonalDirectoryForkSource(harness: TestAppHarness) {
@@ -167,6 +169,54 @@ async function createIdleSeededFork(
 }
 
 describe("public thread fork route", () => {
+  it("forks a source thread that uses a selected-only model", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, sourceThread } = seedForkSource(harness, {
+        model: "gpt-selected-only",
+        reasoningLevel: "high",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-current",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [
+              availableModelFixture({
+                model: "gpt-selected-only",
+                reasoningLevels: ["high"],
+                defaultReasoningLevel: "high",
+              }),
+            ],
+          },
+        },
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(queued.command).toMatchObject({
+        options: { model: "gpt-selected-only", reasoningLevel: "high" },
+      });
+    });
+  });
+
   it("reuses a switched directory from a personal-project source", async () => {
     await withTestHarness(async (harness) => {
       const { environment, sourceThread } =

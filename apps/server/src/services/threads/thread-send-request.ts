@@ -80,10 +80,10 @@ export async function acceptThreadSendRequest(
       projectId: thread.projectId,
     });
     if (payload.model !== undefined || payload.reasoningLevel !== undefined) {
-      // Deferred sends are externally visible as soon as their row is stored.
-      // Validate explicit selection fields now, just like immediate and queued
-      // sends; ordinary inherited execution still resolves only at delivery.
-      await buildExecutionOptions(deps, payload, { threadId: thread.id });
+      await buildExecutionOptions(deps, payload, {
+        threadId: thread.id,
+        validateCatalog: true,
+      });
     }
     deferThreadMessage(deps, {
       threadId: thread.id,
@@ -156,6 +156,13 @@ async function deliverDeferredThreadMessage(
 }
 
 function isDeferredThreadMessageRequestInvalid(error: unknown): boolean {
+  if (
+    error instanceof ApiError &&
+    (error.body.code === "model_not_available" ||
+      error.body.code === "reasoning_level_not_supported")
+  ) {
+    return false;
+  }
   return (
     error instanceof ApiError && (error.status === 400 || error.status === 404)
   );

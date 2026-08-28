@@ -325,6 +325,37 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("does not validate unused or unchanged execution tuples", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const targetThreadAutomation = await createAgentAutomation(harness, {
+      targetThreadId: THREAD_ID,
+    });
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toEqual([]);
+
+    const spawnedThreadAutomation = await createAgentAutomation(harness);
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toHaveLength(1);
+    await harness.callRpc("automations_update", {
+      projectId: PROJECT_ID,
+      automationId: spawnedThreadAutomation.id,
+      agent: { prompt: "updated prompt only" },
+    });
+    await harness.callRpc("automations_update", {
+      projectId: PROJECT_ID,
+      automationId: targetThreadAutomation.id,
+      agent: { model: "unused-target-thread-model" },
+    });
+
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toHaveLength(1);
+
+    await harness.dispose();
+  });
+
   it("creates a script automation through CLI and lists it through both CLI and RPC", async () => {
     const { harness } = await bootAutomationsPlugin();
     const runAt = new Date(Date.now() + 60_000).toISOString();

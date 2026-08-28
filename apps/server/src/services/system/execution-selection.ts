@@ -21,7 +21,6 @@ interface LoadAuthoritativeProviderExecutionCatalogArgs {
 }
 
 interface ValidateExecutionSelectionAgainstCatalogArgs {
-  allowSelectedOnly?: boolean;
   catalog: AuthoritativeProviderExecutionCatalog;
   model: string;
   providerId: string;
@@ -35,26 +34,25 @@ export interface ValidatedProviderExecutionSelection {
   reasoningLevel: ReasoningLevel;
 }
 
-/**
- * Require a successfully loaded, target-specific catalog. Fallback rows from
- * a failed probe are useful for rendering but cannot prove that a selection
- * is valid, so mutation boundaries fail closed with a retryable error.
- */
 export async function loadAuthoritativeProviderExecutionCatalog(
   deps: LoggedWorkSessionDeps,
   args: LoadAuthoritativeProviderExecutionCatalogArgs,
 ): Promise<AuthoritativeProviderExecutionCatalog> {
   const catalog = await resolveSystemProviderModels(deps, args);
   if (catalog.modelLoadError !== null) {
-    throw new ApiError(
-      503,
-      "model_catalog_unavailable",
-      `Unable to load ${args.providerId} models to validate the execution selection. Try again once the host is connected and the provider is ready.`,
-      {
-        details: catalog.modelLoadError,
-        retryable: true,
-      },
-    );
+    const code = catalog.modelLoadError.code;
+    const message =
+      code === "missing_executable"
+        ? `Unable to load ${args.providerId} models because its executable is not installed on the selected machine.`
+        : code === "auth_required"
+          ? `Unable to load ${args.providerId} models because the provider requires authentication on the selected machine.`
+          : code === "provider_unavailable"
+            ? `Unable to load ${args.providerId} models because the provider is unavailable on the selected machine.`
+            : `Unable to load ${args.providerId} models to validate the execution selection. Try again once the host is connected and the provider is ready.`;
+    throw new ApiError(503, "model_catalog_unavailable", message, {
+      details: catalog.modelLoadError,
+      retryable: code === "timeout" || code === "failed",
+    });
   }
   return {
     models: catalog.models,
@@ -62,18 +60,13 @@ export async function loadAuthoritativeProviderExecutionCatalog(
   };
 }
 
-/**
- * Validate one resolved tuple against a successfully loaded catalog. Explicit
- * selections use active models only; inherited selections may retain a
- * selected-only model. Matching accepts both the picker id and provider model
- * route, and returns the provider route so aliases resolve consistently.
- */
 export function validateExecutionSelectionAgainstCatalog(
   args: ValidateExecutionSelectionAgainstCatalogArgs,
 ): ValidatedProviderExecutionSelection {
-  const candidates = args.allowSelectedOnly
-    ? [...args.catalog.models, ...args.catalog.selectedOnlyModels]
-    : args.catalog.models;
+  const candidates = [
+    ...args.catalog.models,
+    ...args.catalog.selectedOnlyModels,
+  ];
   const modelEntry = candidates.find(
     (candidate) =>
       candidate.id === args.model || candidate.model === args.model,
@@ -89,9 +82,6 @@ export function validateExecutionSelectionAgainstCatalog(
   const supportedReasoningLevels = modelEntry.supportedReasoningEfforts.map(
     (effort) => effort.reasoningEffort,
   );
-  // An empty list means the provider did not advertise an authoritative
-  // per-model reasoning contract. Provider-level validation still runs in the
-  // execution planner; do not manufacture a stricter per-model rule here.
   if (
     supportedReasoningLevels.length > 0 &&
     !supportedReasoningLevels.includes(args.reasoningLevel)
@@ -114,16 +104,12 @@ export function validateExecutionSelectionAgainstCatalog(
 export async function validateProviderExecutionSelection(
   deps: LoggedWorkSessionDeps,
   args: LoadAuthoritativeProviderExecutionCatalogArgs & {
-    allowSelectedOnly?: boolean;
     model: string;
     reasoningLevel: ReasoningLevel;
   },
 ): Promise<ValidatedProviderExecutionSelection> {
   const catalog = await loadAuthoritativeProviderExecutionCatalog(deps, args);
   return validateExecutionSelectionAgainstCatalog({
-    ...(args.allowSelectedOnly === undefined
-      ? {}
-      : { allowSelectedOnly: args.allowSelectedOnly }),
     catalog,
     model: args.model,
     providerId: args.providerId,
@@ -131,7 +117,6 @@ export async function validateProviderExecutionSelection(
   });
 }
 
-/** Public SDK preflight used by server-side plugins before persisting tuples. */
 export async function validateSystemExecutionSelection(
   deps: LoggedWorkSessionDeps,
   request: SystemExecutionSelectionValidationRequest,

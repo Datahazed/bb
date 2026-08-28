@@ -37,19 +37,32 @@ environment catalog.
   `bb dispatch preset` spelling, so the fix targets the Tasks RPC/CLI surface.
 - `customModels` is the deliberate allowlist for provider-accepted unlisted
   IDs; arbitrary catalog misses are not universally valid.
-- `selectedOnlyModels` remains eligible for inherited/stored selections, while
-  explicit spawn/workflow literals use active catalog rows.
+- `selectedOnlyModels` is a catalog partition, not an invalid-model set, so
+  explicit, inherited, forked, queued, and SDK selections all accept those
+  entries.
 - A non-empty `supportedReasoningEfforts` list is authoritative. An empty list
   is unknown support, not “supports no reasoning”; Workflows needed the same
   correction at both validation phases.
-- Forks already enter the shared thread-create service. Immediate sends and
-  queues with a resolved host validate before a turn is requested; a queue
-  admitted before its new environment has a host target is revalidated when it
-  drains. Deferred messages needed an admission preflight because their rows
-  were otherwise visible before validation.
+- Forks already enter the shared thread-create service. Immediate and explicit
+  deferred sends validate before a turn or visible deferred row is created.
+  Queues remain available while a host is offline and validate at delivery;
+  catalog incompatibility keeps the queued or deferred row for retry instead
+  of deleting user input.
 - Thread execution overrides already load the target environment catalog and
   enforce non-empty per-model reasoning contracts, so no replacement route was
   needed there.
+- An explicit model without explicit reasoning uses that model's advertised
+  default instead of inherited project reasoning. Headless project-default
+  creation recovers from a stale stored model by selecting the current catalog
+  default, while valid stored defaults keep their configured reasoning.
+- Tasks presets targeting a new worktree validate on create and selection
+  updates. Project-default presets have no project or host binding at save
+  time, so they validate at dispatch after the task's project resolves.
+  Automations likewise skip catalog probes for prompt-only edits and existing
+  target-thread runs, whose stored spawn tuple is unused.
+- Plugin RPC failures now retain the upstream typed code, status, and retryable
+  flag through the server, browser hook, and fake host. The public Plugin SDK
+  inventory and Plugin Guide map were regenerated for the contract change.
 - Live CLI QA found that partial Tasks preset updates carry omitted options as
   explicit `undefined` values. The preflight merge was adjusted to preserve the
   stored provider/model/machine fields, with a regression test for that exact

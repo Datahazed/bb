@@ -191,7 +191,8 @@ message agents, or inspect projects, providers, and environments.
   support against that target machine's live catalog before creating a thread
   or environment. Invalid selections exit non-zero without provisioning or a
   provider turn. Register a deliberately unlisted provider-accepted id in
-  `customModels`; an arbitrary missing id is rejected.
+  `customModels`; an arbitrary missing id is rejected. Active and selected-only
+  catalog entries are both valid selections.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
   attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)
@@ -570,6 +571,9 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   opaque `--cursor` returned as `nextCursor` in JSON (or printed after a human
   page). Keep the same filters and sort. A task-list mutation makes the cursor
   stale; restart without it.
+- New-worktree preset create and selection updates validate the selected
+  machine's model catalog. Project-default presets validate at dispatch after
+  the linked project resolves the correct workspace host.
 
 ## Docs
 
@@ -610,9 +614,9 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   `agent` automation if script creation is rejected.
 - Create an agent automation with
   `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --reasoning <level> --service-tier <default|fast> --prompt "..."`.
-- Agent automation create/update validates model and reasoning against the
-  selected environment or machine before persisting, and each run validates
-  again before provisioning.
+- Agent automations that spawn threads validate model and reasoning before
+  selection-bearing saves. Prompt-only edits and target-thread automations skip
+  the unused catalog probe; spawn validates again at run time.
 - Create a one-shot agent automation with
   `bb automation create --project <id> --name "..." --in "30m" --provider <id> --model <model> --prompt "..."`,
   or use `--at "2026-07-03T09:00:00-07:00"` for an absolute run time.

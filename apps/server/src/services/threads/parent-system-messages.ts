@@ -416,6 +416,7 @@ export async function queueParentSystemMessage(
     {},
     {
       threadId: parentThread.id,
+      validateCatalog: true,
     },
   );
   if (

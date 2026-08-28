@@ -250,19 +250,11 @@ function respondToProviderModelListCommand(
         models: [
           availableModelFixture({
             model: "test-provider-default",
-            reasoningLevels: ["low", "medium", "high"],
+            reasoningLevels: [],
             defaultReasoningLevel: "medium",
             isDefault: true,
           }),
-          // General route/thread tests exercise execution plumbing rather than
-          // catalog membership. Keep their long-standing model fixtures in
-          // this fake daemon's authoritative catalog; catalog-policy tests
-          // install a targeted responder with deliberately narrow rows.
           ...[
-            "acp-default",
-            "claude-opus-4-6",
-            "claude-opus-4-8",
-            "claude-sonnet-4-6",
             "fake-model",
             "gpt-4o-mini",
             "gpt-5",
@@ -281,21 +273,23 @@ function respondToProviderModelListCommand(
           ].map((model) =>
             availableModelFixture({
               model,
-              reasoningLevels: [
-                "none",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "ultracode",
-                "max",
-                "ultra",
-              ],
+              reasoningLevels: [],
               defaultReasoningLevel: "medium",
             }),
           ),
         ],
-        selectedOnlyModels: [],
+        selectedOnlyModels: [
+          "acp-default",
+          "claude-opus-4-6",
+          "claude-opus-4-8",
+          "claude-sonnet-4-6",
+        ].map((model) =>
+          availableModelFixture({
+            model,
+            reasoningLevels: [],
+            defaultReasoningLevel: "medium",
+          }),
+        ),
       },
     }),
     sessionId: args.sessionId,

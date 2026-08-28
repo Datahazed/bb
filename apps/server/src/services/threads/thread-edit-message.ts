@@ -470,6 +470,7 @@ export async function editThreadMessage(
   });
   const execution = await buildExecutionOptions(deps, args.payload, {
     threadId: editableThread.id,
+    validateCatalog: true,
   });
 
   let stagedProviderThreadId: string | null = null;

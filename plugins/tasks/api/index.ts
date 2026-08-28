@@ -17,6 +17,7 @@ import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
   type ProjectsChangedEvent,
+  type PresetReasoningLevel,
   type SidebarProjectSummary,
   type Task,
   type TaskPullRequest,
@@ -32,15 +33,7 @@ interface PresetExecutionSelection {
   machineId: string | null;
   modelId: string;
   providerId: string;
-  reasoningLevel:
-    | "none"
-    | "low"
-    | "medium"
-    | "high"
-    | "xhigh"
-    | "ultracode"
-    | "max"
-    | "ultra";
+  reasoningLevel: PresetReasoningLevel;
 }
 
 async function validatePresetExecutionSelection(
@@ -957,7 +950,9 @@ export function registerHandlers(
       return listTaskPullRequests(bb, store, input.taskId);
     },
     async createPreset(input) {
-      await validatePresetExecutionSelection(bb, input);
+      if (input.environmentKind === "new-worktree") {
+        await validatePresetExecutionSelection(bb, input);
+      }
       const preset = store.tasks.createPreset({ ...input, builtin: false });
       publishProjectsChanged(bb, null);
       return { preset };
@@ -968,7 +963,7 @@ export function registerHandlers(
       if (current === undefined) {
         throw new Error(`Preset not found: ${presetId}`);
       }
-      await validatePresetExecutionSelection(bb, {
+      const selection = {
         environmentKind: changes.environmentKind ?? current.environmentKind,
         machineId:
           changes.machineId === undefined
@@ -977,7 +972,16 @@ export function registerHandlers(
         modelId: changes.modelId ?? current.modelId,
         providerId: changes.providerId ?? current.providerId,
         reasoningLevel: changes.reasoningLevel ?? current.reasoningLevel,
-      });
+      };
+      const selectionChanged =
+        changes.environmentKind !== undefined ||
+        changes.machineId !== undefined ||
+        changes.modelId !== undefined ||
+        changes.providerId !== undefined ||
+        changes.reasoningLevel !== undefined;
+      if (selectionChanged && selection.environmentKind === "new-worktree") {
+        await validatePresetExecutionSelection(bb, selection);
+      }
       const preset = store.tasks.updatePreset(
         presetId,
         changes.environmentKind === "project-default"

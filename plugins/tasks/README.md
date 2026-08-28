@@ -102,9 +102,11 @@ Linking a Tasks project to a bb project enables delegation. Open a task, choose
 defines the provider, model, reasoning level, optional service tier, permission
 mode, and reusable instructions. Presets are user-defined, so create the worker profiles your team
 uses repeatedly before dispatching work.
-Preset create/update validates the provider/model/reasoning tuple against the
-selected machine before saving it; dispatch validates it again against the
-linked project's resolved workspace before provisioning.
+New-worktree preset creation and selection-bearing updates validate the tuple
+against the selected machine before saving it. Metadata-only edits do not need
+a live machine. A project-default preset has no project target until dispatch,
+so dispatch validates it against the linked project's resolved workspace before
+provisioning.
 
 Delegation creates a worker thread in the linked bb project, attaches that
 thread to the task, and advances a `backlog` or `todo` task to `in_progress`.

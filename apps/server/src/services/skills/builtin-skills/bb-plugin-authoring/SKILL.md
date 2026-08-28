@@ -907,7 +907,9 @@ Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
 `invalid_output`, `non_json_result`, and `unknown_method`; validation failures
 also carry normalized `{ message, path? }[]` issues. Unknown methods return
 404, invalid JSON/input returns 400, and handler/output/serialization failures
-return 500. Results must be strict JSON values: cyclic objects, bigint,
+return 500. A typed BB SDK HTTP error thrown by a handler retains its upstream
+code, status, and retryability for the plugin frontend while the RPC envelope
+remains `handler_error`. Results must be strict JSON values: cyclic objects, bigint,
 undefined/functions, class instances, symbol keys, and non-finite numbers are
 rejected rather than coerced or silently dropped.
 

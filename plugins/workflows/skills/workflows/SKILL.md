@@ -184,7 +184,8 @@ BB validates the tuple against the live provider/model catalog immediately
 before spawning the worker. A provider disappearing between authoring and
 execution fails the call instead of silently substituting another model. A
 reasoning level is rejected only when the selected model advertises a non-empty
-`supportedReasoningEfforts` contract that excludes it.
+`supportedReasoningEfforts` contract that excludes it. Selected-only catalog
+entries remain valid for both inherited and explicit selections.
 
 ## Structured agent results
 

@@ -100,6 +100,44 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("does not probe a live catalog for metadata-only edits or project-default storage", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    harness.sdk.stub(
+      "providers.experimental_validateExecutionSelection",
+      async (input: unknown) => input,
+    );
+
+    const created = await harness.callRpc("createPreset", {
+      name: "Project default",
+      providerId: "claude-code",
+      modelId: "claude-sonnet",
+      reasoningLevel: "high",
+      serviceTier: null,
+      permissionMode: "auto",
+      environmentKind: "project-default",
+      baseBranch: null,
+      machineId: null,
+      instructions: "Review carefully",
+    });
+    await harness.callRpc("updatePreset", {
+      presetId: created.preset.id,
+      name: "Renamed project default",
+      instructions: "Review carefully and run tests",
+    });
+
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toEqual([]);
+    expect(store.tasks.getPreset(created.preset.id)).toMatchObject({
+      name: "Renamed project default",
+      modelId: "claude-sonnet",
+    });
+
+    await harness.dispose();
+  });
+
   it("deletes through the typed RPC policy and rejects saved-description references", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);

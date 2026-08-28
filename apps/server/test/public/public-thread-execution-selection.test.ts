@@ -1,6 +1,7 @@
 import {
   getLatestThreadSequence,
   listEnvironments,
+  listQueuedThreadMessages,
   listThreads,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
@@ -10,13 +11,17 @@ import {
   listQueuedCommands,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
-import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  registerProviderHostRpcResponder,
+} from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
+  seedQueuedMessage,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
@@ -269,6 +274,321 @@ describe("public thread execution-selection validation", () => {
     });
   });
 
+  it("validates a project-default plugin spawn on the resolved project host", async () => {
+    await withTestHarness(async (harness) => {
+      const target = seedHostSession(harness.deps, {
+        id: "host-project-default-target",
+      });
+      const unrelated = seedHostSession(harness.deps, {
+        id: "host-project-default-unrelated",
+      });
+      seedPrimaryHost(harness.deps, target.host.id);
+      const unrelatedResponder = registerProviderHostRpcResponder(harness, {
+        hostId: unrelated.host.id,
+        sessionId: unrelated.session.id,
+        modelsByProviderId: {
+          "claude-code": {
+            models: [
+              availableModelFixture({
+                model: "unrelated-only",
+                reasoningLevels: ["low"],
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const targetResponder = registerHostRpcResponder(harness, {
+        hostId: target.host.id,
+        sessionId: target.session.id,
+        handle(request) {
+          if (request.command.type === "host.list_branches") {
+            return {
+              ok: true,
+              result: {
+                branches: ["main"],
+                branchesTruncated: false,
+                checkout: {
+                  kind: "branch",
+                  branchName: "main",
+                  headSha: "abc123",
+                },
+                defaultBranch: "main",
+                defaultBranchRelation: "equal",
+                hasUncommittedChanges: false,
+                operation: { kind: "none" },
+                originDefaultBranch: "origin/main",
+                remoteBranches: ["origin/main"],
+                remoteBranchesTruncated: false,
+                selectedBranch: null,
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [
+                  availableModelFixture({
+                    model: "target-only",
+                    reasoningLevels: ["low"],
+                    isDefault: true,
+                  }),
+                ],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected host command ${request.command.type}`);
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: target.host.id,
+        path: "/tmp/execution-selection-project-default",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "plugin",
+          originPluginId: "tasks",
+          projectId: project.id,
+          providerId: "claude-code",
+          model: "unrelated-only",
+          reasoningLevel: "low",
+          input: [{ type: "text", text: "Dispatch the preset" }],
+          environment: { type: "project-default" },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "model_not_available",
+      });
+      expect(
+        targetResponder.requests.map((request) => request.command.type),
+      ).toEqual(["host.list_branches", "provider.list_models"]);
+      expect(unrelatedResponder.requests).toEqual([]);
+      expect(listThreads(harness.db, { projectId: project.id })).toEqual([]);
+      expect(listEnvironments(harness.db, project.id)).toEqual([]);
+    });
+  });
+
+  it("accepts a selected-only model through explicit create and SDK preflight paths", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          "claude-code": {
+            models: [
+              availableModelFixture({
+                model: "claude-current",
+                reasoningLevels: ["low"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [
+              availableModelFixture({
+                model: "claude-selected-only",
+                reasoningLevels: ["high"],
+                defaultReasoningLevel: "high",
+              }),
+            ],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-selected-only",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-selected-only",
+      });
+
+      const preflight = await harness.app.request(
+        "/api/v1/system/execution-selection/validate",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            environmentId: environment.id,
+            providerId: "claude-code",
+            model: "claude-selected-only",
+            reasoningLevel: "high",
+          }),
+        },
+      );
+      expect(preflight.status).toBe(200);
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          threadCreateBody({
+            projectId: project.id,
+            model: "claude-selected-only",
+            reasoningLevel: "high",
+            environment: { type: "reuse", environmentId: environment.id },
+          }),
+        ),
+      });
+
+      expect(response.status).toBe(201);
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "thread.start",
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: {
+          model: "claude-selected-only",
+          reasoningLevel: "high",
+        },
+      });
+    });
+  });
+
+  it("uses an explicit model's default reasoning instead of an inherited project level", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          "claude-code": {
+            models: [
+              availableModelFixture({
+                model: "claude-haiku-low-only",
+                reasoningLevels: ["low"],
+                defaultReasoningLevel: "low",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-explicit-model-reasoning",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-explicit-model-reasoning",
+      });
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "claude-code",
+        model: "claude-opus-high",
+        reasoningLevel: "high",
+        permissionMode: "auto",
+        serviceTier: "default",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: project.id,
+          providerId: "claude-code",
+          model: "claude-haiku-low-only",
+          reasoningLevel: "high",
+          executionInputSources: {
+            providerId: "explicit",
+            model: "explicit",
+          },
+          input: [{ type: "text", text: "Use Haiku defaults" }],
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "thread.start",
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: {
+          model: "claude-haiku-low-only",
+          reasoningLevel: "low",
+        },
+      });
+    });
+  });
+
+  it("recovers a stale implicit project model to the current catalog default", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          "claude-code": {
+            models: [
+              availableModelFixture({
+                model: "claude-current-default",
+                reasoningLevels: ["low"],
+                defaultReasoningLevel: "low",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-stale-default",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-stale-default",
+      });
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "claude-code",
+        model: "claude-removed",
+        reasoningLevel: "high",
+        permissionMode: "auto",
+        serviceTier: "default",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "sdk",
+          projectId: project.id,
+          providerId: "claude-code",
+          input: [{ type: "text", text: "Recover stale defaults" }],
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "thread.start",
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: {
+          model: "claude-current-default",
+          reasoningLevel: "low",
+        },
+      });
+    });
+  });
+
   it("rejects an invalid explicit send before appending or submitting a turn", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
@@ -339,6 +659,142 @@ describe("public thread execution-selection validation", () => {
         ["provider.list_models"],
       );
       expect(listQueuedCommands(harness, "turn.submit")).toEqual([]);
+    });
+  });
+
+  it("queues explicit execution preferences without probing a live catalog", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelErrorsByProviderId: {
+          "claude-code": {
+            errorCode: "provider_unavailable",
+            errorMessage: "provider is temporarily offline",
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-offline-queue",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-offline-queue",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "claude-code",
+        status: "active",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        model: "claude-current",
+        providerThreadId: "provider-offline-queue",
+        reasoningLevel: "low",
+        threadId: thread.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Queue while offline" }],
+            model: "claude-next",
+            reasoningLevel: "high",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(201);
+      expect(responder.requests).toEqual([]);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([
+        expect.objectContaining({
+          model: "claude-next",
+          reasoningLevel: "high",
+        }),
+      ]);
+    });
+  });
+
+  it("drains a queued message that replays a selected-only model", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-current",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [
+              availableModelFixture({
+                model: "gpt-selected-only",
+                reasoningLevels: ["high"],
+                defaultReasoningLevel: "high",
+              }),
+            ],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-queued-selected-only",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-queued-selected-only",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        model: "gpt-selected-only",
+        providerThreadId: "provider-queued-selected-only",
+        reasoningLevel: "high",
+        threadId: thread.id,
+      });
+      const queuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: [{ type: "text", text: "Replay selected-only", mentions: [] }],
+        model: "gpt-selected-only",
+        reasoningLevel: "high",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      const queuedSubmit = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "turn.submit",
+      );
+      expect(queuedSubmit.command).toMatchObject({
+        options: { model: "gpt-selected-only", reasoningLevel: "high" },
+      });
     });
   });
 

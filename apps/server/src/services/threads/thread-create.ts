@@ -46,6 +46,7 @@ import {
 } from "./thread-request-eligibility.js";
 import {
   buildProviderThreadExecutionDefaults,
+  DEFAULT_REASONING_LEVEL,
   resolveCreateThreadEnvironment,
   resolveProjectDefaultThreadEnvironment,
 } from "./thread-default-policy.js";
@@ -132,11 +133,21 @@ async function resolveCatalogExecutionDefaults(
     hostId: args.hostId,
     providerId: args.providerId,
   });
-  const requestedOrStoredModel =
-    args.requestedModel ?? args.executionDefaults?.model ?? null;
   const defaultModelEntry =
     catalog.models.find((model) => model.isDefault) ?? catalog.models[0];
-  const model = requestedOrStoredModel ?? defaultModelEntry?.model;
+  const candidates = [...catalog.models, ...catalog.selectedOnlyModels];
+  const storedModelEntry = candidates.find(
+    (candidate) =>
+      candidate.id === args.executionDefaults?.model ||
+      candidate.model === args.executionDefaults?.model,
+  );
+  const requestedModelEntry = candidates.find(
+    (candidate) =>
+      candidate.id === args.requestedModel ||
+      candidate.model === args.requestedModel,
+  );
+  const model =
+    args.requestedModel ?? storedModelEntry?.model ?? defaultModelEntry?.model;
   if (model === undefined) {
     throw new ApiError(
       503,
@@ -145,21 +156,16 @@ async function resolveCatalogExecutionDefaults(
       true,
     );
   }
-  const modelEntry = [
-    ...catalog.models,
-    ...(args.requestedModel === null && args.executionDefaults !== null
-      ? catalog.selectedOnlyModels
-      : []),
-  ].find((candidate) => candidate.id === model || candidate.model === model);
+  const modelEntry =
+    requestedModelEntry ?? storedModelEntry ?? defaultModelEntry;
   const reasoningLevel =
     args.requestedReasoningLevel ??
-    args.executionDefaults?.reasoningLevel ??
+    (args.requestedModel === null && storedModelEntry !== undefined
+      ? args.executionDefaults?.reasoningLevel
+      : undefined) ??
     modelEntry?.defaultReasoningEffort ??
-    defaultModelEntry?.defaultReasoningEffort ??
-    "medium";
+    DEFAULT_REASONING_LEVEL;
   const validated = validateExecutionSelectionAgainstCatalog({
-    allowSelectedOnly:
-      args.requestedModel === null && args.executionDefaults !== null,
     catalog,
     model,
     providerId: args.providerId,
@@ -510,7 +516,7 @@ async function createProvisioningThread(
         ? { projectDefaults: args.executionDefaults }
         : {}),
       hostId: intentHostId(deps, args.environmentIntent),
-      catalogValidated: true,
+      validateCatalog: false,
       threadId: thread.id,
     });
     context = requestThreadProvision(deps, {

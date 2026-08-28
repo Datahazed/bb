@@ -136,10 +136,10 @@ interface RuntimeExecutionOptionsArgs {
 }
 
 interface BuildExecutionOptionsArgs {
-  catalogValidated?: boolean;
   hostId?: string | null;
   projectDefaults?: ProjectExecutionDefaults | null;
   threadId: string;
+  validateCatalog: boolean;
 }
 
 interface DispatchThreadRenameCommandArgs {
@@ -266,7 +266,7 @@ export async function buildExecutionOptions(
   });
   let resolvedExecution = plan.resolvedExecution;
   if (
-    args.catalogValidated !== true &&
+    args.validateCatalog &&
     (input.model !== undefined || input.reasoningLevel !== undefined)
   ) {
     const thread = getThread(deps.db, args.threadId);
@@ -280,16 +280,12 @@ export async function buildExecutionOptions(
     const hostId =
       args.hostId === undefined ? (environment?.hostId ?? null) : args.hostId;
     if (hostId === null) {
-      // A queued message can be admitted while its new thread is still waiting
-      // for an environment. There is no catalog target yet; the queue drain
-      // re-enters this resolver after provisioning and validates there.
       return resolvedExecution;
     }
     const validated = await validateProviderExecutionSelection(deps, {
       ...(environment?.path === null || environment?.path === undefined
         ? {}
         : { cwd: environment.path }),
-      allowSelectedOnly: input.model?.source !== "explicit",
       hostId,
       providerId: thread.providerId,
       model: plan.resolvedExecution.model,

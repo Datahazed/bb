@@ -21,10 +21,12 @@ import {
   flushDeferredThreadMessages,
   runDeferredThreadMessageSweep,
 } from "../../src/services/threads/thread-send-request.js";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   createUserAnswerResolution,
@@ -35,6 +37,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
   seedThreadRuntimeState,
   seedTurnStarted,
@@ -202,6 +205,76 @@ async function drainSettleFlush(): Promise<void> {
 }
 
 describe("messages to a thread that awaits user interaction (#1650)", () => {
+  it("retains a held message when the provider catalog changes before delivery", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, interactionId, session, thread } = seedBlockedThread(
+        harness,
+        { hostId: "host-1650-catalog-change" },
+      );
+      const initialCatalog = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "fake-model",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const held = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "steer-if-active",
+            input: [{ type: "text", text: "Deliver after approval" }],
+            model: "fake-model",
+            reasoningLevel: "medium",
+          }),
+        },
+      );
+      expect(held.status).toBe(200);
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+
+      initialCatalog.unregister();
+      harness.hub.unregisterDaemon(session.id);
+      const replacementSession = seedSession(harness.deps, host.id);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: replacementSession.id,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "replacement-model",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+
+      await flushDeferredThreadMessages(harness.deps, thread.id);
+
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
+    });
+  });
+
   it("holds a worker's tell instead of refusing it, then steers it in once the question is answered", async () => {
     await withTestHarness(async (harness) => {
       const { interactionId, project, thread } = seedBlockedThread(harness, {

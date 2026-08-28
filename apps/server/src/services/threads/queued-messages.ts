@@ -185,6 +185,7 @@ export async function createQueuedMessageForThread(
   });
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
+    validateCatalog: false,
   });
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     senderThreadId: payload.senderThreadId,
@@ -442,6 +443,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   }
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
+    validateCatalog: true,
   });
   const permissionEscalation = resolvePermissionEscalation({
     initiator,

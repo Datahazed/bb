@@ -135,8 +135,10 @@ Choose one of two execution update forms:
   target. When changing providers, pass the provider's coherent model,
   reasoning, tier, and permission selection together:
 
-Agent create/update validates the model and advertised reasoning support on the
-selected environment or machine before saving. A run validates again before
+Agent automations that spawn threads validate the model and advertised
+reasoning support on the selected environment or machine before create and
+selection-bearing updates save. Prompt-only edits and target-thread
+automations do not probe an unused model catalog. Spawn validates again before
 thread or worktree provisioning, so a catalog change becomes a failed run
 rather than a provider turn.
 

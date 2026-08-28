@@ -43,9 +43,9 @@ Spawning:
   medium and auto.
   Before creating a thread or environment, bb validates the resolved model and
   any advertised per-model reasoning support against that target machine's
-  live catalog. An explicit model must be active (or registered in
-  customModels); an inherited selected-only model remains valid. A bad tuple
-  exits non-zero without provisioning a worktree or submitting a provider turn.
+  live catalog. Both active and selected-only catalog entries remain valid, as
+  do provider-approved IDs registered in customModels. A bad tuple exits
+  non-zero without provisioning a worktree or submitting a provider turn.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.

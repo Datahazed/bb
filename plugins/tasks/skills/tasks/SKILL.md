@@ -23,10 +23,13 @@ bb tasks preset create --name "Codex high" --provider codex \
 ```
 
 `preset update` accepts the same flags; `--service-tier none` clears a tier.
-Create and update validate the tuple against the selected machine's live model
-catalog before saving it. Invalid models and advertised unsupported reasoning
-levels fail non-zero; register a deliberately unlisted provider-accepted model
-through `customModels` first.
+New-worktree create and selection-bearing updates validate the tuple against
+the selected machine's live model catalog before saving it. Metadata-only
+updates do not probe the machine. Project-default presets validate at dispatch,
+when the linked project's resolved workspace is known. Invalid models and
+advertised unsupported reasoning levels fail non-zero at the applicable
+boundary; register a deliberately unlisted provider-accepted model through
+`customModels` first.
 
 ## Work a task
 
