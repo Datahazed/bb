@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { posix as posixPath } from "node:path";
-import { z } from "zod";
 
 interface RuntimeLogBuffer {
   append(chunk: Buffer | string): void;
@@ -94,7 +93,6 @@ type ResolveWaitForProcessExitWithTimeout = (
 
 const APPIMAGE_BRIDGE_RELATIVE_PATH_ENV =
   "BB_DESKTOP_APPIMAGE_BRIDGE_RELATIVE_PATH";
-const processErrorSchema = z.object({ code: z.string() }).passthrough();
 
 async function runAppImageBridgeSupervisor(
   bridgeRelativePathEnv: string,
@@ -120,13 +118,22 @@ async function runAppImageBridgeSupervisor(
   const supervisorPid = process.pid;
   let terminationSignal: NodeJS.Signals | null = null;
   let killTimer: ReturnType<typeof setTimeout> | null = null;
+  const readProcessErrorCode = (cause: unknown): string | null => {
+    if (!(cause instanceof Error)) {
+      return null;
+    }
+    const code = Object.getOwnPropertyDescriptor(cause, "code")?.value;
+    if (code === "ENOENT" || code === "ESRCH") {
+      return code;
+    }
+    return null;
+  };
   const signalBridgeGroup = (signal: NodeJS.Signals | 0): boolean => {
     try {
       process.kill(-supervisorPid, signal);
       return true;
     } catch (error) {
-      const parsedError = processErrorSchema.safeParse(error);
-      if (parsedError.success && parsedError.data.code === "ESRCH") {
+      if (readProcessErrorCode(error) === "ESRCH") {
         return false;
       }
       throw error;
@@ -150,12 +157,8 @@ async function runAppImageBridgeSupervisor(
           return true;
         }
       } catch (error) {
-        const parsedError = processErrorSchema.safeParse(error);
-        if (
-          parsedError.success &&
-          (parsedError.data.code === "ENOENT" ||
-            parsedError.data.code === "ESRCH")
-        ) {
+        const errorCode = readProcessErrorCode(error);
+        if (errorCode === "ENOENT" || errorCode === "ESRCH") {
           continue;
         }
         throw error;

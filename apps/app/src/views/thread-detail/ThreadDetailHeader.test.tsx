@@ -116,7 +116,7 @@ describe("ThreadDetailHeader", () => {
     const reserve = document.querySelector(
       "[data-thread-header-panel-toggle-reserve]",
     );
-    expect(reserve?.classList).toContain("header-icon-button");
+    expect(reserve?.classList).toContain("h-[28px]");
   });
 
   it("does not reserve toggle space for the compact drawer trigger", () => {
