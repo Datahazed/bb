@@ -137,10 +137,10 @@ Choose one of two execution update forms:
 
 Agent automations that spawn threads validate the model and advertised
 reasoning support on the selected environment or machine before create and
-selection-bearing updates save. Prompt-only edits and target-thread
-automations do not probe an unused model catalog. Spawn validates again before
-thread or worktree provisioning, so a catalog change becomes a failed run
-rather than a provider turn.
+effective selection updates save. Prompt-only and unchanged full-form edits,
+plus target-thread automations, do not probe an unused model catalog. Spawn
+validates again before thread or worktree provisioning, so a catalog change
+becomes a failed run rather than a provider turn.
 
 ```bash
 bb plugin run automations update <automationId> --project <id> \

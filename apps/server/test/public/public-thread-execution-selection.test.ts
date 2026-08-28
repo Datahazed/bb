@@ -6,6 +6,8 @@ import {
   upsertProjectExecutionDefaults,
 } from "@bb/db";
 import { describe, expect, it } from "vitest";
+import { sendNextQueuedMessageIfPresent } from "../../src/services/threads/queued-messages.js";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { availableModelFixture } from "../helpers/available-models.js";
 import {
   listQueuedCommands,
@@ -22,6 +24,7 @@ import {
   seedPrimaryHost,
   seedProjectWithSource,
   seedQueuedMessage,
+  seedSession,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
@@ -375,6 +378,64 @@ describe("public thread execution-selection validation", () => {
     });
   });
 
+  it("uses a registered fallback catalog after a transient probe failure", async () => {
+    await withTestHarness(async (harness) => {
+      const fallbackModel = harness.deps.providerRegistry
+        .get("claude-code")
+        ?.fallbackModels.find((model) => model.isDefault);
+      if (!fallbackModel) {
+        throw new Error("Expected the Claude Code fallback catalog");
+      }
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelErrorsByProviderId: {
+          "claude-code": {
+            errorCode: "command_timeout",
+            errorMessage: "model list timed out",
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-fallback-catalog",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-fallback-catalog",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "sdk",
+          projectId: project.id,
+          providerId: "claude-code",
+          model: fallbackModel.model,
+          reasoningLevel: fallbackModel.defaultReasoningEffort,
+          input: [{ type: "text", text: "Use the fallback catalog" }],
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "thread.start",
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: {
+          model: fallbackModel.model,
+          reasoningLevel: fallbackModel.defaultReasoningEffort,
+        },
+      });
+    });
+  });
+
   it("accepts a selected-only model through explicit create and SDK preflight paths", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
@@ -524,6 +585,69 @@ describe("public thread execution-selection validation", () => {
     });
   });
 
+  it("retains compatible inherited reasoning for an explicit model", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          "claude-code": {
+            models: [
+              availableModelFixture({
+                model: "claude-next",
+                reasoningLevels: ["low", "medium", "high"],
+                defaultReasoningLevel: "high",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-compatible-reasoning",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-compatible-reasoning",
+      });
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "claude-code",
+        model: "claude-previous",
+        reasoningLevel: "low",
+        permissionMode: "auto",
+        serviceTier: "default",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "sdk",
+          projectId: project.id,
+          providerId: "claude-code",
+          model: "claude-next",
+          input: [{ type: "text", text: "Keep compatible reasoning" }],
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "thread.start",
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: { model: "claude-next", reasoningLevel: "low" },
+      });
+    });
+  });
+
   it("recovers a stale implicit project model to the current catalog default", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
@@ -584,6 +708,70 @@ describe("public thread execution-selection validation", () => {
         options: {
           model: "claude-current-default",
           reasoningLevel: "low",
+        },
+      });
+    });
+  });
+
+  it("recovers stale implicit reasoning for a still-available model", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          "claude-code": {
+            models: [
+              availableModelFixture({
+                model: "claude-current",
+                reasoningLevels: ["low", "medium"],
+                defaultReasoningLevel: "medium",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-stale-reasoning",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-stale-reasoning",
+      });
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "claude-code",
+        model: "claude-current",
+        reasoningLevel: "high",
+        permissionMode: "auto",
+        serviceTier: "default",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "sdk",
+          projectId: project.id,
+          input: [{ type: "text", text: "Recover stale reasoning" }],
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "thread.start",
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: {
+          model: "claude-current",
+          reasoningLevel: "medium",
         },
       });
     });
@@ -795,6 +983,120 @@ describe("public thread execution-selection validation", () => {
       expect(queuedSubmit.command).toMatchObject({
         options: { model: "gpt-selected-only", reasoningLevel: "high" },
       });
+    });
+  });
+
+  it("retains an invalid queued head without blocking later valid input", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-current",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/execution-selection-queued-invalid-head",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/execution-selection-queued-invalid-head",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        model: "gpt-current",
+        providerThreadId: "provider-queued-invalid-head",
+        reasoningLevel: "medium",
+        threadId: thread.id,
+      });
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: [{ type: "text", text: "Invalid first", mentions: [] }],
+        model: "gpt-retired",
+        reasoningLevel: "medium",
+      });
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: [{ type: "text", text: "Valid second", mentions: [] }],
+        model: "gpt-current",
+        reasoningLevel: "medium",
+      });
+
+      await expect(
+        sendNextQueuedMessageIfPresent(harness.deps, {
+          threadId: thread.id,
+        }),
+      ).resolves.toBe(true);
+
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([
+        expect.objectContaining({ model: "gpt-retired" }),
+      ]);
+      const queuedSubmit = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "turn.submit",
+      );
+      expect(queuedSubmit.command).toMatchObject({
+        input: [expect.objectContaining({ text: "Valid second" })],
+        options: { model: "gpt-current", reasoningLevel: "medium" },
+      });
+
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "stop.requested" },
+        threadId: thread.id,
+      });
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "stop.settled" },
+        threadId: thread.id,
+      });
+      responder.unregister();
+      const updatedSession = seedSession(harness.deps, host.id);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: updatedSession.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-current",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+              availableModelFixture({
+                model: "gpt-retired",
+                reasoningLevels: ["medium"],
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+
+      await expect(
+        sendNextQueuedMessageIfPresent(harness.deps, {
+          threadId: thread.id,
+        }),
+      ).resolves.toBe(true);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
   });
 

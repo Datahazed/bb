@@ -119,9 +119,10 @@ const PRESET_HELP = `Usage:
   bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
   bb tasks preset delete <name-or-id> [--json]
 
-New-worktree create and selection updates validate model and advertised
-reasoning support against the selected machine before saving. Project-default
-presets validate at dispatch once the linked project's host is known.`;
+New-worktree create and effective selection updates validate model and
+advertised reasoning support against the selected machine before saving.
+Unchanged full-form edits skip the catalog probe. Project-default presets
+validate at dispatch once the linked project's host is known.`;
 const DISPATCH_HELP =
   "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
 const ATTACH_HELP =

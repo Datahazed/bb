@@ -139,7 +139,6 @@ interface BuildExecutionOptionsArgs {
   hostId?: string | null;
   projectDefaults?: ProjectExecutionDefaults | null;
   threadId: string;
-  validateCatalog: boolean;
 }
 
 interface DispatchThreadRenameCommandArgs {
@@ -265,10 +264,7 @@ export async function buildExecutionOptions(
     threadId: args.threadId,
   });
   let resolvedExecution = plan.resolvedExecution;
-  if (
-    args.validateCatalog &&
-    (input.model !== undefined || input.reasoningLevel !== undefined)
-  ) {
+  if (input.model !== undefined || input.reasoningLevel !== undefined) {
     const thread = getThread(deps.db, args.threadId);
     if (thread === null) {
       throw new ApiError(404, "thread_not_found", "Thread not found");

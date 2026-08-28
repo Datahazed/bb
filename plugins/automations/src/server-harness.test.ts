@@ -345,6 +345,18 @@ describe("automations server plugin harness", () => {
     });
     await harness.callRpc("automations_update", {
       projectId: PROJECT_ID,
+      automationId: spawnedThreadAutomation.id,
+      agent: {
+        prompt: "updated prompt through full form",
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        serviceTier: null,
+        permissionMode: "accept-edits",
+      },
+    });
+    await harness.callRpc("automations_update", {
+      projectId: PROJECT_ID,
       automationId: targetThreadAutomation.id,
       agent: { model: "unused-target-thread-model" },
     });

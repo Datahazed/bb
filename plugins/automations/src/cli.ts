@@ -785,8 +785,9 @@ bb automation runs <automationId> --project <id> [--limit <count>] [--output <ru
 bb automation delete <automationId> --project <id> --yes
 
 Agent automations that spawn threads validate model and advertised reasoning
-support before selection-bearing saves; prompt-only edits and target-thread
-automations skip the unused catalog probe. Spawn validates again at run time.
+support before effective selection changes persist; prompt-only, unchanged
+full-form, and target-thread edits skip the unused catalog probe. Spawn
+validates again at run time.
 `;
 }
 

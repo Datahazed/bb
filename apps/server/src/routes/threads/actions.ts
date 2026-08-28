@@ -422,7 +422,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const execution = await buildExecutionOptions(
       deps,
       {},
-      { threadId: thread.id, validateCatalog: true },
+      { threadId: thread.id },
     );
     const preparedRuntimeCommand = await prepareTurnSubmitCommandPayload(deps, {
       environment,

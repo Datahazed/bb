@@ -12,7 +12,11 @@ import {
   hostDaemonServerWsMessageSchema,
   parseHostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import { type HostType, type ThreadEvent } from "@bb/domain";
+import {
+  type HostType,
+  type ReasoningLevel,
+  type ThreadEvent,
+} from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonEventEnvelope,
@@ -43,6 +47,17 @@ interface CapturedRpcRow {
 type QueuedCommandPayload = HostDaemonRpcCommand;
 type QueuedCommandResult<TCommand extends QueuedCommandPayload> =
   HostDaemonRpcResultForCommand<TCommand>;
+
+const SHARED_FAKE_REASONING_LEVELS: readonly ReasoningLevel[] = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+];
 
 export interface QueuedCommand<
   TCommand extends QueuedCommandPayload = QueuedCommandPayload,
@@ -250,7 +265,7 @@ function respondToProviderModelListCommand(
         models: [
           availableModelFixture({
             model: "test-provider-default",
-            reasoningLevels: [],
+            reasoningLevels: SHARED_FAKE_REASONING_LEVELS,
             defaultReasoningLevel: "medium",
             isDefault: true,
           }),
@@ -273,7 +288,7 @@ function respondToProviderModelListCommand(
           ].map((model) =>
             availableModelFixture({
               model,
-              reasoningLevels: [],
+              reasoningLevels: SHARED_FAKE_REASONING_LEVELS,
               defaultReasoningLevel: "medium",
             }),
           ),
@@ -286,7 +301,7 @@ function respondToProviderModelListCommand(
         ].map((model) =>
           availableModelFixture({
             model,
-            reasoningLevels: [],
+            reasoningLevels: SHARED_FAKE_REASONING_LEVELS,
             defaultReasoningLevel: "medium",
           }),
         ),

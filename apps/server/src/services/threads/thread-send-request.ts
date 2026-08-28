@@ -25,6 +25,7 @@ import {
 import { goneThreadEnvironmentDetails } from "../lib/lifecycle-api-errors.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { isExecutionSelectionCatalogMismatch } from "../system/execution-selection.js";
 import {
   deferThreadMessage,
   parseDeferredThreadMessagePayload,
@@ -42,7 +43,6 @@ import {
   resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "./thread-send.js";
-import { buildExecutionOptions } from "./thread-commands.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -79,12 +79,6 @@ export async function acceptThreadSendRequest(
       input: payload.input,
       projectId: thread.projectId,
     });
-    if (payload.model !== undefined || payload.reasoningLevel !== undefined) {
-      await buildExecutionOptions(deps, payload, {
-        threadId: thread.id,
-        validateCatalog: true,
-      });
-    }
     deferThreadMessage(deps, {
       threadId: thread.id,
       payload: { kind: "send", request: payload },
@@ -156,11 +150,7 @@ async function deliverDeferredThreadMessage(
 }
 
 function isDeferredThreadMessageRequestInvalid(error: unknown): boolean {
-  if (
-    error instanceof ApiError &&
-    (error.body.code === "model_not_available" ||
-      error.body.code === "reasoning_level_not_supported")
-  ) {
+  if (isExecutionSelectionCatalogMismatch(error)) {
     return false;
   }
   return (
@@ -268,7 +258,7 @@ async function flushDeferredThreadMessagesNow(
           "Deferred thread message delivery failed; will retry",
         );
       }
-      return;
+      continue;
     }
   }
 }

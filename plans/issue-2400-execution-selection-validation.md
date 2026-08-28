@@ -43,23 +43,29 @@ environment catalog.
 - A non-empty `supportedReasoningEfforts` list is authoritative. An empty list
   is unknown support, not “supports no reasoning”; Workflows needed the same
   correction at both validation phases.
-- Forks already enter the shared thread-create service. Immediate and explicit
-  deferred sends validate before a turn or visible deferred row is created.
-  Queues remain available while a host is offline and validate at delivery;
-  catalog incompatibility keeps the queued or deferred row for retry instead
-  of deleting user input.
+- Both fork routes enter the shared thread-create service, but copied history
+  can become the final execution tuple. Fork creation now resolves the source's
+  model/reasoning against the target catalog before provisioning while
+  preserving compatible source permission and service-tier values.
+- Immediate sends validate before a turn is created. Queue and deferred
+  admission intentionally avoids a live catalog dependency, then validates at
+  delivery. Catalog incompatibility keeps the row available and no longer
+  head-of-line blocks later valid input.
 - Thread execution overrides already load the target environment catalog and
   enforce non-empty per-model reasoning contracts, so no replacement route was
   needed there.
-- An explicit model without explicit reasoning uses that model's advertised
-  default instead of inherited project reasoning. Headless project-default
-  creation recovers from a stale stored model by selecting the current catalog
-  default, while valid stored defaults keep their configured reasoning.
+- An explicit model without explicit reasoning retains inherited reasoning when
+  that model advertises it as compatible, otherwise it uses the model's
+  advertised default. Headless project-default and fork creation recover stale
+  stored models or reasoning against the current catalog.
+- A transient catalog probe keeps registered fallback rows when they exist; it
+  fails retryably only when no authoritative row remains available.
 - Tasks presets targeting a new worktree validate on create and selection
-  updates. Project-default presets have no project or host binding at save
-  time, so they validate at dispatch after the task's project resolves.
-  Automations likewise skip catalog probes for prompt-only edits and existing
-  target-thread runs, whose stored spawn tuple is unused.
+  changes. Project-default presets have no project or host binding at save time,
+  so they validate at dispatch after the task's project resolves. Automations
+  likewise skip catalog probes for prompt-only edits and existing target-thread
+  runs, whose stored spawn tuple is unused. Both plugins compare full-form edits
+  with the persisted tuple so unchanged selectors do not trigger a live probe.
 - Plugin RPC failures now retain the upstream typed code, status, and retryable
   flag through the server, browser hook, and fake host. The public Plugin SDK
   inventory and Plugin Guide map were regenerated for the contract change.

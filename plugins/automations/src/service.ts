@@ -80,12 +80,24 @@ async function validateAgentExecutionSelection(
   });
 }
 
-function agentSelectionChanged(update: AgentExecutionUpdate): boolean {
+function agentSelectionChanged(
+  previous: AutomationExecution,
+  next: Extract<AutomationExecution, { mode: "agent" }>,
+): boolean {
+  if (previous.mode !== "agent") return true;
+  const previousRouting = providerRoutingForEnvironment(previous.environment);
+  const nextRouting = providerRoutingForEnvironment(next.environment);
   return (
-    update.providerId !== undefined ||
-    update.model !== undefined ||
-    update.reasoningLevel !== undefined ||
-    update.target?.type === "environment"
+    previous.providerId !== next.providerId ||
+    previous.model !== next.model ||
+    previous.reasoningLevel !== next.reasoningLevel ||
+    previous.targetThreadId !== next.targetThreadId ||
+    ("hostId" in previousRouting ? previousRouting.hostId : undefined) !==
+      ("hostId" in nextRouting ? nextRouting.hostId : undefined) ||
+    ("environmentId" in previousRouting
+      ? previousRouting.environmentId
+      : undefined) !==
+      ("environmentId" in nextRouting ? nextRouting.environmentId : undefined)
   );
 }
 
@@ -582,7 +594,7 @@ export function createAutomationService(args: {
         if (
           updatedExecution.mode === "agent" &&
           updatedExecution.targetThreadId === undefined &&
-          agentSelectionChanged(input.agent)
+          agentSelectionChanged(currentExecution, updatedExecution)
         ) {
           await validateAgentExecutionSelection(bb, updatedExecution);
         }

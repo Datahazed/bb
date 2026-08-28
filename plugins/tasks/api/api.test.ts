@@ -138,6 +138,46 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
+  it("does not revalidate an unchanged full-form preset selection", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    harness.sdk.stub(
+      "providers.experimental_validateExecutionSelection",
+      async (input: unknown) => input,
+    );
+    const input = {
+      name: "Remote review",
+      providerId: "claude-code",
+      modelId: "claude-sonnet",
+      reasoningLevel: "high" as const,
+      serviceTier: null,
+      permissionMode: "auto" as const,
+      environmentKind: "new-worktree" as const,
+      baseBranch: null,
+      machineId: "host_remote",
+      instructions: "Review carefully",
+    };
+    const created = await harness.callRpc("createPreset", input);
+
+    await harness.callRpc("updatePreset", {
+      presetId: created.preset.id,
+      ...input,
+      name: "Renamed remote review",
+      instructions: "Review carefully and run tests",
+    });
+
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toHaveLength(1);
+    expect(store.tasks.getPreset(created.preset.id)).toMatchObject({
+      name: "Renamed remote review",
+      modelId: "claude-sonnet",
+    });
+
+    await harness.dispose();
+  });
+
   it("deletes through the typed RPC policy and rejects saved-description references", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);

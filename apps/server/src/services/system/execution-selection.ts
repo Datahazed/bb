@@ -34,6 +34,16 @@ export interface ValidatedProviderExecutionSelection {
   reasoningLevel: ReasoningLevel;
 }
 
+export function isExecutionSelectionCatalogMismatch(
+  error: unknown,
+): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    (error.body.code === "model_not_available" ||
+      error.body.code === "reasoning_level_not_supported")
+  );
+}
+
 export async function loadAuthoritativeProviderExecutionCatalog(
   deps: LoggedWorkSessionDeps,
   args: LoadAuthoritativeProviderExecutionCatalogArgs,
@@ -41,6 +51,15 @@ export async function loadAuthoritativeProviderExecutionCatalog(
   const catalog = await resolveSystemProviderModels(deps, args);
   if (catalog.modelLoadError !== null) {
     const code = catalog.modelLoadError.code;
+    if (
+      (code === "timeout" || code === "failed") &&
+      (catalog.models.length > 0 || catalog.selectedOnlyModels.length > 0)
+    ) {
+      return {
+        models: catalog.models,
+        selectedOnlyModels: catalog.selectedOnlyModels,
+      };
+    }
     const message =
       code === "missing_executable"
         ? `Unable to load ${args.providerId} models because its executable is not installed on the selected machine.`

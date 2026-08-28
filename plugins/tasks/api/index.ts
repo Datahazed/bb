@@ -974,11 +974,11 @@ export function registerHandlers(
         reasoningLevel: changes.reasoningLevel ?? current.reasoningLevel,
       };
       const selectionChanged =
-        changes.environmentKind !== undefined ||
-        changes.machineId !== undefined ||
-        changes.modelId !== undefined ||
-        changes.providerId !== undefined ||
-        changes.reasoningLevel !== undefined;
+        selection.environmentKind !== current.environmentKind ||
+        selection.machineId !== current.machineId ||
+        selection.modelId !== current.modelId ||
+        selection.providerId !== current.providerId ||
+        selection.reasoningLevel !== current.reasoningLevel;
       if (selectionChanged && selection.environmentKind === "new-worktree") {
         await validatePresetExecutionSelection(bb, selection);
       }

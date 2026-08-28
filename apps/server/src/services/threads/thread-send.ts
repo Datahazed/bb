@@ -473,7 +473,6 @@ export async function sendThreadMessage(
   }
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
-    validateCatalog: true,
   });
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
