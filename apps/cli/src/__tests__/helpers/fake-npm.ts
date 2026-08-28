@@ -45,6 +45,22 @@ if (args[0] === "view") {
   process.exit(0);
 }
 
+// BB_TEST_NPM_INSTALL=fail stands in for the installs that die before they
+// touch the tree — an unwritable cache, a refused proxy, a missing platform
+// binary. npm always explains itself on stderr; the CLI has to pass that on.
+if (process.env.BB_TEST_NPM_INSTALL === "fail") {
+  process.stderr.write("npm error code EPERM\\nnpm error syscall open\\nnpm error Your cache folder contains root-owned files\\n");
+  process.exit(1);
+}
+
+if (process.env.BB_TEST_NPM_INSTALL === "fail-noisy-stdout") {
+  process.stderr.write("npm error code EPERM\\nnpm error syscall open\\n");
+  for (let line = 1; line <= 9; line += 1) {
+    process.stdout.write("progress line " + line + "\\n");
+  }
+  process.exit(1);
+}
+
 // npm treats NODE_ENV=production as omit=dev; a command-line --include=dev
 // outranks it. BB_TEST_NPM_ALWAYS_OMIT_DEV forces the omission to stand in for
 // an install that silently drops packages.
