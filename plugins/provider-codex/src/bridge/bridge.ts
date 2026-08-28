@@ -381,6 +381,7 @@ interface CodexBridgeSession {
   pendingPreIdentityDeltas: ThreadDelta[];
   rebuildBeforeNextTurnReason: string | null;
   closing: boolean;
+  previousChildExit: Promise<void> | null;
 }
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
@@ -413,9 +414,13 @@ function releaseSession(session: CodexBridgeSession): Promise<void> {
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
-  const exitPromise = session.connection?.kill() ?? Promise.resolve();
+  const previousChildExit = session.previousChildExit;
+  session.previousChildExit = null;
+  const currentChildExit = session.connection?.kill() ?? Promise.resolve();
   session.connection = null;
-  return exitPromise;
+  return previousChildExit === null
+    ? currentChildExit
+    : Promise.all([previousChildExit, currentChildExit]).then(() => undefined);
 }
 
 const codexProviderOptionsSchema = z
@@ -924,10 +929,16 @@ async function constructThreadSession(
     pendingPreIdentityDeltas: [],
     rebuildBeforeNextTurnReason: null,
     closing: false,
+    previousChildExit: null,
   };
   sessionsByBbThreadId.set(args.threadId, session);
   if (existing) {
-    await releaseSession(existing);
+    const previousChildExit = releaseSession(existing);
+    session.previousChildExit = previousChildExit;
+    await previousChildExit;
+    if (session.previousChildExit === previousChildExit) {
+      session.previousChildExit = null;
+    }
     if (session.closing) {
       throw new CodexSessionReleasedError(
         new Error(
@@ -1072,6 +1083,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     pendingPreIdentityDeltas: [],
     rebuildBeforeNextTurnReason: null,
     closing: false,
+    previousChildExit: null,
   });
 }
 
