@@ -303,6 +303,7 @@ describe("collectPluginAppRegistrations", () => {
         title: "Notes editor",
         extensions: ["md", "mdx"],
         component: Component,
+        experimental_supportsProjectRoutedSource: true,
       });
       app.slots.messageDirective({
         id: "inline-vis",
@@ -378,6 +379,7 @@ describe("collectPluginAppRegistrations", () => {
         title: "Notes editor",
         extensions: ["md", "mdx"],
         component: Component,
+        experimental_supportsProjectRoutedSource: true,
       },
     ]);
     expect(registrations.messageDirectives).toEqual([

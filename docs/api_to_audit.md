@@ -679,7 +679,10 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
 6. Decide whether Git snapshots or deleted working-tree files merit separate
    target variants; do not weaken live-file guarantees to accommodate them.
 7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
-   required `hostId` field without breaking older opener implementations.
+   required `hostId` field without breaking older opener implementations. It
+   cannot be sent unconditionally: openers that re-validate the source with a
+   strict schema reject the unknown key, so it is now gated on
+   `PluginFileOpenerRegistration.experimental_supportsProjectRoutedSource`.
 
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
@@ -1656,6 +1659,29 @@ files, thread-storage files, and project files that use the primary host.
 4. Confirm omission should continue to mean primary-host resolution and that
    this remains compatible with persisted opener tabs created before the field
    existed.
+
+## `PluginFileOpenerRegistration.experimental_supportsProjectRoutedSource` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Declares that a file opener accepts a workspace source with
+no `environmentId`, routed by `projectId` plus
+`PluginFileOpenerSource.experimental_hostId` — the draft-thread composer of a
+project whose environment is not running. BB opens those files in its own
+preview for every opener that leaves the flag unset, so an opener published
+before project routing existed is never handed a source shape its RPC contract
+rejects and never has to resolve a project it cannot route.
+
+**Audit before stabilizing.**
+
+1. Decide whether opener capabilities should keep growing as one boolean per
+   routing shape or become a single declared source-kind list before a second
+   flag is needed.
+2. Confirm silently falling back to BB's preview is the right outcome for an
+   explicit "Open with" pick, rather than an explanatory disabled menu entry.
+3. Confirm the flag stays a build-time property of the registration: it is
+   read on every open, so making it a function would run plugin code inside
+   tab creation.
+4. Decide whether a stable `hostId` field should subsume this flag by making
+   project routing part of the required source contract for all openers.
 
 ## `experimental_SourceCode` / `experimental_Diff` (`@get-bb/plugin-sdk/app`)
 

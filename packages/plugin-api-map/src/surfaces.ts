@@ -195,6 +195,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Declare the file extensions it handles, for example `.csv` or `.excalidraw`",
           "Render its own viewer or editor whenever a file of that type is opened in bb",
           "Receive the file's path, then read it however the plugin already reads files",
+          "Declare that it can also open a project's files while no environment is running, or let bb use its own preview there",
         ],
         apiSymbols: ["PluginFileOpenerRegistration"],
         firstParty: ["Docs"],

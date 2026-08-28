@@ -166,11 +166,25 @@ export function createFileOpenerTabForRequest({
   });
   if (owner === null) return null;
   const file = fileForOwnerRequest(owner);
-  const routedFile: PluginFileOpenerFile =
+  const resolved = resolveFileOpenerReplacement({
+    registrations: fileOpeners,
+    preference,
+    path: file.path,
+    ...(viewer !== undefined ? { override: viewer } : {}),
+  });
+  if (resolved.kind !== "plugin") return null;
+  const isProjectRouted =
     file.source.kind === "workspace" &&
     file.source.environmentId === null &&
-    file.source.projectId !== null &&
-    projectHostId
+    file.source.projectId !== null;
+  if (
+    isProjectRouted &&
+    resolved.registration.experimental_supportsProjectRoutedSource !== true
+  ) {
+    return null;
+  }
+  const routedFile: PluginFileOpenerFile =
+    isProjectRouted && projectHostId
       ? {
           ...file,
           source: {
@@ -179,15 +193,7 @@ export function createFileOpenerTabForRequest({
           },
         }
       : file;
-  const resolved = resolveFileOpenerReplacement({
-    registrations: fileOpeners,
-    preference,
-    path: routedFile.path,
-    ...(viewer !== undefined ? { override: viewer } : {}),
-  });
-  return resolved.kind === "plugin"
-    ? buildFileOpenerPanelTab(resolved.registration, routedFile, owner)
-    : null;
+  return buildFileOpenerPanelTab(resolved.registration, routedFile, owner);
 }
 
 function ownerRequestForOpenRequest({

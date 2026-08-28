@@ -224,6 +224,12 @@ target? })`. Inside the fixed-tab component,
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
 projectId, experimental_hostId? }` (nullable fields). The optional host ID
   selects a project-backed workspace host and persists in opener-tab parameters.
+  A source with no `environmentId` and a `projectId` (the draft-thread composer
+  of a project whose environment is not running) reaches your component only
+  when the registration sets `experimental_supportsProjectRoutedSource: true`;
+  otherwise BB opens the file in its own preview, so an opener that cannot
+  route a project — or whose RPC contract rejects the extra
+  `experimental_hostId` key — is never handed one.
   The `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).
   `Original` is BB's preview bound to this file; render it to

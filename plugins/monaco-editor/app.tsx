@@ -468,6 +468,7 @@ export default definePluginApp((app) => {
     title: "File Editor",
     extensions: CLAIMED_EXTENSIONS,
     component: MonacoFileOpener,
+    experimental_supportsProjectRoutedSource: true,
   });
 
   for (const command of EDITOR_COMMANDS) {

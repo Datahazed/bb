@@ -125,5 +125,6 @@ export default definePluginApp((app) => {
     title: "PDF viewer",
     extensions: ["pdf"],
     component: PdfFileOpener,
+    experimental_supportsProjectRoutedSource: true,
   });
 });

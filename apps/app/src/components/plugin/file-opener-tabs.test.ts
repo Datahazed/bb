@@ -18,6 +18,21 @@ const MARKDOWN_OPENER = {
   title: "Docs editor",
 } satisfies PluginFileOpenerSlot;
 
+const PROJECT_ROUTED_OPENER = {
+  ...MARKDOWN_OPENER,
+  experimental_supportsProjectRoutedSource: true,
+} satisfies PluginFileOpenerSlot;
+
+const PROJECT_WORKSPACE_REQUEST: OpenSecondaryPanelTabRequest = {
+  kind: "workspace-file-preview",
+  tab: {
+    lineRange: null,
+    path: "docs/readme.md",
+    source: { kind: "working-tree" },
+    statusLabel: null,
+  },
+};
+
 const REQUESTS: readonly {
   label: string;
   request: OpenSecondaryPanelTabRequest;
@@ -97,19 +112,11 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
 
   it("preserves the selected host for a project-backed opener", () => {
     const tab = createFileOpenerTabForRequest({
-      fileOpeners: [MARKDOWN_OPENER],
+      fileOpeners: [PROJECT_ROUTED_OPENER],
       preference: {},
       projectHostId: "host_remote",
       projectId: "proj_1",
-      request: {
-        kind: "workspace-file-preview",
-        tab: {
-          lineRange: null,
-          path: "docs/readme.md",
-          source: { kind: "working-tree" },
-          statusLabel: null,
-        },
-      },
+      request: PROJECT_WORKSPACE_REQUEST,
       resolvedEnvironmentId: null,
       threadId: null,
     });
@@ -121,6 +128,67 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
       experimental_hostId: "host_remote",
     });
     expect(() => threadTabsSchema.parse([tab])).not.toThrow();
+  });
+
+  it("falls back to BB's preview when an opener does not accept project-routed sources", () => {
+    expect(
+      createFileOpenerTabForRequest({
+        fileOpeners: [MARKDOWN_OPENER],
+        preference: {},
+        projectHostId: "host_remote",
+        projectId: "proj_1",
+        request: PROJECT_WORKSPACE_REQUEST,
+        resolvedEnvironmentId: null,
+        threadId: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("falls back for an unsupporting opener even without an explicit host", () => {
+    expect(
+      createFileOpenerTabForRequest({
+        fileOpeners: [MARKDOWN_OPENER],
+        preference: {},
+        projectId: "proj_1",
+        request: PROJECT_WORKSPACE_REQUEST,
+        resolvedEnvironmentId: null,
+        threadId: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps an explicit Open with pick on BB's preview when the opener cannot route it", () => {
+    expect(
+      createFileOpenerTabForRequest({
+        fileOpeners: [MARKDOWN_OPENER],
+        preference: {},
+        projectHostId: "host_remote",
+        projectId: "proj_1",
+        request: PROJECT_WORKSPACE_REQUEST,
+        resolvedEnvironmentId: null,
+        threadId: null,
+        viewer: { openerId: "markdown", pluginId: "docs" },
+      }),
+    ).toBeNull();
+  });
+
+  it("still opens an environment-backed file in an opener without the capability", () => {
+    const tab = createFileOpenerTabForRequest({
+      fileOpeners: [MARKDOWN_OPENER],
+      preference: {},
+      projectHostId: "host_remote",
+      projectId: "proj_1",
+      request: PROJECT_WORKSPACE_REQUEST,
+      resolvedEnvironmentId: "env_docs",
+      threadId: "thr_docs",
+    });
+
+    const params = parseFileOpenerParams(tab?.paramsJson ?? null);
+    expect(params?.source).toMatchObject({
+      environmentId: "env_docs",
+      kind: "workspace",
+    });
+    expect(params?.source.experimental_hostId).toBeUndefined();
   });
 });
 

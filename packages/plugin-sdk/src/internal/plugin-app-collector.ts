@@ -429,11 +429,27 @@ export function collectPluginAppRegistrations(
           }
           return extension;
         });
+        const supportsProjectRoutedSource =
+          registration.experimental_supportsProjectRoutedSource;
+        if (
+          supportsProjectRoutedSource !== undefined &&
+          typeof supportsProjectRoutedSource !== "boolean"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_supportsProjectRoutedSource" must be a boolean when set`,
+          );
+        }
         collected.fileOpeners.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           extensions,
           component: requireComponent(kind, registration.component),
+          ...(supportsProjectRoutedSource !== undefined
+            ? {
+                experimental_supportsProjectRoutedSource:
+                  supportsProjectRoutedSource,
+              }
+            : {}),
         });
       },
       experimental_sourceCodeRenderer(registration) {

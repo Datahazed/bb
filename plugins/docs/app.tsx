@@ -2199,6 +2199,7 @@ export default definePluginApp((app) => {
     title: "Markdown",
     extensions: ["md", "mdx", "markdown"],
     component: DocsFileOpener,
+    experimental_supportsProjectRoutedSource: true,
   });
   app.slots.messageDirective({ id: "docs", component: DocsDirectiveCard });
 });

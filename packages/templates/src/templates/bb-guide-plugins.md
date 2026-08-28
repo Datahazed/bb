@@ -544,7 +544,10 @@ experimental_newThreadPanelAction (the root New thread counterpart, with
 `projectId: string | null` instead of `threadId`), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
-file link for a one-off choice), and messageDirective (replace a leaf
+file link for a one-off choice; set
+`experimental_supportsProjectRoutedSource: true` to also receive
+environment-less project sources, which carry `projectId` plus
+`experimental_hostId` and otherwise fall back to bb's own preview), and messageDirective (replace a leaf
 `::name{k="v"}` block inside assistant / nested-agent Markdown with a plugin
 component; unknown, disabled, incomplete, code-fenced, or crashing
 directives fall back to the original source; components receive a nullable

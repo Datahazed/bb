@@ -173,6 +173,9 @@ export interface PluginFileOpenerSource {
   /**
    * Explicit host selected for a project-backed workspace file. Omitted when
    * the source is resolved by its environment/thread or the primary host.
+   * Only openers that set
+   * {@link PluginFileOpenerRegistration.experimental_supportsProjectRoutedSource}
+   * are given a project-routed source at all.
    *
    * @experimental Audit before relying on this as a stable contract.
    */
@@ -983,6 +986,18 @@ export interface PluginFileOpenerRegistration {
   /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
   extensions: readonly string[];
   component: ComponentType<PluginFileOpenerProps>;
+  /**
+   * Set this when the opener can serve a workspace file that has no
+   * environment and is routed by `projectId` plus
+   * {@link PluginFileOpenerSource.experimental_hostId} — the draft-thread
+   * composer of a project whose environment is not running. BB opens those
+   * files in its own preview for every opener that leaves this unset, so an
+   * opener published before project routing existed never receives a source
+   * its contract rejects.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_supportsProjectRoutedSource?: boolean;
 }
 
 /**
