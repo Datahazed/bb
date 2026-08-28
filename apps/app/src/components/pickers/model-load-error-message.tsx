@@ -6,16 +6,19 @@ interface ModelLoadErrorMessageProps {
   error: SystemExecutionOptionsModelLoadError;
   providerLabel: string;
   installUrl?: string;
+  loginCommand?: string;
 }
 
 interface FormatModelLoadErrorTextArgs {
   error: SystemExecutionOptionsModelLoadError;
   providerLabel: string;
+  loginCommand?: string;
 }
 
 export function formatModelLoadErrorText({
   error,
   providerLabel,
+  loginCommand,
 }: FormatModelLoadErrorTextArgs): string {
   if (error.code === "provider_unavailable") {
     return `${providerLabel} is unavailable because its provider plugin failed to load.`;
@@ -30,7 +33,11 @@ export function formatModelLoadErrorText({
   }
 
   if (error.code === "auth_required") {
-    return `Could not load models for ${providerLabel}. Authentication is required.`;
+    const guidance =
+      loginCommand === undefined
+        ? ""
+        : ` Run ${loginCommand} on this host. Then try again.`;
+    return `Could not load models for ${providerLabel}. Authentication is required.${guidance}`;
   }
 
   return `Could not load models for ${providerLabel}.`;
@@ -40,6 +47,7 @@ export function ModelLoadErrorMessage({
   error,
   providerLabel,
   installUrl,
+  loginCommand,
 }: ModelLoadErrorMessageProps): ReactNode {
   const helpUrl = error.code === "missing_executable" ? installUrl : undefined;
   const handleHelpLinkClick = useUrlAnchorClickHandler(helpUrl);
@@ -69,6 +77,12 @@ export function ModelLoadErrorMessage({
     return (
       <>
         Could not load models for {providerLabel}. Authentication is required.
+        {loginCommand === undefined ? null : (
+          <>
+            {" "}Run <code className="font-mono">{loginCommand}</code> on this
+            host. Then try again.
+          </>
+        )}
       </>
     );
   }

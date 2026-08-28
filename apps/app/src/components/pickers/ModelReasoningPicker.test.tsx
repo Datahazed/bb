@@ -16,6 +16,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { sdk } from "@/lib/sdk";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   PaneContext,
@@ -39,7 +40,7 @@ const commandHandlers = vi.hoisted(
 );
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { executionOptions: vi.fn() } },
+  sdk: { system: { executionOptions: vi.fn(), providerStates: vi.fn() } },
 }));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
@@ -282,6 +283,41 @@ describe("ModelReasoningPicker", () => {
         "Codex is unavailable because its provider plugin failed to load.",
       ),
     ).not.toBeNull();
+  });
+
+  it("shows the provider login command when model discovery needs authentication", async () => {
+    vi.mocked(sdk.system.providerStates).mockResolvedValue({
+      providers: [
+        {
+          providerId: "codex",
+          displayName: "Codex",
+          status: "unauthenticated",
+          statusMessage: null,
+          accountEmail: null,
+          planLabel: null,
+          installedVersion: "0.150.1",
+          minimumSupportedVersion: "0.1.0",
+          canInstall: true,
+          canUpdate: true,
+          loginCommand: "codex login",
+        },
+      ],
+    });
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "auth_required",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(await screen.findByText("codex login")).not.toBeNull();
   });
 
   it("holds the trigger and model-list layout with skeletons while loading", () => {

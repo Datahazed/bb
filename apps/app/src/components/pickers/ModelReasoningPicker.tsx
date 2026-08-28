@@ -43,7 +43,10 @@ import {
   useMenuItemHover,
 } from "@bb/shared-ui/menu-item-hover";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
+import {
+  useSystemExecutionOptions,
+  useSystemProviderStates,
+} from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -440,11 +443,24 @@ export function ModelReasoningPicker({
   const activeProviderLabel = activeProvider?.label ?? activeProviderId;
   const activeModelLoadErrorMatches =
     activeModelLoadError?.providerId === activeProviderId;
+  const providerStatesQuery = useSystemProviderStates({
+    ...(providerRouting ?? {}),
+    enabled:
+      activeModelLoadErrorMatches &&
+      activeModelLoadError?.code === "auth_required",
+    poll: false,
+  });
+  const activeProviderLoginCommand = providerStatesQuery.data?.providers.find(
+    (provider) => provider.providerId === activeProviderId,
+  )?.loginCommand ?? undefined;
   const activeModelLoadErrorMessage =
     activeModelLoadErrorMatches && activeModelLoadError
       ? formatModelLoadErrorText({
           error: activeModelLoadError,
           providerLabel: activeProviderLabel,
+          ...(activeProviderLoginCommand === undefined
+            ? {}
+            : { loginCommand: activeProviderLoginCommand }),
         })
       : null;
   const activeModelLoadFailed = isPreviewing
@@ -1056,6 +1072,9 @@ export function ModelReasoningPicker({
                       {...(activeProvider?.installUrl === undefined
                         ? {}
                         : { installUrl: activeProvider.installUrl })}
+                      {...(activeProviderLoginCommand === undefined
+                        ? {}
+                        : { loginCommand: activeProviderLoginCommand })}
                     />
                   ) : activeModelLoadFailed ? (
                     activeModelFailureMessage
