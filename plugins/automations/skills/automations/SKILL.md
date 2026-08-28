@@ -83,6 +83,20 @@ bb automation runs <automationId> --project <id> [--limit <count>] [--output <ru
 bb automation delete <automationId> --project <id> --yes
 ```
 
+`list` and `show` are diagnostic reads: a damaged record remains visible as
+`Prompt required` or `Invalid data` instead of failing the whole read. A
+`Prompt required` record opens in the Automations panel's standard editor,
+where the user can add its prompt while reviewing the other settings. It can
+also be repaired directly:
+
+```bash
+bb automation update <automationId> --project <id> --prompt "<prompt>"
+```
+
+Writes remain strict. Run, pause, and resume reject damaged records; update
+succeeds only when the resulting complete record is canonical. Every successful
+create/update persists the canonical format.
+
 Choose one of two execution update forms:
 
 - A complete replacement uses `--prompt`, `--provider`, and `--model` together
@@ -110,4 +124,8 @@ bb automation update <automationId> --project <id> \
 exclusive. These flags apply only to agent automations; script automations have
 no execution environment.
 
-Every command supports `--json`.
+Every command supports `--json`. For `list` and `show`, the JSON result is a
+union discriminated by `problem`: canonical records omit it, while degraded
+records use `"missing-agent-prompt"` or `"invalid-stored-data"`. The
+missing-prompt variant retains the full readable automation; the invalid-data
+variant contains only `id`, `projectId`, `name`, and `problem`.
