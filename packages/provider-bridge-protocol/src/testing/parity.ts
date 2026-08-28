@@ -145,7 +145,12 @@ export const DEFAULT_REPLAY_PROFILE: ReplayProviderProfile = {
 };
 
 function isJsonObjectValue(value: JsonValue | undefined): value is JsonObject {
-  return value !== undefined && value !== null && !Array.isArray(value);
+  return (
+    value !== undefined &&
+    value !== null &&
+    Object(value) === value &&
+    !Array.isArray(value)
+  );
 }
 
 function jsonObjectValue(value: JsonValue | undefined): JsonObject | null {

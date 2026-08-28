@@ -31,7 +31,7 @@ const PLUGIN_ID = "echo-provider";
 const bridgeLaneEntrySchema = z.object({ line: z.string() });
 const bridgeToolCallMessageSchema = z
   .object({
-    id: z.string().optional(),
+    id: z.union([z.string(), z.number()]).optional(),
     method: z.string().optional(),
   })
   .passthrough();
