@@ -31,13 +31,13 @@ function testShellPath(): string {
   );
 }
 
-const gitScript = `#!/usr/bin/env node
+const gitScript = `#!${process.execPath}
 import { appendFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 appendFileSync(join(dirname(process.argv[1]), "git-log"), process.argv.slice(2).join("\\t") + "\\n");
 `;
 
-const ghScript = `#!/usr/bin/env node
+const ghScript = `#!${process.execPath}
 import { appendFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 const directory = dirname(process.argv[1]);
@@ -296,6 +296,7 @@ describe("runPullRequestActionForCurrentBranch", () => {
     await expect(
       runPullRequestActionForCurrentBranch({
         ...actionArgs,
+        shellPath: commandDir,
         action: { operation: "ready" },
       }),
     ).rejects.toMatchObject({
@@ -350,7 +351,12 @@ describe("getPullRequestForCurrentBranch", () => {
 
   it("returns unavailable when gh is not installed", async () => {
     rmSync(ghPath);
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
+    await expect(
+      getPullRequestForCurrentBranch({
+        ...lookupArgs,
+        shellPath: commandDir,
+      }),
+    ).resolves.toEqual({
       outcome: "unavailable",
       message: "GitHub CLI is not available",
     });

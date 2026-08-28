@@ -8,6 +8,7 @@ import {
   type TestAppHarness,
 } from "../../helpers/test-app.js";
 import { createMockHubSocket } from "../../helpers/mock-hub-socket.js";
+import { linkPluginFixtureDependency } from "../../helpers/plugin-fixture-dependencies.js";
 
 const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
@@ -131,6 +132,7 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
+      dependencies: { zod: "4.3.6" },
       bb: {
         name: "Wire fixture",
         description: "Plugin wire fixture.",
@@ -140,6 +142,7 @@ async function writePlugin(
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
+  await linkPluginFixtureDependency(rootDir, "zod");
   return rootDir;
 }
 

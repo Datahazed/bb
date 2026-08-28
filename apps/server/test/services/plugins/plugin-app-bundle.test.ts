@@ -13,6 +13,7 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { linkPluginFixtureDependency } from "../../helpers/plugin-fixture-dependencies.js";
 
 const BASE = "http://127.0.0.1:3334";
 
@@ -63,6 +64,7 @@ const COMPRESSIBLE_APP_SOURCE = `const payload = ${JSON.stringify(
 interface AppPluginFixtureManifest {
   name: string;
   version: string;
+  dependencies?: { zod: string };
   bb: {
     name: string;
     description: string;
@@ -92,6 +94,10 @@ async function writeAppPluginFixture(
       server: "./server.ts",
     },
   };
+  const usesZod = options.serverSource?.includes('from "zod"') === true;
+  if (usesZod) {
+    manifest.dependencies = { zod: "4.3.6" };
+  }
   if (options.app !== false) {
     manifest.bb.app = "./app.tsx";
   }
@@ -102,6 +108,9 @@ async function writeAppPluginFixture(
   );
   if (options.app !== false) {
     await writeFile(join(rootDir, "app.tsx"), options.appSource ?? APP_SOURCE);
+  }
+  if (usesZod) {
+    await linkPluginFixtureDependency(rootDir, "zod");
   }
 }
 

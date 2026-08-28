@@ -7,6 +7,7 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { linkPluginFixtureDependency } from "../../helpers/plugin-fixture-dependencies.js";
 
 const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
@@ -71,6 +72,7 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
       JSON.stringify({
         name: "bb-plugin-review-fixes",
         version: "0.1.0",
+        dependencies: { zod: "4.3.6" },
         bb: {
           name: "Review fixes fixture",
           description: "Plugin review regression fixture.",
@@ -80,6 +82,7 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
       }),
     );
     await writeFile(join(rootDir, "server.ts"), FIXTURE_SOURCE);
+    await linkPluginFixtureDependency(rootDir, "zod");
     await harness.pluginService.installPath(rootDir);
   });
 
