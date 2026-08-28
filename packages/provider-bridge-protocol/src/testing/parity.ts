@@ -145,7 +145,7 @@ export const DEFAULT_REPLAY_PROFILE: ReplayProviderProfile = {
 };
 
 function isJsonObjectValue(value: JsonValue | undefined): value is JsonObject {
-  return value !== undefined && jsonObjectSchema.safeParse(value).success;
+  return value !== undefined && value !== null && !Array.isArray(value);
 }
 
 function jsonObjectValue(value: JsonValue | undefined): JsonObject | null {
@@ -247,6 +247,7 @@ export interface ParityRun {
 
 interface ParsedWireMessage {
   id?: string | number;
+  jsonrpc?: string;
   method?: string;
   params?: JsonValue;
   result?: JsonValue;
@@ -270,8 +271,10 @@ function parseWire(line: string): ParsedWireMessage | null {
   }
   const message: ParsedWireMessage = {};
   const id = numberOrStringValue(parsed.id);
+  const jsonrpc = stringValue(parsed.jsonrpc);
   const method = stringValue(parsed.method);
   if (id !== null) message.id = id;
+  if (jsonrpc !== null) message.jsonrpc = jsonrpc;
   if (method !== null) message.method = method;
   if (parsed.params !== undefined) message.params = parsed.params;
   if (parsed.result !== undefined) message.result = parsed.result;

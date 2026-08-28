@@ -307,7 +307,12 @@ const deltaNotificationSchema = z.object({
 });
 const modelSummarySchema = z.object({
   id: z.string(),
-  supportedReasoningEfforts: z.array(z.object({ reasoningEffort: z.string() })),
+  supportedReasoningEfforts: z.array(
+    z.object({
+      reasoningEffort: z.string(),
+      description: z.string(),
+    }),
+  ),
   defaultReasoningEffort: z.string().optional(),
 });
 const modelListResultSchema = z.object({
