@@ -13,6 +13,11 @@ import {
   validatePromptAttachmentReferences,
 } from "./attachments.js";
 
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
@@ -246,35 +251,38 @@ describe("project attachments", () => {
     ).resolves.toMatchObject({ content: bytes, mimeType: "image/png" });
   });
 
-  it("keeps the host MIME type renderable for an extensionless image path", async () => {
-    const dataDir = await makeTempDir();
-    const bytes = Buffer.from("extensionless remote image bytes");
-    const absolutePath = "/remote/reference";
+  it.each(["/remote/reference", "/remote/backup.2024"])(
+    "makes PNG bytes from a non-image-looking host path renderable: %s",
+    async (absolutePath) => {
+      const dataDir = await makeTempDir();
 
-    const [prepared] = await preparePromptAttachmentInputGroups({
-      dataDir,
-      inputGroups: [[{ type: "localImage", path: absolutePath }]],
-      projectId: "proj_test",
-      readHostFile: async (path) => ({
-        path,
-        content: bytes.toString("base64"),
-        contentEncoding: "base64",
+      const [prepared] = await preparePromptAttachmentInputGroups({
+        dataDir,
+        inputGroups: [[{ type: "localImage", path: absolutePath }]],
+        projectId: "proj_test",
+        readHostFile: async (path) => ({
+          path,
+          content: ONE_PIXEL_PNG.toString("base64"),
+          contentEncoding: "base64",
+          sha256: createHash("sha256").update(ONE_PIXEL_PNG).digest("hex"),
+          sizeBytes: ONE_PIXEL_PNG.byteLength,
+        }),
+      });
+      const image = prepared?.[0];
+      expect(image?.type).toBe("localImage");
+      if (image?.type !== "localImage") {
+        throw new Error("Expected imported image input");
+      }
+
+      expect(image.path).toMatch(/^(reference|backup)-\d+-[a-z0-9]{6}\.png$/u);
+      await expect(
+        readAttachment(dataDir, "proj_test", image.path),
+      ).resolves.toMatchObject({
+        content: ONE_PIXEL_PNG,
         mimeType: "image/png",
-        sha256: createHash("sha256").update(bytes).digest("hex"),
-        sizeBytes: bytes.byteLength,
-      }),
-    });
-    const image = prepared?.[0];
-    expect(image?.type).toBe("localImage");
-    if (image?.type !== "localImage") {
-      throw new Error("Expected imported image input");
-    }
-
-    expect(image.path).toMatch(/^reference-\d+-[a-z0-9]{6}\.png$/u);
-    await expect(
-      readAttachment(dataDir, "proj_test", image.path),
-    ).resolves.toMatchObject({ content: bytes, mimeType: "image/png" });
-  });
+      });
+    },
+  );
 
   it("imports a file URL from the execution host", async () => {
     const dataDir = await makeTempDir();
@@ -398,6 +406,33 @@ describe("project attachments", () => {
             "File exceeds the host image transport limit",
           );
         },
+      }),
+    ).resolves.toEqual([input]);
+  });
+
+  it("preserves visibility when non-image-looking host metadata exceeds the image limit", async () => {
+    const dataDir = await makeTempDir();
+    const bytes = Buffer.alloc(10 * 1024 * 1024 + 1);
+    const input = [
+      {
+        type: "localImage" as const,
+        path: "/remote/reference-large",
+        visibility: "agent-only" as const,
+      },
+    ];
+
+    await expect(
+      preparePromptAttachmentInputGroups({
+        dataDir,
+        inputGroups: [input],
+        projectId: "proj_test",
+        readHostFile: async (path) => ({
+          path,
+          content: bytes.toString("base64"),
+          contentEncoding: "base64",
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          sizeBytes: bytes.byteLength,
+        }),
       }),
     ).resolves.toEqual([input]);
   });

@@ -30,11 +30,13 @@ function registerRemoteImageResponder(
   harness: TestAppHarness,
   args: {
     hostId: string;
+    mimeType?: string | null;
     paths: readonly string[];
     restoreCommandCaptureAfterResponse?: boolean;
     sessionId: string;
   },
 ): void {
+  const mimeType = args.mimeType === undefined ? "image/png" : args.mimeType;
   registerHostRpcResponder(harness, {
     hostId: args.hostId,
     sessionId: args.sessionId,
@@ -52,7 +54,7 @@ function registerRemoteImageResponder(
           path: command.path,
           content: ONE_PIXEL_PNG.toString("base64"),
           contentEncoding: "base64",
-          mimeType: "image/png",
+          ...(mimeType ? { mimeType } : {}),
           sha256: createHash("sha256").update(ONE_PIXEL_PNG).digest("hex"),
           sizeBytes: ONE_PIXEL_PNG.byteLength,
         },
@@ -123,6 +125,61 @@ describe("public thread prompt attachments", () => {
       await expect(
         readAttachment(harness.config.dataDir, project.id, storedImage.path),
       ).resolves.toMatchObject({ content: ONE_PIXEL_PNG });
+    });
+  });
+
+  it("serves sniffed PNG bytes from a dotted non-image host path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-cli-dotted-png",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/remote/project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/remote/project",
+      });
+      const absoluteImagePath = "/remote/references/backup.2024";
+      registerRemoteImageResponder(harness, {
+        hostId: host.id,
+        mimeType: null,
+        sessionId: session.id,
+        paths: [absoluteImagePath],
+        restoreCommandCaptureAfterResponse: true,
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          input: [{ type: "localImage", path: absoluteImagePath }],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const thread = threadSchema.parse(await readJson(response));
+      const storedImage = persistedImages(harness, thread.id)[0];
+      expect(storedImage?.path).toMatch(/^backup-\d+-[a-z0-9]{6}\.png$/u);
+
+      const contentResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/attachments/content?path=${encodeURIComponent(storedImage?.path ?? "missing")}`,
+      );
+      expect(contentResponse.status).toBe(200);
+      expect(contentResponse.headers.get("content-type")).toBe("image/png");
+      expect(Buffer.from(await contentResponse.arrayBuffer())).toEqual(
+        ONE_PIXEL_PNG,
+      );
     });
   });
 

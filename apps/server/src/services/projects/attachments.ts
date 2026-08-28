@@ -72,14 +72,25 @@ function sanitizeFilename(name: string): string {
 function buildStoredFilename(
   originalName: string,
   mimeType: string | undefined,
+  type: StoredPromptAttachmentType,
 ): string {
   const sanitized = sanitizeFilename(originalName);
   const originalExtension = extname(sanitized);
-  const inferredExtension = mimeType
-    ? mimeTypes.extension(mimeType.split(";")[0]?.trim() ?? "")
+  const normalizedMimeType = mimeType?.split(";")[0]?.trim().toLowerCase();
+  const originalExtensionMimeType = mimeTypes.lookup(sanitized);
+  const inferredExtension = normalizedMimeType
+    ? mimeTypes.extension(normalizedMimeType)
     : false;
+  const useInferredImageExtension =
+    type === "localImage" &&
+    inferredExtension !== false &&
+    originalExtensionMimeType !== normalizedMimeType;
   const extension =
-    originalExtension || (inferredExtension ? `.${inferredExtension}` : "");
+    useInferredImageExtension || originalExtension.length === 0
+      ? inferredExtension
+        ? `.${inferredExtension}`
+        : originalExtension
+      : originalExtension;
   const stem =
     originalExtension.length > 0
       ? sanitized.slice(0, -originalExtension.length)
@@ -222,7 +233,11 @@ async function storeAttachmentBytes(
   const dir = projectAttachmentDir(args.dataDir, args.projectId);
   await mkdir(dir, { recursive: true });
 
-  const storedName = buildStoredFilename(args.originalName, args.mimeType);
+  const storedName = buildStoredFilename(
+    args.originalName,
+    args.mimeType,
+    args.type,
+  );
   await writeFile(join(dir, storedName), args.bytes);
 
   return {
@@ -306,6 +321,20 @@ function decodeHostFileBytes(
   return bytes;
 }
 
+function inferPngMimeType(bytes: Uint8Array): "image/png" | undefined {
+  return bytes.byteLength >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+    ? "image/png"
+    : undefined;
+}
+
 export async function preparePromptAttachmentInputGroups(
   args: PreparePromptAttachmentInputGroupsArgs,
 ): Promise<PromptInput[][]> {
@@ -341,18 +370,16 @@ export async function preparePromptAttachmentInputGroups(
           }
           throw error;
         }
-        const mimeType =
+        const declaredMimeType =
           hostFile.mimeType || mimeTypes.lookup(hostPath) || undefined;
         if (
-          isHeifImageMimeType(mimeType) ||
+          isHeifImageMimeType(declaredMimeType) ||
           hostFile.sizeBytes > IMAGE_LIMIT_BYTES
         ) {
           return null;
         }
         const bytes = decodeHostFileBytes(hostFile);
-        if (bytes.byteLength > IMAGE_LIMIT_BYTES) {
-          return null;
-        }
+        const mimeType = declaredMimeType ?? inferPngMimeType(bytes);
         const attachment = await storeAttachmentBytes({
           bytes,
           dataDir: args.dataDir,
