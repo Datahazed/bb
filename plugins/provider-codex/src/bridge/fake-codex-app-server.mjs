@@ -237,6 +237,7 @@ function exitCleanly() {
 
 process.on("exit", releaseWriterLock);
 process.on("SIGTERM", () => {
+  logProcessStep("sigterm");
   if (sigtermDelayMs > 0) {
     setTimeout(exitCleanly, sigtermDelayMs);
     return;
@@ -416,6 +417,7 @@ async function handleRequest(message) {
     }
     case "thread/resume": {
       if (!acquireWriterLock()) {
+        logProcessStep("writer-conflict");
         respondError(
           id,
           -32603,

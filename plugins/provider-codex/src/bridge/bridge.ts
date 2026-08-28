@@ -323,7 +323,7 @@ function archivedSessionHint(message: string): ProviderRecoveryHint | null {
 
 function withActiveWriterGuidance(message: string): string {
   return CODEX_ACTIVE_WRITER_ERROR_PATTERN.test(message)
-    ? `${message}. Close the other Codex session and retry.`
+    ? `${message}. Another Codex process still owns this thread. Close any other Codex session using it; if none is open, wait for a previous Codex process to finish shutting down or stop the leftover codex app-server process, then retry.`
     : message;
 }
 
@@ -840,7 +840,10 @@ async function requestThreadConstructionWithWriterRetry(
       resultSchema: codexThreadIdentityResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
-  for (const retryDelayMs of CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS) {
+  for (const [
+    retryIndex,
+    retryDelayMs,
+  ] of CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS.entries()) {
     try {
       return await sendOnce();
     } catch (error) {
@@ -848,6 +851,9 @@ async function requestThreadConstructionWithWriterRetry(
       if (!CODEX_ACTIVE_WRITER_ERROR_PATTERN.test(message)) {
         throw error;
       }
+      process.stderr.write(
+        `codex ${method} found an active rollout writer; retrying in ${retryDelayMs}ms (${retryIndex + 1}/${CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS.length}).\n`,
+      );
       await delay(retryDelayMs);
     }
   }
@@ -881,13 +887,6 @@ async function constructThreadSession(
   args: ConstructThreadSessionArgs,
 ): Promise<ConstructedCodexSession> {
   const existing = sessionsByBbThreadId.get(args.threadId);
-  if (existing) {
-    // Codex holds a rollout's writer lock for the app-server process lifetime.
-    // Do not let the replacement resume that rollout until the old child has
-    // fully exited and released its ownership.
-    await releaseSession(existing);
-  }
-
   const decoded = decodeCodexOptions(args.options);
   sessionSerialCounter += 1;
   const serial = sessionSerialCounter;
@@ -927,6 +926,16 @@ async function constructThreadSession(
     closing: false,
   };
   sessionsByBbThreadId.set(args.threadId, session);
+  if (existing) {
+    await releaseSession(existing);
+    if (session.closing) {
+      throw new CodexSessionReleasedError(
+        new Error(
+          "codex session was released while waiting for the previous app-server to exit",
+        ),
+      );
+    }
+  }
   if (args.request.kind === "resume") {
     announceSessionIdentity(session, args.request.providerThreadId);
   }

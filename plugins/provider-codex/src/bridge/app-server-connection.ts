@@ -44,7 +44,6 @@ interface CodexAppServerRequestArgs<TResult> {
 export interface CodexAppServerConnection {
   request<TResult>(args: CodexAppServerRequestArgs<TResult>): Promise<TResult>;
   notify(method: string, params?: unknown): void;
-  /** Signal the child and resolve once its exit has been finalized. */
   kill(): Promise<void>;
   readonly exited: boolean;
 }
