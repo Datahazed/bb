@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import clsx from "clsx";
@@ -174,6 +174,10 @@ describe("installPluginRuntime", () => {
   function runtimeHost(): RuntimeHost {
     return /* SAFETY: The runtime installer owns this global property and writes the declared runtime contract. */ globalThis as RuntimeHost;
   }
+
+  beforeEach(() => {
+    delete runtimeHost().__bbPluginRuntime;
+  });
 
   afterEach(() => {
     delete runtimeHost().__bbPluginRuntime;

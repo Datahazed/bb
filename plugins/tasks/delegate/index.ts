@@ -1,6 +1,6 @@
 import type {
   BbPluginApi,
-  JsonObject,
+  JsonValue,
   PluginRpcHandlers,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -20,6 +20,8 @@ import {
 } from "../api";
 import { presetPermissionModeSchema } from "../shared/contract";
 import { delegationRpcContract } from "./contract";
+
+type JsonObject = { [key: string]: JsonValue };
 
 const MAX_DELEGATED_THREAD_TITLE_LENGTH = 120;
 const SYSTEM_AUTHOR_NAME = "Tasks";
@@ -44,15 +46,20 @@ const presetExecutionSchema = z
   })
   .strict();
 
-const bbHttpErrorSchema = z.instanceof(Error).and(
-  z
-    .object({
-      code: z.string().nullable(),
-      status: z.number(),
-    })
-    .passthrough(),
-);
+const bbHttpErrorSchema = z
+  .object({
+    code: z.string().nullable(),
+    message: z.string(),
+    status: z.number(),
+  })
+  .passthrough();
 type BbHttpError = z.infer<typeof bbHttpErrorSchema>;
+
+function parseBbHttpError(cause: unknown): BbHttpError | null {
+  if (!(cause instanceof Error)) return null;
+  const parsed = bbHttpErrorSchema.safeParse(cause);
+  return parsed.success ? parsed.data : null;
+}
 
 type DelegationErrorCode = "project_not_linked" | "spawn_target_invalid";
 
@@ -343,9 +350,9 @@ export function handlers(
         spawnInput.serviceTier = execution.serviceTier;
       }
       const thread = await bb.sdk.threads.spawn(spawnInput).catch((error) => {
-        const parsedError = bbHttpErrorSchema.safeParse(error);
-        if (parsedError.success) {
-          mapSpawnTargetError(parsedError.data, preset);
+        const parsedError = parseBbHttpError(error);
+        if (parsedError !== null) {
+          mapSpawnTargetError(parsedError, preset);
         }
         throw error;
       });

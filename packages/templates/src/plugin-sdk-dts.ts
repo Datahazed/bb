@@ -9,7 +9,9 @@ interface PluginSdkDeclarations {
   app: string;
 }
 
-declare const __BB_PLUGIN_SDK_DTS_JSON__: string | undefined;
+declare global {
+  var __BB_PLUGIN_SDK_DTS_JSON__: string | undefined;
+}
 
 const ROOT_FILE = "bb-plugin-sdk.d.ts";
 const APP_FILE = "bb-plugin-sdk-app.d.ts";
@@ -23,8 +25,9 @@ export function loadPluginSdkDeclarations(): Promise<PluginSdkDeclarations> {
 }
 
 async function loadUncached(): Promise<PluginSdkDeclarations> {
-  if (__BB_PLUGIN_SDK_DTS_JSON__ !== undefined) {
-    return parseDeclarations(__BB_PLUGIN_SDK_DTS_JSON__);
+  const inlinedDeclarations = globalThis.__BB_PLUGIN_SDK_DTS_JSON__;
+  if (inlinedDeclarations !== undefined) {
+    return parseDeclarations(inlinedDeclarations);
   }
   const typesDir = findWorkspaceBundledTypesDir();
   if (typesDir === null) {

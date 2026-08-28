@@ -7,7 +7,6 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Provider, createStore } from "jotai";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import * as browserViewBoundsSyncModule from "@/lib/browser-view-bounds-sync";
 import * as responsiveOverlayModule from "@bb/shared-ui/responsive-overlay";
 import * as resizablePanelsModule from "react-resizable-panels";
@@ -35,7 +34,10 @@ const drawerShellState = vi.hoisted(() => ({
       | undefined,
 }));
 
-vi.spyOn(browserViewBoundsSyncModule, "dispatchBrowserViewBoundsSync");
+const dispatchBrowserViewBoundsSyncSpy = vi.spyOn(
+  browserViewBoundsSyncModule,
+  "dispatchBrowserViewBoundsSync",
+);
 
 const PanelGroup = React.forwardRef<
   {
@@ -47,6 +49,7 @@ const PanelGroup = React.forwardRef<
   React.useImperativeHandle(
     ref,
     () => ({
+      getId: () => "test-panel-group",
       getLayout: panelGroupState.getLayout,
       setLayout: panelGroupState.setLayout,
     }),
@@ -63,32 +66,37 @@ PanelGroup.displayName = "TestPanelGroup";
 const Panel = ({ children }: { children?: ReactNode }) =>
   React.createElement("div", { "data-testid": "main-panel" }, children);
 
-vi.spyOn(resizablePanelsModule, "PanelGroup").mockImplementation(PanelGroup);
-vi.spyOn(resizablePanelsModule, "Panel").mockImplementation(Panel);
-
 type DrawerShellProps = Parameters<
   typeof responsiveOverlayModule.PersistentResponsiveDrawerShell
 >[0];
 
-vi.spyOn(
-  responsiveOverlayModule,
-  "PersistentResponsiveDrawerShell",
-).mockImplementation(
-  ({ children, onContentAnimationEnd, open }: DrawerShellProps) => {
-    drawerShellState.onContentAnimationEnd = onContentAnimationEnd;
-    return createPortal(
-      React.createElement(
-        "div",
-        {
-          "data-open": String(open),
-          "data-testid": "responsive-drawer-shell",
-        },
-        children,
-      ),
-      document.body,
-    );
-  },
-);
+const PersistentResponsiveDrawerShell = ({
+  children,
+  onContentAnimationEnd,
+  open,
+}: DrawerShellProps) => {
+  drawerShellState.onContentAnimationEnd = onContentAnimationEnd;
+  return createPortal(
+    React.createElement(
+      "div",
+      {
+        "data-open": String(open),
+        "data-testid": "responsive-drawer-shell",
+      },
+      children,
+    ),
+    document.body,
+  );
+};
+
+const layoutDependencies = {
+  Panel:
+    /* SAFETY: The test panel implements the component contract used by SecondaryPanelLayout. */ Panel as typeof resizablePanelsModule.Panel,
+  PanelGroup:
+    /* SAFETY: The test panel group implements the ref and child contract used by SecondaryPanelLayout. */ PanelGroup as typeof resizablePanelsModule.PanelGroup,
+  ResponsiveDrawerShell: PersistentResponsiveDrawerShell,
+  dispatchBrowserViewBoundsSync: dispatchBrowserViewBoundsSyncSpy,
+};
 
 interface QueuedAnimationFrames {
   cancelAnimationFrame: ReturnType<typeof vi.spyOn>;
@@ -170,6 +178,7 @@ function renderLayout(args: RenderLayoutArgs) {
             }
             renderPanel={renderArgs.renderPanel}
             composerHost={null}
+            dependencies={layoutDependencies}
           />
         </CompactViewportOverrideProvider>
       </Provider>,
@@ -295,7 +304,7 @@ beforeEach(() => {
   publishedHostedPanel = null;
   panelGroupState.getLayout.mockReset().mockReturnValue([60, 40]);
   panelGroupState.setLayout.mockReset();
-  vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
+  dispatchBrowserViewBoundsSyncSpy.mockReset();
 });
 
 describe("SecondaryPanelLayout", () => {
@@ -482,7 +491,7 @@ describe("SecondaryPanelLayout", () => {
   it("realizes compact content before enabling the native browser view", () => {
     const order: string[] = [];
     const frames = installAnimationFrameQueue(order);
-    vi.mocked(dispatchBrowserViewBoundsSync).mockImplementation(() => {
+    dispatchBrowserViewBoundsSyncSpy.mockImplementation(() => {
       order.push("dispatchBrowserViewBoundsSync");
     });
     const renderPanel = createPanelRenderer(order);
@@ -502,7 +511,7 @@ describe("SecondaryPanelLayout", () => {
 
     order.push("animationEnd:true");
     scheduleCompactDrawerSettleFrame();
-    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSyncSpy).not.toHaveBeenCalled();
 
     act(() => {
       frames.flushAll();
@@ -582,7 +591,7 @@ describe("SecondaryPanelLayout", () => {
     view.rerenderWith({ open: false });
     scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(0);
-    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSyncSpy).not.toHaveBeenCalled();
   });
 
   it("cancels a pending settle frame when the content identity changes", () => {
@@ -600,7 +609,7 @@ describe("SecondaryPanelLayout", () => {
 
     expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
     expect(frames.size()).toBe(0);
-    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSyncSpy).not.toHaveBeenCalled();
   });
 
   it("revokes native readiness when the drawer content identity changes", () => {
@@ -637,7 +646,7 @@ describe("SecondaryPanelLayout", () => {
 
     expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
     expect(frames.size()).toBe(0);
-    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSyncSpy).not.toHaveBeenCalled();
   });
 
   it("cancels compact settling when switching wide or unmounting", () => {
@@ -655,7 +664,7 @@ describe("SecondaryPanelLayout", () => {
     view.rerenderWith({ isCompactViewport: false });
 
     expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
-    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSyncSpy).not.toHaveBeenCalled();
     expect(renderPanel).toHaveBeenLastCalledWith(
       expect.objectContaining({ canShowNativeBrowserView: true }),
     );
@@ -674,6 +683,6 @@ describe("SecondaryPanelLayout", () => {
     mounted.unmount();
 
     expect(unmountFrames.cancelAnimationFrame).toHaveBeenCalledWith(3);
-    expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+    expect(dispatchBrowserViewBoundsSyncSpy).not.toHaveBeenCalled();
   });
 });

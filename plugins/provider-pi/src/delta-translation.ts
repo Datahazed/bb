@@ -175,6 +175,7 @@ type PiInputValue =
   | number
   | boolean
   | null
+  | undefined
   | PiInputValue[]
   | PiInputObject;
 
@@ -196,6 +197,7 @@ const piInputValueSchema: z.ZodType<PiInputValue> = z.lazy(() =>
     z.number(),
     z.boolean(),
     z.null(),
+    z.undefined(),
     z.array(piInputValueSchema),
     z.record(z.string(), piInputValueSchema),
   ]),
@@ -211,6 +213,19 @@ const piJsonValueSchema: z.ZodType<PiJsonValue> = z.lazy(() =>
     z.record(z.string(), piJsonValueSchema),
   ]),
 );
+
+function toPiJsonValue(value: PiInputValue): PiJsonValue {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) return value.map(toPiJsonValue);
+  if (value instanceof Object) {
+    const object: PiJsonObject = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (child !== undefined) object[key] = toPiJsonValue(child);
+    }
+    return object;
+  }
+  return value;
+}
 
 const piToolExecutionStartEventSchema = z
   .object({
@@ -485,7 +500,7 @@ export function createPiDeltaTranslator(
     rawMessage: PiInputValue,
     context: PiDeltaTranslationContext | undefined,
   ): DeltaNoTurnFallback {
-    const params: PiJsonObject = { message: rawMessage };
+    const params: PiJsonObject = { message: toPiJsonValue(rawMessage) };
     if (context?.threadId) {
       params.threadId = context.threadId;
     }

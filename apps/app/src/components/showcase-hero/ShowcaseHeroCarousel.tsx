@@ -54,6 +54,10 @@ export interface ShowcaseHeroComposerConfig {
   draftKey: string;
 }
 
+export interface ShowcaseHeroCarouselDependencies {
+  PluginNewThreadComposer: typeof PluginNewThreadComposer;
+}
+
 interface ShowcaseHeroCarouselProps {
   archetypes: readonly ShowcaseArchetype[];
   scenes: ShowcaseScenes;
@@ -65,7 +69,13 @@ interface ShowcaseHeroCarouselProps {
   composerDisabled?: boolean;
   openRequest?: { nonce: number; seed?: string; close?: boolean } | null;
   onComposingChange?: (composing: boolean) => void;
+  dependencies?: ShowcaseHeroCarouselDependencies;
 }
+
+const defaultShowcaseHeroCarouselDependencies: ShowcaseHeroCarouselDependencies =
+  {
+    PluginNewThreadComposer,
+  };
 
 export function ShowcaseHeroCarousel({
   archetypes,
@@ -78,7 +88,9 @@ export function ShowcaseHeroCarousel({
   composerDisabled = false,
   openRequest = null,
   onComposingChange,
+  dependencies = defaultShowcaseHeroCarouselDependencies,
 }: ShowcaseHeroCarouselProps) {
+  const PluginNewThreadComposerComponent = dependencies.PluginNewThreadComposer;
   const reducedMotion = usePrefersReducedMotion();
   const navigate = useNavigate();
   const createThread = useCreateThread();
@@ -296,7 +308,7 @@ export function ShowcaseHeroCarousel({
             )}
           >
             <div className="mx-auto w-full max-w-[44rem]">
-              <PluginNewThreadComposer
+              <PluginNewThreadComposerComponent
                 key={composerKey}
                 initialPrompt={composerSeed ?? undefined}
                 placeholder={composer.placeholder}

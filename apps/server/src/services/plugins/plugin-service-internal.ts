@@ -1,11 +1,7 @@
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
-import type { DynamicTool, Thread } from "@bb/domain";
+import type { DynamicTool, JsonValue, Thread } from "@bb/domain";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
-import type {
-  PluginRpcMethodContract,
-  PluginRpcResult,
-} from "@get-bb/plugin-sdk";
 import {
   pluginUpdateCheckEntrySchema,
   type InstalledPlugin,
@@ -36,7 +32,7 @@ type PluginServiceState = "running" | "backoff" | "stopped";
 
 export type PluginListEntry = InstalledPlugin;
 
-export type PluginHostCallResult = PluginRpcResult<PluginRpcMethodContract>;
+export type PluginHostCallResult = JsonValue;
 
 export interface ServiceRuntime {
   record: PluginBackgroundServiceRecord;

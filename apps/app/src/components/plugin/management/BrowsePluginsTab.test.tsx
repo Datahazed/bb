@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
+import type { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+
+function TestPluginNewThreadComposer({
+  initialPrompt,
+}: ComponentProps<typeof PluginNewThreadComposer>) {
+  return <div data-testid="inline-composer">{initialPrompt}</div>;
+}
 
 function jsonResponse<T>(body: T, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -889,6 +897,9 @@ describe("BrowsePluginsTab", () => {
           onInstallFromSource={() => {}}
           onInstall={() => {}}
           onOpenPlugin={() => {}}
+          dependencies={{
+            PluginNewThreadComposer: TestPluginNewThreadComposer,
+          }}
         />
       </MemoryRouter>,
       { wrapper },

@@ -141,25 +141,24 @@ export {
   deltaSearchSchema as "deltaSearchShapeSchema",
 };
 
-type DeltaBackgroundTask = z.infer<typeof deltaBackgroundTaskSchema>;
-type DeltaDelegation = z.infer<typeof deltaDelegationSchema>;
-type DeltaExtension = z.infer<typeof deltaExtensionSchema>;
-type DeltaFileRead = z.infer<typeof deltaFileReadSchema>;
+type DeltaBackgroundTaskShape = z.infer<typeof deltaBackgroundTaskSchema>;
+type DeltaDelegationShape = z.infer<typeof deltaDelegationSchema>;
+type DeltaExtensionShape = z.infer<typeof deltaExtensionSchema>;
+type DeltaFileReadShape = z.infer<typeof deltaFileReadSchema>;
 type DeltaItem = z.infer<typeof deltaItemSchema>;
-type DeltaItemType = DeltaItem["type"];
-type DeltaPlanSteps = z.infer<typeof deltaPlanStepsSchema>;
-type DeltaSearch = z.infer<typeof deltaSearchSchema>;
+type DeltaItemShapeType = DeltaItem["type"];
+type DeltaPlanStepsShape = z.infer<typeof deltaPlanStepsSchema>;
+type DeltaSearchShape = z.infer<typeof deltaSearchSchema>;
 
 export type {
-  DeltaBackgroundTask,
-  DeltaDelegation,
-  DeltaExtension,
-  DeltaFileRead,
+  DeltaBackgroundTaskShape,
+  DeltaDelegationShape,
+  DeltaExtensionShape,
+  DeltaFileReadShape,
   DeltaItem as "DeltaItemShape",
-  DeltaItemType as "DeltaItemShapeType",
-  DeltaItemType,
-  DeltaPlanSteps,
-  DeltaSearch,
+  DeltaItemShapeType,
+  DeltaPlanStepsShape,
+  DeltaSearchShape,
 };
 
 export type {

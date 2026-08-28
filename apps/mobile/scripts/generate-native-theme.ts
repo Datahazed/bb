@@ -746,7 +746,7 @@ export function renderNativeThemeSource(model: NativeThemeModel): string {
     a.localeCompare(b),
   );
   const themesLines = [
-    "export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {",
+    "export const nativeThemes = {",
     ...palettes.flatMap(([id, modes]) => [
       `  ${quoteKey(id)}: {`,
       ...MODES.map(
@@ -755,7 +755,7 @@ export function renderNativeThemeSource(model: NativeThemeModel): string {
       ),
       "  },",
     ]),
-    "};",
+    "} satisfies Record<BuiltInThemeId, NativeThemeModes>;",
     "",
   ];
 

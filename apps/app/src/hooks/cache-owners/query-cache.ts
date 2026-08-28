@@ -49,10 +49,12 @@ const threadListQueryFiltersSchema = z.object({
   sourceThreadId: z.string().optional(),
 });
 
-const archivedThreadsListFiltersSchema = z.object({
-  kind: z.enum(["all", "root", "child"]).optional(),
-  projectId: z.string().optional(),
-});
+const archivedThreadsListFiltersSchema = z
+  .object({
+    kind: z.enum(["all", "root", "child"]).optional(),
+    projectId: z.string().optional(),
+  })
+  .strict();
 
 const environmentWorkStatusRefSchema = z.string().nullable();
 

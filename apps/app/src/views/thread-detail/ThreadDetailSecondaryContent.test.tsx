@@ -172,6 +172,7 @@ function TestThreadDetailSecondaryContent(
           Panel: TestPanel,
           PanelGroup: TestPanelGroup,
           ResponsiveDrawerShell: TestResponsiveDrawerShell,
+          dispatchBrowserViewBoundsSync: vi.fn(),
         },
       }}
     />

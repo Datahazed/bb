@@ -291,7 +291,7 @@ export function SkillsLibrary() {
     () =>
       loadedRegistrySkills.map((skill) => {
         const entry = registryDescriptions.values.get(skill.id);
-        const describedSkill =
+        let describedSkill =
           entry === undefined
             ? skill
             : {
@@ -300,7 +300,7 @@ export function SkillsLibrary() {
                 summary: entry.summary,
               };
         if (entry !== undefined && registryRanking === "trending") {
-          return { ...describedSkill, installs: entry.installs };
+          describedSkill = { ...describedSkill, installs: entry.installs };
         }
         if (describedSkill.stars !== null) return describedSkill;
         const stars = registryRepositoryStars.values.get(

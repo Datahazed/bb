@@ -7,9 +7,10 @@ import { useCallback, useEffect, useState } from "react";
 import {
   definePluginApp,
   useBbNavigate,
-  type JsonObject,
   type JsonValue,
 } from "@get-bb/plugin-sdk/app";
+
+type JsonObject = { [key: string]: JsonValue };
 
 interface PluginIdRow {
   id?: string;

@@ -183,12 +183,18 @@ export async function resolveRuntimeBridgeLaunch(
   };
 }
 
-const commandErrorSchema = z.instanceof(Error).and(
-  z.object({
-    code: z.string().optional(),
-    syscall: z.string().optional(),
-  }),
-);
+const commandErrorMetadataSchema = z.object({
+  code: z.string().optional(),
+  syscall: z.string().optional(),
+});
+
+function parseCommandErrorMetadata<T>(error: T) {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+  const parsedError = commandErrorMetadataSchema.safeParse(error);
+  return parsedError.success ? parsedError.data : null;
+}
 
 export function getErrorCode<T>(error: T): string {
   if (error instanceof CommandDispatchError) {
@@ -197,9 +203,9 @@ export function getErrorCode<T>(error: T): string {
   if (isStructuredSpawnMissingExecutableError(error)) {
     return "missing_executable";
   }
-  const parsedError = commandErrorSchema.safeParse(error);
-  if (parsedError.success && parsedError.data.code !== undefined) {
-    return parsedError.data.code;
+  const parsedError = parseCommandErrorMetadata(error);
+  if (parsedError?.code !== undefined) {
+    return parsedError.code;
   }
   if (isMessageOnlySpawnMissingExecutableError(error)) {
     return "missing_executable";
@@ -208,11 +214,10 @@ export function getErrorCode<T>(error: T): string {
 }
 
 function isStructuredSpawnMissingExecutableError<T>(error: T): boolean {
-  const parsedError = commandErrorSchema.safeParse(error);
+  const parsedError = parseCommandErrorMetadata(error);
   return (
-    parsedError.success &&
-    parsedError.data.code === "ENOENT" &&
-    parsedError.data.syscall?.startsWith("spawn") === true
+    parsedError?.code === "ENOENT" &&
+    parsedError.syscall?.startsWith("spawn") === true
   );
 }
 

@@ -1,12 +1,15 @@
-type ErrorFunction = (...args: never[]) => never;
+type ErrorFunction = (...args: never[]) => ErrorValue;
 type ErrorValue =
   | string
   | number
   | boolean
+  | bigint
+  | symbol
   | null
+  | undefined
   | ErrorFunction
   | ErrorRecord
-  | ErrorValue[];
+  | readonly ErrorValue[];
 type ErrorRecord = { readonly [key: string]: ErrorValue };
 
 interface ErrorExtractionOptions {
@@ -26,66 +29,47 @@ function isRecord<T>(value: T): value is T & ErrorRecord {
   return Object(value) === value && !Array.isArray(value) && !isFunction(value);
 }
 
-function parseErrorValue<T>(value: T): ErrorValue | null {
-  if (isText(value) || isFunction(value)) return value;
-  if (Array.isArray(value)) {
-    const parsedItems: ErrorValue[] = [];
-    for (const item of value) {
-      const parsedItem = parseErrorValue(item);
-      if (parsedItem !== null) parsedItems.push(parsedItem);
-    }
-    return parsedItems;
-  }
-  if (!isRecord(value)) return null;
-  const parsedRecord: Record<string, ErrorValue> = {};
-  const keys = new Set([
-    ...Object.keys(value),
-    "body",
-    "detail",
-    "headers",
-    "message",
-    "name",
-    "status",
-  ]);
-  for (const key of keys) {
-    const parsedValue = parseErrorValue(value[key]);
-    if (parsedValue !== null) parsedRecord[key] = parsedValue;
-  }
-  return parsedRecord;
+export function toRecord<T>(value: T): (T & ErrorRecord) | null {
+  return isRecord(value) ? value : null;
 }
 
-export function toRecord<T>(value: T): ErrorRecord | null {
-  const parsedValue = parseErrorValue(value);
-  return parsedValue !== null && isRecord(parsedValue) ? parsedValue : null;
+function extractErrorMessageValue<T>(
+  value: T,
+  opts: ErrorExtractionOptions | undefined,
+  seen: Set<object>,
+): string | null {
+  if (isText(value)) {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (normalized.length === 0) return null;
+    return normalized;
+  }
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return null;
+    seen.add(value);
+    for (const item of value) {
+      const message = extractErrorMessageValue(item, opts, seen);
+      if (message) return message;
+    }
+    return null;
+  }
+  const record = toRecord(value);
+  if (!record) return null;
+  if (seen.has(record)) return null;
+  seen.add(record);
+  if (isText(record.message)) {
+    const message = extractErrorMessageValue(record.message, opts, seen);
+    if (message) return message;
+  }
+  for (const key of opts?.legacyKeys ?? ["detail"]) {
+    const message = extractErrorMessageValue(record[key], opts, seen);
+    if (message) return message;
+  }
+  return null;
 }
 
 export function extractErrorMessage<T>(
   value: T,
   opts?: ErrorExtractionOptions,
 ): string | null {
-  const parsedValue = parseErrorValue(value);
-  if (parsedValue === null) return null;
-  if (isText(parsedValue)) {
-    const normalized = parsedValue.replace(/\s+/g, " ").trim();
-    if (normalized.length === 0) return null;
-    return normalized;
-  }
-  if (Array.isArray(parsedValue)) {
-    for (const item of parsedValue) {
-      const message = extractErrorMessage(item, opts);
-      if (message) return message;
-    }
-    return null;
-  }
-  const record = toRecord(parsedValue);
-  if (!record) return null;
-  if (isText(record.message)) {
-    const message = extractErrorMessage(record.message, opts);
-    if (message) return message;
-  }
-  for (const key of opts?.legacyKeys ?? ["detail"]) {
-    const message = extractErrorMessage(record[key], opts);
-    if (message) return message;
-  }
-  return null;
+  return extractErrorMessageValue(value, opts, new Set());
 }

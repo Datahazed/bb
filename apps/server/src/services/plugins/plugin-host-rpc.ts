@@ -9,7 +9,10 @@ import type {
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
-import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
+import type {
+  PluginHostArtifactSnapshot,
+  PluginHostCallResult,
+} from "./plugin-service-internal.js";
 
 const HOST_RPC_TRANSPORT_GRACE_MS = 6_000;
 const HOST_RPC_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
@@ -18,7 +21,8 @@ async function validateValue(
   schema: StandardSchemaV1,
   value: JsonValue,
   phase: "input" | "output",
-): Promise<JsonValue> {
+  label: string,
+): Promise<PluginHostCallResult> {
   let result: StandardSchemaV1Result<unknown>;
   try {
     result = await schema["~standard"].validate(value);
@@ -32,10 +36,10 @@ async function validateValue(
       `host rpc ${phase} validation failed: ${result.issues.map((issue) => issue.message).join("; ")}`,
     );
   }
-  return jsonValueSchema.parse(result.value);
+  return normalizeJson(result.value, label);
 }
 
-function normalizeJson(value: JsonValue, label: string): JsonValue {
+function normalizeJson<T>(value: T, label: string): JsonValue {
   let serialized: string | undefined;
   try {
     serialized = JSON.stringify(value);
@@ -69,18 +73,16 @@ export async function callPluginHostRpc(
     timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
   },
-): Promise<JsonValue> {
+): Promise<PluginHostCallResult> {
   const method = args.contract[args.method];
   if (method === undefined) {
     throw new Error(`unknown host rpc method "${args.method}"`);
   }
   if (args.signal?.aborted) throw abortError();
-  const input = normalizeJson(
-    await validateValue(
-      method.input,
-      jsonValueSchema.parse(args.input),
-      "input",
-    ),
+  const input = await validateValue(
+    method.input,
+    jsonValueSchema.parse(args.input),
+    "input",
     `host rpc input for ${args.method}`,
   );
   const callId = randomUUID();
@@ -134,7 +136,12 @@ export async function callPluginHostRpc(
             (error) => finish(() => reject(error)),
           );
         });
-  const output = await validateValue(method.output, result.output, "output");
+  const output = await validateValue(
+    method.output,
+    result.output,
+    "output",
+    `host rpc output for ${args.method}`,
+  );
   return output;
 }
 

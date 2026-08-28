@@ -74,6 +74,8 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
+const legacySetThreadRowStatus = (): void => {};
+
 interface PluginRpcObject {}
 
 type PluginRpcInput = JsonValue | PluginRpcObject;
@@ -864,6 +866,7 @@ export function useComposer(): PluginComposerApi {
       clear,
       setTextEffect,
       setInputLock,
+      setThreadRowStatus: legacySetThreadRowStatus,
       addQuote,
       insertMention,
       focus,

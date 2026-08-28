@@ -1,6 +1,6 @@
 import type {
   BbPluginApi,
-  JsonObject,
+  JsonValue,
   PluginRpcHandlers,
 } from "@get-bb/plugin-sdk";
 import {
@@ -30,6 +30,8 @@ import {
   type ProjectsChangedEvent,
   type TasksChangedEvent,
 } from "../shared/contract";
+
+type JsonObject = { [key: string]: JsonValue };
 
 interface TaskLabelIdRow {
   task_id: string;

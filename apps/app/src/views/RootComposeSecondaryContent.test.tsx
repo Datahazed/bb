@@ -24,12 +24,17 @@ import {
   RootComposeSecondaryContent as RootComposeSecondaryContentSurface,
 } from "./RootComposeSecondaryContent";
 import type { SecondaryPanelLayoutDependencies } from "@/components/secondary-panel/SecondaryPanelLayout";
+import {
+  getBbDesktopInfo,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 
 type RootComposeSecondaryContentProps = ComponentProps<
   typeof RootComposeSecondaryContentSurface
 >;
 
 interface PanelGroupHandle {
+  getId: () => string;
   getLayout: () => number[];
   setLayout: (layout: number[]) => void;
 }
@@ -74,6 +79,7 @@ const TestPanelGroup = forwardRef<PanelGroupHandle, PanelGroupProps>(
     useImperativeHandle(
       ref,
       () => ({
+        getId: () => "test-panel-group",
         getLayout: panelGroupState.getLayout,
         setLayout: panelGroupState.setLayout,
       }),
@@ -135,6 +141,7 @@ const testLayoutDependencies: SecondaryPanelLayoutDependencies = {
   Panel: TestPanel,
   PanelGroup: TestPanelGroup,
   ResponsiveDrawerShell: TestDrawer,
+  dispatchBrowserViewBoundsSync: vi.fn(),
 };
 
 function TestRootComposeSecondaryContent(
@@ -148,8 +155,8 @@ function TestRootComposeSecondaryContent(
         PluginHomepageSections: TestHomepageSections,
         secondaryPanelLayout: SecondaryPanelLayout,
         secondaryPanelLayoutDependencies: testLayoutDependencies,
-        getBbDesktopInfo: () => null,
-        shouldUseMacosDesktopChrome: () => false,
+        getBbDesktopInfo,
+        shouldUseMacosDesktopChrome,
       }}
     />
   );

@@ -996,7 +996,7 @@ export function createPluginApi(options: {
         const schema = zodParameters.data;
         try {
           inputSchema = jsonObjectSchema.parse(
-            z.toJSONSchema(schema, { io: "input" }),
+            JSON.parse(JSON.stringify(z.toJSONSchema(schema, { io: "input" }))),
           );
         } catch (error) {
           throw new Error(

@@ -131,4 +131,28 @@ describe("plugin host worker lifecycle", () => {
       signal: null,
     });
   });
+
+  it("accepts accessor-backed standard schemas from host artifacts", async () => {
+    const child = await startWorker(`
+      const schema = {
+        get "~standard"() {
+          return { validate(value) { return { value }; } };
+        },
+      };
+      export default {
+        experimental_apiVersion: 1,
+        contract: { ping: { input: schema, output: schema } },
+        handlers: { ping(input) { return input; } },
+      };
+    `);
+    await waitForReady(child);
+
+    const closed = waitForClose(child);
+    child.send({ type: "dispose" });
+
+    await expect(closed).resolves.toEqual({
+      code: 0,
+      signal: null,
+    });
+  });
 });

@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { motionValue } from "motion";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import * as Sidebar from "@/components/ui/sidebar.js";
@@ -58,6 +59,9 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.spyOn(Sidebar, "useIsSidebarShowing").mockImplementation(() => true);
+  vi.spyOn(Sidebar, "useSidebarDesktopMotionProgress").mockReturnValue(
+    motionValue(1),
+  );
   vi.spyOn(ThreadActionsProvider, "useThreadActions").mockReturnValue(
     threadActions,
   );

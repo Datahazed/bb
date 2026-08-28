@@ -346,6 +346,7 @@ describe("experimental_Diff", () => {
         patch={PATCH}
         path="src/app.ts"
         experimental_fullFileContents={FULL_FILE_CONTENTS}
+        renderer={TestBbDiff}
       />,
     );
 
@@ -410,7 +411,7 @@ describe("DiffHost experimental_Original alias", () => {
     registerDiffRenderer(({ Original }) => <Original />);
 
     render(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={null}

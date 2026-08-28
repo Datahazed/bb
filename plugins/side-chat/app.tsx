@@ -10,7 +10,6 @@ import {
   type PluginThreadPanelActionContext,
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
-  type JsonObject,
   type JsonValue,
 } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
@@ -18,6 +17,8 @@ import type { sideChatRpcContract } from "./server.js";
 
 const PLUGIN_ID = "side-chat";
 const PANEL_ACTION_ID = "side-chat";
+
+type JsonObject = { [key: string]: JsonValue };
 
 const PANEL_TAB_TITLE = "Side chat";
 

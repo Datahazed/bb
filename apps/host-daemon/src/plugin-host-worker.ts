@@ -34,8 +34,9 @@ interface StandardSchemaResult {
 
 interface StandardSchema {
   readonly "~standard": {
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters
     readonly validate: (
-      value: HostBoundaryValue,
+      value: unknown,
     ) => StandardSchemaResult | Promise<StandardSchemaResult>;
   };
 }
@@ -168,7 +169,10 @@ function readProperty(
   value: HostRecord,
   key: string,
 ): HostBoundaryValue | undefined {
-  return Object.getOwnPropertyDescriptor(value, key)?.value;
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (descriptor === undefined) return undefined;
+  if ("value" in descriptor) return descriptor.value;
+  return descriptor.get?.call(value);
 }
 
 function readEntries(
@@ -243,7 +247,11 @@ function parseSchema(value: HostBoundaryValue): StandardSchema {
   return {
     "~standard": {
       async validate(input) {
-        return parseSchemaResult(await resolveHostValue(validate(input)));
+        const boundaryInput =
+          /* SAFETY: HostBoundaryValue includes every JavaScript value that can cross the worker boundary. */ input as HostBoundaryValue;
+        return parseSchemaResult(
+          await resolveHostValue(validate(boundaryInput)),
+        );
       },
     },
   };

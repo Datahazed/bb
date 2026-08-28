@@ -18,16 +18,14 @@ import {
   shellShare,
 } from "./native-shell";
 
-interface TestNativeBridgeGlobal {
-  native: {
-    __receive(event: ShellToPageEvent): void;
-  };
+interface TestNativeBridge {
+  __receive(event: ShellToPageEvent): void;
 }
 
-function testNativeBridge(): TestNativeBridgeGlobal {
+function testNativeBridge(): TestNativeBridge {
   const native = window.bb?.native;
   if (native === undefined) throw new Error("missing native bridge");
-  return /* SAFETY: The test controls this fixture and verifies its behavior. */ native as TestNativeBridgeGlobal;
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ native as TestNativeBridge;
 }
 
 const handshake: NativeShellHandshake = {
@@ -178,7 +176,7 @@ describe("shellShare", () => {
     const promise = shellShare({ url: "https://bee.getbb.app/threads/thr_1" });
     const message = lastRequest();
     expect(message.type).toBe("request");
-    const bridge = testNativeBridge().native;
+    const bridge = testNativeBridge();
     bridge.__receive({
       type: "response",
       id: message.id,
@@ -191,7 +189,7 @@ describe("shellShare", () => {
     installShell();
     const promise = shellShare({ text: "hello" });
     const message = lastRequest();
-    const bridge = testNativeBridge().native;
+    const bridge = testNativeBridge();
     bridge.__receive({
       type: "response",
       id: message.id,

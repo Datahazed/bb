@@ -22,7 +22,6 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   providerNativeRootSetSchema,
-  type JsonValue,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
@@ -1894,42 +1893,38 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES =
 const hostDaemonSettledCommandTypes = new Set<string>(
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
 );
+const hostDaemonOnlineRpcCommandTypes = new Set<string>(
+  HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
+);
+
+function isStringValue<T>(value: T): value is T & string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
 function isHostDaemonSettledCommandType(
   type: string,
 ): type is HostDaemonSettledCommandType {
   return hostDaemonSettledCommandTypes.has(type);
 }
 
-function parseHostDaemonSettledCommandTypeValue(
-  value: string,
-): HostDaemonSettledCommandType {
-  const commandType = HOST_DAEMON_SETTLED_COMMAND_TYPES.find(
-    (candidate) => candidate === value,
-  );
-  if (commandType === undefined) {
-    throw new Error(`Unknown settled host daemon command type: ${value}`);
-  }
-  return commandType;
+function isHostDaemonSettledCommandTypeValue<T>(
+  value: T,
+): value is T & HostDaemonSettledCommandType {
+  return isStringValue(value) && hostDaemonSettledCommandTypes.has(value);
 }
 
-function parseHostDaemonOnlineRpcCommandTypeValue(
-  value: string,
-): HostDaemonOnlineRpcCommandType {
-  const commandType = HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES.find(
-    (candidate) => candidate === value,
-  );
-  if (commandType === undefined) {
-    throw new Error(`Unknown online RPC host daemon command type: ${value}`);
-  }
-  return commandType;
+function isHostDaemonOnlineRpcCommandTypeValue<T>(
+  value: T,
+): value is T & HostDaemonOnlineRpcCommandType {
+  return isStringValue(value) && hostDaemonOnlineRpcCommandTypes.has(value);
 }
 
-export const hostDaemonSettledCommandTypeSchema = z
-  .string()
-  .transform(parseHostDaemonSettledCommandTypeValue);
-const hostDaemonOnlineRpcCommandTypeSchema = z
-  .string()
-  .transform(parseHostDaemonOnlineRpcCommandTypeValue);
+export const hostDaemonSettledCommandTypeSchema =
+  z.custom<HostDaemonSettledCommandType>(isHostDaemonSettledCommandTypeValue);
+const hostDaemonOnlineRpcCommandTypeSchema =
+  z.custom<HostDaemonOnlineRpcCommandType>(
+    isHostDaemonOnlineRpcCommandTypeValue,
+  );
 
 export const hostDaemonCommandSchema =
   hostDaemonCommandSchemaForTransport("settled");
@@ -2020,11 +2015,13 @@ export function parseHostDaemonCommandResultForCommand<
   TCommand extends HostDaemonCommand,
 >(
   command: TCommand,
-  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
+  value: unknown,
 ): HostDaemonCommandResultForCommand<TCommand>;
 export function parseHostDaemonCommandResultForCommand(
   command: HostDaemonCommand,
-  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
+  value: unknown,
 ): HostDaemonCommandResultForCommand {
   return hostDaemonCommandResultSchemaByType[command.type].parse(value);
 }
@@ -2033,11 +2030,13 @@ export function parseHostDaemonOnlineRpcResultForCommand<
   TCommand extends HostDaemonOnlineRpcCommand,
 >(
   command: TCommand,
-  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
+  value: unknown,
 ): HostDaemonOnlineRpcResultForCommand<TCommand>;
 export function parseHostDaemonOnlineRpcResultForCommand(
   command: HostDaemonOnlineRpcCommand,
-  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
+  value: unknown,
 ): HostDaemonOnlineRpcResultForCommand {
   return hostDaemonOnlineRpcResultSchemaByType[command.type].parse(value);
 }
@@ -2046,11 +2045,13 @@ export function parseHostDaemonRpcResultForCommand<
   TCommand extends HostDaemonRpcCommand,
 >(
   command: TCommand,
-  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
+  value: unknown,
 ): HostDaemonRpcResultForCommand<TCommand>;
 export function parseHostDaemonRpcResultForCommand(
   command: HostDaemonRpcCommand,
-  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
+  value: unknown,
 ): HostDaemonRpcResultForCommand {
   if (isHostDaemonCommand(command)) {
     return parseHostDaemonCommandResultForCommand(command, value);

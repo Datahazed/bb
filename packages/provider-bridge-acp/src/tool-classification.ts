@@ -81,7 +81,7 @@ function scrubToolPayloadStrings(value: JsonValue): JsonValue {
   if (Array.isArray(value)) {
     return value.map(scrubToolPayloadStrings);
   }
-  if (value === null) {
+  if (value === null || typeof value !== "object") {
     return value;
   }
   return jsonObjectSchema.parse(

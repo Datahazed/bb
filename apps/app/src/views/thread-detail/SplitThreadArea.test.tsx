@@ -63,21 +63,7 @@ const threadStore = vi.hoisted(
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
 const viewportState = vi.hoisted(() => ({ compact: false }));
-const sidebarState = vi.hoisted(() => {
-  const state = { showing: true };
-  return {
-    progress: {
-      get: () => (state.showing ? 1 : 0),
-      on: () => () => {},
-    },
-    set showing(showing: boolean) {
-      state.showing = showing;
-    },
-    get showing() {
-      return state.showing;
-    },
-  };
-});
+const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
 }));
@@ -256,10 +242,6 @@ Object.defineProperty(ResizablePanels.PanelGroup, "render", {
   value: WrappedPanelGroupRender,
 });
 
-vi.spyOn(Sidebar, "useIsSidebarShowing").mockImplementation(
-  () => sidebarState.showing,
-);
-
 vi.spyOn(RootCompose, "RootComposeView").mockImplementation(RootComposeFixture);
 
 const PluginPanelRightPanelHostFixture = ({
@@ -286,13 +268,6 @@ const PluginPanelRightPanelHostFixture = ({
           <div data-testid="workspace-panel-resize-handle" className="z-[30]">
             <span data-panel-resize-hit-target="" />
           </div>
-          {isPanelOpen ? (
-            <button
-              type="button"
-              aria-label="Hide right panel"
-              onClick={() => setIsPanelOpen(false)}
-            />
-          ) : null}
         </div>
       ),
       onToggle: () => setIsPanelOpen((open) => !open),
@@ -626,21 +601,23 @@ function renderSplitArea(options: {
   }
   render(
     <TooltipProvider delayDuration={0}>
-      <JotaiProvider store={store}>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={[options.path]}>
-            {options.routeAwareContent ? (
-              <RouteAwareSplitArea />
-            ) : (
-              <SplitThreadArea routeContent={options.routeContent} />
-            )}
-            <LocationProbe />
-            {options.externalTo !== undefined ? (
-              <ExternalNav to={options.externalTo} />
-            ) : null}
-          </MemoryRouter>
-        </QueryClientProvider>
-      </JotaiProvider>
+      <Sidebar.SidebarProvider open={sidebarState.showing}>
+        <JotaiProvider store={store}>
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={[options.path]}>
+              {options.routeAwareContent ? (
+                <RouteAwareSplitArea />
+              ) : (
+                <SplitThreadArea routeContent={options.routeContent} />
+              )}
+              <LocationProbe />
+              {options.externalTo !== undefined ? (
+                <ExternalNav to={options.externalTo} />
+              ) : null}
+            </MemoryRouter>
+          </QueryClientProvider>
+        </JotaiProvider>
+      </Sidebar.SidebarProvider>
     </TooltipProvider>,
   );
   return store;

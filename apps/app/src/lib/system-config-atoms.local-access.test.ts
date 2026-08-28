@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as apiHostDaemon from "./api-host-daemon";
 import * as bbDesktop from "./bb-desktop";
 import * as ws from "./ws";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   hostDaemonPortAtom,
   localHostDaemonAccessStateAtom,
@@ -23,10 +24,11 @@ beforeEach(() => {
   fetchHostStatus.mockReset();
   fetchSystemConfig.mockImplementation(async () => ({
     ok: true,
-    json: async () => ({
-      hostDaemonPort: 38_887,
-      localHelperPorts: [38_887, 38_888],
-    }),
+    json: async () =>
+      makeSystemConfig({
+        hostDaemonPort: 38_887,
+        localHelperPorts: [38_887, 38_888],
+      }),
   }));
   fetchWorkspaceOpenTargets.mockResolvedValue([]);
   vi.stubGlobal("fetch", fetchSystemConfig);

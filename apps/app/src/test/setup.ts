@@ -42,7 +42,7 @@ if (runtimeWindow !== undefined && runtimeJsdom !== undefined) {
   });
 }
 
-if (runtimeWindow !== undefined && !("matchMedia" in runtimeWindow)) {
+if (runtimeWindow !== undefined && runtimeWindow.matchMedia === undefined) {
   runtimeWindow.matchMedia = (query: string) => ({
     matches: false,
     media: query,

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { JsonValue } from "@bb/domain";
+import type { ComponentProps } from "react";
 import {
   act,
   cleanup,
@@ -23,6 +24,13 @@ import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
+import type { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+
+function TestPluginNewThreadComposer({
+  initialPrompt,
+}: ComponentProps<typeof PluginNewThreadComposer>) {
+  return <div data-testid="inline-composer">{initialPrompt}</div>;
+}
 
 function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
   const [, setSearchParams] = useSearchParams();
@@ -239,7 +247,11 @@ describe("PluginsOverview", () => {
       <MemoryRouter initialEntries={["/extensions/plugins"]}>
         <QueryClientWrapper>
           <SidebarHistoryNavigationControls />
-          <PluginsOverview />
+          <PluginsOverview
+            dependencies={{
+              PluginNewThreadComposer: TestPluginNewThreadComposer,
+            }}
+          />
         </QueryClientWrapper>
       </MemoryRouter>,
     );

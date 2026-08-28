@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   promptMentionResourceSchema,
   type PromptMentionResource,
@@ -29,16 +28,10 @@ interface ParsePromptMentionClipboardElementArgs {
   element: Element;
 }
 
-const promptMentionClipboardResourcePayloadSchema = z.object({
-  resource: promptMentionResourceSchema,
-});
-
 function parseJsonAttribute(value: string): PromptMentionResource | null {
   try {
-    const result = promptMentionClipboardResourcePayloadSchema.safeParse(
-      JSON.parse(value),
-    );
-    return result.success ? result.data.resource : null;
+    const result = promptMentionResourceSchema.safeParse(JSON.parse(value));
+    return result.success ? result.data : null;
   } catch {
     return null;
   }

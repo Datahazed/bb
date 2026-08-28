@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import {
   defineRpcContract,
   type BbPluginApi,
-  type JsonObject,
+  type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
@@ -387,6 +387,8 @@ const ghViewerSchema = z
   .strip();
 
 type GhRunner = (args: string[]) => Promise<string>;
+
+type JsonObject = { [key: string]: JsonValue };
 
 type ThreadLink = JsonObject & {
   kind: "issue" | "pr";

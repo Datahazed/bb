@@ -79,6 +79,7 @@ export interface SecondaryPanelLayoutDependencies {
   Panel: typeof Panel;
   PanelGroup: typeof PanelGroup;
   ResponsiveDrawerShell: typeof PersistentResponsiveDrawerShell;
+  dispatchBrowserViewBoundsSync: typeof dispatchBrowserViewBoundsSync;
 }
 
 const defaultSecondaryPanelLayoutDependencies: SecondaryPanelLayoutDependencies =
@@ -86,6 +87,7 @@ const defaultSecondaryPanelLayoutDependencies: SecondaryPanelLayoutDependencies 
     Panel,
     PanelGroup,
     ResponsiveDrawerShell: PersistentResponsiveDrawerShell,
+    dispatchBrowserViewBoundsSync,
   };
 
 export function SecondaryPanelLayout({
@@ -106,6 +108,8 @@ export function SecondaryPanelLayout({
   composerHost,
   dependencies = defaultSecondaryPanelLayoutDependencies,
 }: SecondaryPanelLayoutProps) {
+  const dispatchBrowserViewBoundsSync =
+    dependencies.dispatchBrowserViewBoundsSync;
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
@@ -255,7 +259,11 @@ export function SecondaryPanelLayout({
         },
       );
     },
-    [cancelCompactDrawerContentSettleFrame, realizePanel],
+    [
+      cancelCompactDrawerContentSettleFrame,
+      dispatchBrowserViewBoundsSync,
+      realizePanel,
+    ],
   );
 
   const canShowNativeBrowserView = renderAsDrawer

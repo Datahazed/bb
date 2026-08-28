@@ -30,4 +30,3 @@ export type ConnectStatus = {
 export const CONNECT_REALTIME_CHANNEL = "connect";
 
 export const REMOTE_ACTIVITY_INSTRUCTIONS_MS = 5 * 60 * 1000;
-import type { JsonObject, JsonValue } from "@get-bb/plugin-sdk";

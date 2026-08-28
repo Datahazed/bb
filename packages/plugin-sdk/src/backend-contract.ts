@@ -8,8 +8,8 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
-import type { JsonObject, JsonValue } from "./json-value.js";
-export type { JsonObject, JsonValue } from "./json-value.js";
+import type { JsonValue } from "./json-value.js";
+export type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
@@ -19,6 +19,8 @@ import type {
   ExperimentalHostClient,
   ExperimentalHostSignals,
 } from "./host-contract.js";
+
+type JsonObject = { [key: string]: JsonValue };
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's

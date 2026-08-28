@@ -312,7 +312,6 @@ export const OMP_ACP_DIALECT: AcpDialect = {
 
 const openCodeCommandRawOutputSchema = z
   .object({
-    output: z.string().optional().catch(undefined),
     metadata: z
       .object({
         exit: z.number().int().nullable().optional(),
@@ -331,7 +330,10 @@ function normalizeOpenCodeCommandEvent(
     return event;
   }
   const rawOutput = parsed.data;
-  const output = rawOutput.output ?? rawOutput.metadata?.output;
+  const parsedOutput = z.string().safeParse(rawOutput["output"]);
+  const output = parsedOutput.success
+    ? parsedOutput.data
+    : rawOutput.metadata?.output;
   const hasSharedOutput =
     rawOutput["stdout"] !== undefined ||
     rawOutput["stderr"] !== undefined ||

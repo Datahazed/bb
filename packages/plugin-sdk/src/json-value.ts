@@ -4,14 +4,10 @@
  * Host boundaries still validate values at runtime because TypeScript cannot
  * exclude non-finite numbers and plugin bundles can bypass static types.
  */
-export interface JsonObject {
-  [key: string]: JsonValue;
-}
-
 export type JsonValue =
   | string
   | number
   | boolean
   | null
   | JsonValue[]
-  | JsonObject;
+  | { [key: string]: JsonValue };
