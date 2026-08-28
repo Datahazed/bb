@@ -195,7 +195,8 @@ message agents, or inspect projects, providers, and environments.
   deliberately unlisted provider-accepted id in `customModels`; an arbitrary
   missing id is rejected. Active and selected-only catalog entries are both
   valid selections. A transient catalog refresh can use registered fallback
-  rows when they are available.
+  rows when they contain the selected model; otherwise spawn reports a
+  retryable catalog failure instead of substituting a different model.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
   attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)
@@ -424,8 +425,9 @@ or artifacts, validation performed, and blockers.
   provider exited), the message waits until somebody retries the thread.
   Queued and deferred messages are stored without requiring a live catalog and
   validate their execution selection when delivery becomes possible. A catalog
-  mismatch keeps the message available for edit or removal and does not block
-  later valid held messages.
+  mismatch retains the message and does not block later valid held messages;
+  other retryable failures preserve arrival order. `bb thread queue` can edit
+  or remove queued messages.
 
 ## Inspecting Results
 

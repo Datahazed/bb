@@ -266,6 +266,31 @@ describe("public thread fork route", () => {
           model: "gpt-retired",
           reasoningLevel: "high",
         });
+      seedEvent(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-fork-source",
+        sequence: 4,
+        threadId: sourceThread.id,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-fork-source"),
+        data: {
+          providerThreadId: "provider-fork-source",
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        },
+      });
+      seedEvent(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-fork-source",
+        sequence: 5,
+        threadId: sourceThread.id,
+        type: "turn/completed",
+        scope: turnScope("turn-fork-source"),
+        data: {
+          providerThreadId: "provider-fork-source",
+          status: "completed",
+          providerCheckpointId: "checkpoint-fork-source",
+        },
+      });
       registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -300,6 +325,14 @@ describe("public thread fork route", () => {
 
       expect(response.status).toBe(201);
       const fork = threadResponseSchema.parse(await readJson(response));
+      const copiedRequest = listEvents(harness.db, { threadId: fork.id }).find(
+        (event) => event.type === "client/turn/requested",
+      );
+      expect(
+        turnRequestEventDataSchema.parse(
+          JSON.parse(copiedRequest?.data ?? "null"),
+        ).execution.model,
+      ).toBe("gpt-retired");
       const queued = await waitForQueuedCommand(
         harness,
         ({ command }) =>

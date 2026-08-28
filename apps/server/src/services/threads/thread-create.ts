@@ -131,9 +131,12 @@ async function resolveCatalogExecutionDefaults(
   deps: ThreadCreateDeps,
   args: ResolveCatalogExecutionDefaultsArgs,
 ): Promise<ResolvedCatalogExecutionDefaults> {
+  const selectedModel =
+    args.requestedModel ?? args.executionDefaults?.model ?? undefined;
   const catalog = await loadAuthoritativeProviderExecutionCatalog(deps, {
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
+    ...(selectedModel === undefined ? {} : { model: selectedModel }),
     providerId: args.providerId,
   });
   const defaultModelEntry =
@@ -174,9 +177,10 @@ async function resolveCatalogExecutionDefaults(
     args.requestedReasoningLevel === null &&
     supportedReasoningLevels.length > 0 &&
     !supportedReasoningLevels.includes(preferredReasoningLevel)
-      ? (modelEntry?.defaultReasoningEffort ??
-        supportedReasoningLevels[0] ??
-        DEFAULT_REASONING_LEVEL)
+      ? modelEntry?.defaultReasoningEffort !== undefined &&
+        supportedReasoningLevels.includes(modelEntry.defaultReasoningEffort)
+        ? modelEntry.defaultReasoningEffort
+        : (supportedReasoningLevels[0] ?? DEFAULT_REASONING_LEVEL)
       : preferredReasoningLevel;
   const validated = validateExecutionSelectionAgainstCatalog({
     catalog,

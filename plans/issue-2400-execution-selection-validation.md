@@ -50,7 +50,8 @@ environment catalog.
 - Immediate sends validate before a turn is created. Queue and deferred
   admission intentionally avoids a live catalog dependency, then validates at
   delivery. Catalog incompatibility keeps the row available and no longer
-  head-of-line blocks later valid input.
+  head-of-line blocks later valid input. Transient delivery failures retain
+  arrival order instead of allowing later input to overtake the failed row.
 - Thread execution overrides already load the target environment catalog and
   enforce non-empty per-model reasoning contracts, so no replacement route was
   needed there.
@@ -58,8 +59,10 @@ environment catalog.
   that model advertises it as compatible, otherwise it uses the model's
   advertised default. Headless project-default and fork creation recover stale
   stored models or reasoning against the current catalog.
-- A transient catalog probe keeps registered fallback rows when they exist; it
-  fails retryably only when no authoritative row remains available.
+- A transient catalog probe can use registered fallback rows when they contain
+  the selected model or no model is pinned. A pinned model absent from those
+  rows fails retryably instead of being rejected or replaced with a remembered
+  fallback default.
 - Tasks presets targeting a new worktree validate on create and selection
   changes. Project-default presets have no project or host binding at save time,
   so they validate at dispatch after the task's project resolves. Automations

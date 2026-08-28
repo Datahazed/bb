@@ -17,6 +17,7 @@ export interface AuthoritativeProviderExecutionCatalog {
 interface LoadAuthoritativeProviderExecutionCatalogArgs {
   cwd?: string;
   hostId: string;
+  model?: string;
   providerId: string;
 }
 
@@ -53,7 +54,11 @@ export async function loadAuthoritativeProviderExecutionCatalog(
     const code = catalog.modelLoadError.code;
     if (
       (code === "timeout" || code === "failed") &&
-      (catalog.models.length > 0 || catalog.selectedOnlyModels.length > 0)
+      (catalog.models.length > 0 || catalog.selectedOnlyModels.length > 0) &&
+      (args.model === undefined ||
+        [...catalog.models, ...catalog.selectedOnlyModels].some(
+          (model) => model.id === args.model || model.model === args.model,
+        ))
     ) {
       return {
         models: catalog.models,

@@ -247,6 +247,13 @@ async function flushDeferredThreadMessagesNow(
         );
         continue;
       }
+      if (isExecutionSelectionCatalogMismatch(error)) {
+        deps.logger.warn(
+          fields,
+          "Deferred thread message skipped an unavailable execution selection; will retry",
+        );
+        continue;
+      }
       if (isCommandTimeoutError(error)) {
         deps.logger.debug(
           fields,
@@ -258,7 +265,7 @@ async function flushDeferredThreadMessagesNow(
           "Deferred thread message delivery failed; will retry",
         );
       }
-      continue;
+      return;
     }
   }
 }

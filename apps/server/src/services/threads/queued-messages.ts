@@ -645,6 +645,14 @@ export async function sendNextQueuedMessageIfPresent(
     );
   } catch (error) {
     if (isExecutionSelectionCatalogMismatch(error)) {
+      deps.logger.warn(
+        {
+          queuedMessageId: nextQueuedMessages[0]!.id,
+          ...runtimeErrorLogFields(deps.config, error),
+          threadId: args.threadId,
+        },
+        "Queued message auto-send skipped an unavailable execution selection",
+      );
       try {
         return await sendNextQueuedMessageIfPresent(deps, args);
       } finally {

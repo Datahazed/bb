@@ -617,6 +617,62 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
     });
   });
 
+  it("preserves held-message order across a transient catalog failure", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, interactionId, session, thread } = seedBlockedThread(
+        harness,
+        { hostId: "host-1650-transient-head" },
+      );
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelErrorsByProviderId: {
+          codex: {
+            errorCode: "command_timeout",
+            errorMessage: "model list timed out",
+          },
+        },
+      });
+      for (const request of [
+        {
+          text: "first with an explicit model",
+          model: "fake-model",
+          reasoningLevel: "medium",
+        },
+        { text: "second without a model" },
+      ]) {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "steer-if-active",
+              input: [{ type: "text", text: request.text }],
+              ...(request.model === undefined
+                ? {}
+                : {
+                    model: request.model,
+                    reasoningLevel: request.reasoningLevel,
+                  }),
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+      }
+
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+      await flushDeferredThreadMessages(harness.deps, thread.id);
+
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(2);
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
+    });
+  });
+
   it("keeps a held message while the thread is stopping and delivers it from the sweep once idle", async () => {
     await withTestHarness(async (harness) => {
       const { interactionId, thread } = seedBlockedThread(harness, {

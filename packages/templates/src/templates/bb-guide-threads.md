@@ -47,7 +47,9 @@ Spawning:
   valid, as do provider-approved IDs registered in customModels. A bad explicit
   tuple exits non-zero without provisioning a worktree or submitting a provider
   turn. Stale inherited project or fork selections recover to compatible target
-  defaults. A transient refresh can use registered fallback catalog rows.
+  defaults. A transient refresh can use registered fallback catalog rows when
+  they contain the selected model; otherwise bb reports a retryable catalog
+  failure instead of substituting and remembering a different model.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
@@ -206,8 +208,9 @@ Messaging:
   or `deferred`. A held message waits for a thread that failed while it was
   held, and delivers when the thread is retried.
   Queue and deferred admission does not require a live model catalog. BB
-  validates when delivery becomes possible; a catalog mismatch leaves the held
-  input available for edit or removal and does not block later valid input.
+  validates when delivery becomes possible. A catalog mismatch retains the
+  input and does not block later valid input; other retryable failures preserve
+  arrival order. Queued input remains available through `thread queue`.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
