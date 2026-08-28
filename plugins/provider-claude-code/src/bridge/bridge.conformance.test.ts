@@ -6,6 +6,8 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import * as claudeSdk from "@anthropic-ai/claude-agent-sdk";
+import type { JsonObject } from "@bb/domain";
 import {
   experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
   experimental_formatConformanceReport as formatConformanceReport,
@@ -13,24 +15,20 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
-  queryMock: vi.fn(),
-}));
-
-vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: queryMock,
-  forkSession: forkSessionMock,
-  createSdkMcpServer: vi.fn(() => ({})),
-  tool: vi.fn((_name, _desc, _schema, handler) => handler),
-}));
+const forkSessionMock = vi.fn();
+const queryMock = vi.fn();
+vi.spyOn(claudeSdk, "query").mockImplementation((params) => queryMock(params));
+vi.spyOn(claudeSdk, "forkSession").mockImplementation((sessionId, options) =>
+  forkSessionMock(sessionId, options),
+);
 
 import { handleLine } from "./bridge.js";
 
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
-function asSdkMessage(message: Record<string, unknown>): SDKMessage {
-  return message as unknown as SDKMessage;
+function asSdkMessage(message: JsonObject): SDKMessage {
+  // SAFETY: The scripted objects contain the fields that the bridge reads for these test cases.
+  return message as SDKMessage;
 }
 
 interface ScriptedClaudeQueryCall {

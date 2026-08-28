@@ -7,13 +7,7 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
 
-vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
-  PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
-    <div data-testid="inline-composer">{initialPrompt}</div>
-  ),
-}));
-
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse<T>(body: T, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -584,7 +578,9 @@ describe("BrowsePluginsTab", () => {
     const memoryCard = (await screen.findByText("Memory")).closest("div");
     expect(memoryCard).not.toBeNull();
     expect(
-      (memoryCard as HTMLElement).querySelector('[data-icon="Brain"]'),
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        memoryCard as HTMLElement
+      ).querySelector('[data-icon="Brain"]'),
     ).not.toBeNull();
     expect(
       screen.getByRole("textbox", { name: "Search plugins" }),

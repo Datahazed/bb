@@ -64,17 +64,14 @@ export function BrowsePluginsTab({
   const [requestedCreationView, setRequestedCreationView] =
     useState(creationViewActive);
   const [composing, setComposing] = useState(false);
-  const openComposer = (seed?: string) =>
-    setHeroRequest({
-      nonce: nextComposerRequestNonce(),
-      ...(seed === undefined ? {} : { seed }),
-    });
+  const openComposer = (seed?: string) => {
+    const nonce = nextComposerRequestNonce();
+    setHeroRequest(seed === undefined ? { nonce } : { nonce, seed });
+  };
   if (requestedCreationView !== creationViewActive) {
     setRequestedCreationView(creationViewActive);
-    setHeroRequest({
-      nonce: nextComposerRequestNonce(),
-      ...(creationViewActive ? {} : { close: true }),
-    });
+    const nonce = nextComposerRequestNonce();
+    setHeroRequest(creationViewActive ? { nonce } : { nonce, close: true });
   }
   useEffect(() => {
     if (heroRequest === null) return;

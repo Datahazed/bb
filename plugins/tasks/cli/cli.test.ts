@@ -14,26 +14,12 @@ import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { createStore } from "../api";
 import plugin from "../server";
 import { registerTasksCli } from "./index";
-
-vi.mock("../attachments", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../attachments")>();
-  const saveAttachmentFromBytes: typeof actual.saveAttachmentFromBytes = async (
-    store,
-    bytes,
-    options,
-  ) => {
-    if (options.fileName === "boom.bin") {
-      throw new Error("simulated blob write failure");
-    }
-    return actual.saveAttachmentFromBytes(store, bytes, options);
-  };
-  return { ...actual, saveAttachmentFromBytes };
-});
 
 function localFilesSdk() {
   return {
@@ -577,11 +563,13 @@ describe("bb tasks CLI", () => {
         ...(cursor === null ? [] : ["--cursor", cursor]),
         "--json",
       ]);
-      const page = JSON.parse(stdout(result)) as {
-        tasks: Array<{ id: string }>;
-        nextCursor: string | null;
-        limit: number;
-      };
+      const page = z
+        .object({
+          tasks: z.array(z.object({ id: z.string() })),
+          nextCursor: z.string().nullable(),
+          limit: z.number(),
+        })
+        .parse(JSON.parse(stdout(result)));
       expect(page.limit).toBe(37);
       expect(page.tasks.length).toBeLessThanOrEqual(37);
       for (const task of page.tasks) {
@@ -1379,7 +1367,7 @@ describe("bb tasks CLI", () => {
     const boomPath = join(directory, "boom.bin");
     const lastPath = join(directory, "last.txt");
     await writeFile(firstPath, "first", "utf8");
-    await writeFile(boomPath, "will fail at blob write", "utf8");
+    await mkdir(boomPath);
     await writeFile(lastPath, "last", "utf8");
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
@@ -1423,7 +1411,10 @@ describe("bb tasks CLI", () => {
         ),
       ).toEqual(["first.txt", "last.txt"]);
       expect(payload.failedAttachments).toEqual([
-        { path: boomPath, error: "simulated blob write failure" },
+        {
+          path: boomPath,
+          error: `attachment source is not a file: ${boomPath}`,
+        },
       ]);
       const listed = JSON.parse(
         stdout(await harness.runCli(["attachment", "list", "MIX-1", "--json"])),
@@ -1445,7 +1436,7 @@ describe("bb tasks CLI", () => {
       expect(human.stdout).toContain("Created MIX-2");
       expect(human.stdout).toContain("Attached first.txt");
       expect(human.stdout).toContain(
-        `Failed to attach ${boomPath}: simulated blob write failure`,
+        `Failed to attach ${boomPath}: attachment source is not a file: ${boomPath}`,
       );
       expect(human.stdout).toContain(
         `Retry with: bb tasks attachment add MIX-2 --file ${boomPath}`,

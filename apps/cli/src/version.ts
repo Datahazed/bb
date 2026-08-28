@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 const BB_APP_VERSION_FALLBACK = "0.0.0-dev";
 const PARENT_LOOKUP_MAX_DEPTH = 8;
@@ -10,27 +11,17 @@ interface ResolveBbAppVersionArgs {
   fromDir: string;
 }
 
-interface BbAppPackageJson {
-  name: string;
-  version: string;
-}
-
-function isBbAppPackageJson(value: unknown): value is BbAppPackageJson {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "name" in value &&
-    typeof value.name === "string" &&
-    "version" in value &&
-    typeof value.version === "string" &&
-    value.version.length > 0
-  );
-}
+const bbAppPackageJsonSchema = z.object({
+  name: z.string(),
+  version: z.string().min(1),
+});
 
 function readBbAppVersionAt(packageJsonPath: string): string | null {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-    if (!isBbAppPackageJson(parsed) || parsed.name !== "bb-app") {
+    const parsed = bbAppPackageJsonSchema.parse(
+      JSON.parse(readFileSync(packageJsonPath, "utf8")),
+    );
+    if (parsed.name !== "bb-app") {
       return null;
     }
     return parsed.version;

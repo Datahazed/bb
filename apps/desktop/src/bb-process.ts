@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { posix as posixPath } from "node:path";
+import { z } from "zod";
 
 interface RuntimeLogBuffer {
   append(chunk: Buffer | string): void;
@@ -93,6 +94,7 @@ type ResolveWaitForProcessExitWithTimeout = (
 
 const APPIMAGE_BRIDGE_RELATIVE_PATH_ENV =
   "BB_DESKTOP_APPIMAGE_BRIDGE_RELATIVE_PATH";
+const processErrorSchema = z.object({ code: z.string() }).passthrough();
 
 async function runAppImageBridgeSupervisor(
   bridgeRelativePathEnv: string,
@@ -123,12 +125,8 @@ async function runAppImageBridgeSupervisor(
       process.kill(-supervisorPid, signal);
       return true;
     } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "ESRCH"
-      ) {
+      const parsedError = processErrorSchema.safeParse(error);
+      if (parsedError.success && parsedError.data.code === "ESRCH") {
         return false;
       }
       throw error;
@@ -152,11 +150,11 @@ async function runAppImageBridgeSupervisor(
           return true;
         }
       } catch (error) {
+        const parsedError = processErrorSchema.safeParse(error);
         if (
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          (error.code === "ENOENT" || error.code === "ESRCH")
+          parsedError.success &&
+          (parsedError.data.code === "ENOENT" ||
+            parsedError.data.code === "ESRCH")
         ) {
           continue;
         }

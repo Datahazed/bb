@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +28,20 @@ interface BbAppPackageJson {
   version: string;
 }
 
+const bbAppPackageJsonSchema: z.ZodType<BbAppPackageJson> = z.object({
+  name: z.literal("bb-app"),
+  version: z.string(),
+});
+
+const NODE_FILE_READ_SCRIPT =
+  "process.stdout.write(require('node:fs').readFileSync(process.argv[1], 'utf8'))";
+const NODE_DIRECTORY_CREATE_SCRIPT =
+  "require('node:fs').mkdirSync(process.argv[1], { recursive: true })";
+const NODE_FILE_REMOVE_SCRIPT =
+  "require('node:fs').rmSync(process.argv[1], { force: true })";
+const NODE_FILE_RENAME_SCRIPT =
+  "require('node:fs').renameSync(process.argv[1], process.argv[2])";
+
 async function defaultCommandRunner(
   command: string,
   args: readonly string[],
@@ -42,21 +56,21 @@ async function defaultCommandRunner(
 
 async function readBbAppPackageJson(
   packageRoot: string,
+  commandRunner: BbAppArtifactCommandRunner,
 ): Promise<BbAppPackageJson> {
-  const parsed: unknown = JSON.parse(
-    await readFile(join(packageRoot, "package.json"), "utf8"),
+  const parsed = bbAppPackageJsonSchema.safeParse(
+    JSON.parse(
+      await commandRunner(
+        process.execPath,
+        [NODE_FILE_READ_SCRIPT, join(packageRoot, "package.json")],
+        packageRoot,
+      ),
+    ),
   );
-  if (
-    parsed === null ||
-    typeof parsed !== "object" ||
-    !("name" in parsed) ||
-    parsed.name !== "bb-app" ||
-    !("version" in parsed) ||
-    typeof parsed.version !== "string"
-  ) {
+  if (!parsed.success) {
     throw new Error(`Expected a bb-app package at ${packageRoot}`);
   }
-  return { name: parsed.name, version: parsed.version };
+  return parsed.data;
 }
 
 interface ResolvedBbAppPackage {
@@ -67,6 +81,7 @@ interface ResolvedBbAppPackage {
 
 export async function resolveBbAppPackage(
   serverEntryUrl: string,
+  commandRunner: BbAppArtifactCommandRunner = defaultCommandRunner,
 ): Promise<ResolvedBbAppPackage> {
   const serverEntryDir = dirname(fileURLToPath(serverEntryUrl));
   const candidates: readonly { layout: "packaged" | "repo"; root: string }[] = [
@@ -78,7 +93,10 @@ export async function resolveBbAppPackage(
   ];
   for (const candidate of candidates) {
     try {
-      const packageJson = await readBbAppPackageJson(candidate.root);
+      const packageJson = await readBbAppPackageJson(
+        candidate.root,
+        commandRunner,
+      );
       return { ...candidate, packageJson };
     } catch {}
   }
@@ -105,7 +123,10 @@ export function createBbAppArtifactService(
   let artifactPromise: Promise<string> | undefined;
 
   function getResolvedPackage(): Promise<ResolvedBbAppPackage> {
-    resolvedPackagePromise ??= resolveBbAppPackage(serverEntryUrl);
+    resolvedPackagePromise ??= resolveBbAppPackage(
+      serverEntryUrl,
+      commandRunner,
+    );
     return resolvedPackagePromise;
   }
 
@@ -116,8 +137,16 @@ export function createBbAppArtifactService(
       cacheDir,
       `bb-app-${safeVersionFilePart(packageJson.version)}-protocol-${protocolVersion}.tgz`,
     );
-    await mkdir(cacheDir, { recursive: true });
-    await rm(`${tarballPath}.json`, { force: true });
+    await commandRunner(
+      process.execPath,
+      [NODE_DIRECTORY_CREATE_SCRIPT, cacheDir],
+      packageRoot,
+    );
+    await commandRunner(
+      process.execPath,
+      [NODE_FILE_REMOVE_SCRIPT, `${tarballPath}.json`],
+      packageRoot,
+    );
 
     if (resolved.layout === "repo") {
       const repoRoot = resolve(packageRoot, "../..");
@@ -138,13 +167,17 @@ export function createBbAppArtifactService(
       throw new Error("npm pack did not report a tarball name");
     }
     const packedPath = join(cacheDir, packedName);
-    await rename(packedPath, tarballPath);
+    await commandRunner(
+      process.execPath,
+      [NODE_FILE_RENAME_SCRIPT, packedPath, tarballPath],
+      packageRoot,
+    );
     return tarballPath;
   }
 
   return {
     getTarballPath(): Promise<string> {
-      artifactPromise ??= buildTarball().catch((error: unknown) => {
+      artifactPromise ??= buildTarball().catch((error) => {
         artifactPromise = undefined;
         throw error;
       });

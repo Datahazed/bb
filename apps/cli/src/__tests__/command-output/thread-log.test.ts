@@ -322,6 +322,7 @@ describe("bb thread log command output", () => {
       register,
     );
 
+    // SAFETY: The command prints a JSON array with a numeric seq field for every event.
     const printed = JSON.parse(
       String(vi.mocked(console.log).mock.calls[0]?.[0]),
     ) as Array<{ seq: number }>;

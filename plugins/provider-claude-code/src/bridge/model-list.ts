@@ -6,15 +6,18 @@ import { resolveClaudeCodeExecutable } from "./session-options.js";
 
 function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
-  return {
+  const options: Options = {
     cwd: process.cwd(),
     maxTurns: 0,
     persistSession: false,
     allowDangerouslySkipPermissions: true,
     permissionMode: "bypassPermissions",
     settingSources: [],
-    ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
   };
+  if (pathToClaudeCodeExecutable !== null) {
+    options.pathToClaudeCodeExecutable = pathToClaudeCodeExecutable;
+  }
+  return options;
 }
 
 export async function listClaudeCodeBridgeModels(

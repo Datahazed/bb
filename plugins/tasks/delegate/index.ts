@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  JsonObject,
+  PluginRpcHandlers,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type {
   Attachment,
@@ -14,10 +18,7 @@ import {
   publishTasksChanged,
   type TasksApiStore,
 } from "../api";
-import {
-  presetPermissionModeSchema,
-  type ThreadsChangedEvent,
-} from "../shared/contract";
+import { presetPermissionModeSchema } from "../shared/contract";
 import { delegationRpcContract } from "./contract";
 
 const MAX_DELEGATED_THREAD_TITLE_LENGTH = 120;
@@ -42,6 +43,16 @@ const presetExecutionSchema = z
     permissionMode: presetPermissionModeSchema,
   })
   .strict();
+
+const bbHttpErrorSchema = z.instanceof(Error).and(
+  z
+    .object({
+      code: z.string().nullable(),
+      status: z.number(),
+    })
+    .passthrough(),
+);
+type BbHttpError = z.infer<typeof bbHttpErrorSchema>;
 
 type DelegationErrorCode = "project_not_linked" | "spawn_target_invalid";
 
@@ -219,18 +230,6 @@ async function presetSpawnEnvironment(
   };
 }
 
-function isBbHttpError(
-  error: unknown,
-): error is Error & { code: string | null; status: number } {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (typeof error.code === "string" || error.code === null) &&
-    "status" in error &&
-    typeof error.status === "number"
-  );
-}
-
 const SPAWN_TARGET_ERROR_CODES = new Set([
   "host_not_found",
   "host_unavailable",
@@ -240,10 +239,9 @@ const SPAWN_TARGET_ERROR_CODES = new Set([
   "workspace_unavailable",
 ]);
 
-function mapSpawnTargetError(error: unknown, preset: Preset): never {
+function mapSpawnTargetError(error: BbHttpError, preset: Preset): never {
   if (
     preset.environmentKind === "new-worktree" &&
-    isBbHttpError(error) &&
     error.code !== null &&
     SPAWN_TARGET_ERROR_CODES.has(error.code)
   ) {
@@ -279,7 +277,7 @@ export function createSystemComment(
 }
 
 export function publishThreadsChanged(bb: BbPluginApi, taskId: string): void {
-  const payload: ThreadsChangedEvent = { taskId };
+  const payload: JsonObject = { taskId };
   bb.realtime.publish("threads:changed", payload);
 }
 
@@ -331,21 +329,26 @@ export function handlers(
       });
 
       const environment = await presetSpawnEnvironment(bb, preset);
-      const thread = await bb.sdk.threads
-        .spawn({
-          projectId: linkedBbProjectId,
-          environment,
-          providerId: execution.providerId,
-          model: execution.model,
-          reasoningLevel: execution.reasoningLevel,
-          ...(execution.serviceTier === null
-            ? {}
-            : { serviceTier: execution.serviceTier }),
-          permissionMode: execution.permissionMode,
-          title,
-          prompt,
-        })
-        .catch((error: unknown) => mapSpawnTargetError(error, preset));
+      const spawnInput: Parameters<typeof bb.sdk.threads.spawn>[0] = {
+        projectId: linkedBbProjectId,
+        environment,
+        providerId: execution.providerId,
+        model: execution.model,
+        reasoningLevel: execution.reasoningLevel,
+        permissionMode: execution.permissionMode,
+        title,
+        prompt,
+      };
+      if (execution.serviceTier !== null) {
+        spawnInput.serviceTier = execution.serviceTier;
+      }
+      const thread = await bb.sdk.threads.spawn(spawnInput).catch((error) => {
+        const parsedError = bbHttpErrorSchema.safeParse(error);
+        if (parsedError.success) {
+          mapSpawnTargetError(parsedError.data, preset);
+        }
+        throw error;
+      });
 
       const taskThread = store.transaction(() => {
         const attached = store.tasks.upsertTaskThread({

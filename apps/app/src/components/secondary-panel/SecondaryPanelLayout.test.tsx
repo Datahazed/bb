@@ -1,15 +1,22 @@
 // @vitest-environment jsdom
 
+import * as React from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Provider, createStore } from "jotai";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import * as browserViewBoundsSyncModule from "@/lib/browser-view-bounds-sync";
+import * as responsiveOverlayModule from "@bb/shared-ui/responsive-overlay";
+import * as resizablePanelsModule from "react-resizable-panels";
 import {
   PaneContext,
   type PaneContextValue,
   type PaneSecondaryPanelViewModel,
 } from "@/views/thread-detail/PaneContext";
+import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 import {
   SecondaryPanelLayout,
   type SecondaryPanelRenderArgs,
@@ -22,77 +29,66 @@ const panelGroupState = vi.hoisted(() => ({
   setLayout: vi.fn(),
 }));
 const drawerShellState = vi.hoisted(() => ({
-  onContentAnimationEnd: undefined as DrawerShellCallback | undefined,
+  onContentAnimationEnd:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as
+      | DrawerShellCallback
+      | undefined,
 }));
 
-vi.mock("@/lib/browser-view-bounds-sync", () => ({
-  dispatchBrowserViewBoundsSync: vi.fn(),
-}));
+vi.spyOn(browserViewBoundsSyncModule, "dispatchBrowserViewBoundsSync");
 
-vi.mock("jotai", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("jotai")>()),
-  useAtomValue: () => 40,
-}));
-
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-
-  const PanelGroup = React.forwardRef<
-    {
-      getLayout: () => number[];
-      setLayout: (layout: number[]) => void;
-    },
-    { children?: ReactNode }
-  >(({ children, ...props }, ref) => {
-    React.useImperativeHandle(
-      ref,
-      () => ({
-        getLayout: panelGroupState.getLayout,
-        setLayout: panelGroupState.setLayout,
-      }),
-      [],
-    );
-    return React.createElement(
-      "div",
-      { ...props, "data-testid": "panel-group" },
-      children,
-    );
-  });
-  PanelGroup.displayName = "MockPanelGroup";
-
-  const Panel = ({ children }: { children?: ReactNode }) =>
-    React.createElement("div", { "data-testid": "main-panel" }, children);
-
-  return { Panel, PanelGroup };
-});
-
-vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
-  const React = await import("react");
-  const actual =
-    await importOriginal<typeof import("@bb/shared-ui/responsive-overlay")>();
-
-  const PersistentResponsiveDrawerShell = ({
+const PanelGroup = React.forwardRef<
+  {
+    getLayout: () => number[];
+    setLayout: (layout: number[]) => void;
+  },
+  { children?: ReactNode }
+>(({ children, ...props }, ref) => {
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      getLayout: panelGroupState.getLayout,
+      setLayout: panelGroupState.setLayout,
+    }),
+    [],
+  );
+  return React.createElement(
+    "div",
+    { ...props, "data-testid": "panel-group" },
     children,
-    onContentAnimationEnd,
-    open,
-  }: {
-    children?: ReactNode;
-    onContentAnimationEnd?: DrawerShellCallback;
-    open: boolean;
-  }) => {
-    drawerShellState.onContentAnimationEnd = onContentAnimationEnd;
-    return React.createElement(
-      "div",
-      {
-        "data-open": String(open),
-        "data-testid": "responsive-drawer-shell",
-      },
-      children,
-    );
-  };
-
-  return { ...actual, PersistentResponsiveDrawerShell };
+  );
 });
+PanelGroup.displayName = "TestPanelGroup";
+
+const Panel = ({ children }: { children?: ReactNode }) =>
+  React.createElement("div", { "data-testid": "main-panel" }, children);
+
+vi.spyOn(resizablePanelsModule, "PanelGroup").mockImplementation(PanelGroup);
+vi.spyOn(resizablePanelsModule, "Panel").mockImplementation(Panel);
+
+type DrawerShellProps = Parameters<
+  typeof responsiveOverlayModule.PersistentResponsiveDrawerShell
+>[0];
+
+vi.spyOn(
+  responsiveOverlayModule,
+  "PersistentResponsiveDrawerShell",
+).mockImplementation(
+  ({ children, onContentAnimationEnd, open }: DrawerShellProps) => {
+    drawerShellState.onContentAnimationEnd = onContentAnimationEnd;
+    return createPortal(
+      React.createElement(
+        "div",
+        {
+          "data-open": String(open),
+          "data-testid": "responsive-drawer-shell",
+        },
+        children,
+      ),
+      document.body,
+    );
+  },
+);
 
 interface QueuedAnimationFrames {
   cancelAnimationFrame: ReturnType<typeof vi.spyOn>;
@@ -148,31 +144,35 @@ function withHostedPane(
 
 function renderLayout(args: RenderLayoutArgs) {
   let renderArgs = args;
+  const store = createStore();
+  store.set(secondaryPanelWidthPercentAtom, 40);
   const renderContent = () =>
     withHostedPane(
-      <CompactViewportOverrideProvider
-        isCompactViewport={renderArgs.isCompactViewport}
-      >
-        <SecondaryPanelLayout
-          open={renderArgs.open}
-          onToggle={noop}
-          onClose={noop}
-          panelGroupKey={renderArgs.panelGroupKey}
-          resetKey={renderArgs.resetKey}
-          contentKey={renderArgs.resetKey}
-          drawerLabel="Details"
-          drawerFallback={<div data-testid="drawer-fallback" />}
-          mainPanelId="test-main-panel"
-          main={<main data-testid="main-content" />}
-          collapse={
-            renderArgs.collapseActive === undefined
-              ? undefined
-              : { active: renderArgs.collapseActive, onToggle: noop }
-          }
-          renderPanel={renderArgs.renderPanel}
-          composerHost={null}
-        />
-      </CompactViewportOverrideProvider>,
+      <Provider store={store}>
+        <CompactViewportOverrideProvider
+          isCompactViewport={renderArgs.isCompactViewport}
+        >
+          <SecondaryPanelLayout
+            open={renderArgs.open}
+            onToggle={noop}
+            onClose={noop}
+            panelGroupKey={renderArgs.panelGroupKey}
+            resetKey={renderArgs.resetKey}
+            contentKey={renderArgs.resetKey}
+            drawerLabel="Details"
+            drawerFallback={<div data-testid="drawer-fallback" />}
+            mainPanelId="test-main-panel"
+            main={<main data-testid="main-content" />}
+            collapse={
+              renderArgs.collapseActive === undefined
+                ? undefined
+                : { active: renderArgs.collapseActive, onToggle: noop }
+            }
+            renderPanel={renderArgs.renderPanel}
+            composerHost={null}
+          />
+        </CompactViewportOverrideProvider>
+      </Provider>,
       renderArgs.isFocusedHosted,
     );
   const view = render(renderContent());

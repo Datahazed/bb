@@ -72,7 +72,21 @@ interface SecondaryPanelLayoutProps {
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   renderHostedPanel?: (panel: ReactNode) => ReactNode;
   composerHost: PluginComposerHost | null;
+  dependencies?: SecondaryPanelLayoutDependencies;
 }
+
+export interface SecondaryPanelLayoutDependencies {
+  Panel: typeof Panel;
+  PanelGroup: typeof PanelGroup;
+  ResponsiveDrawerShell: typeof PersistentResponsiveDrawerShell;
+}
+
+const defaultSecondaryPanelLayoutDependencies: SecondaryPanelLayoutDependencies =
+  {
+    Panel,
+    PanelGroup,
+    ResponsiveDrawerShell: PersistentResponsiveDrawerShell,
+  };
 
 export function SecondaryPanelLayout({
   open,
@@ -90,6 +104,7 @@ export function SecondaryPanelLayout({
   renderPanel,
   renderHostedPanel,
   composerHost,
+  dependencies = defaultSecondaryPanelLayoutDependencies,
 }: SecondaryPanelLayoutProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
@@ -338,7 +353,7 @@ export function SecondaryPanelLayout({
   return (
     <>
       <div className="flex min-h-0 w-full min-w-0 flex-1">
-        <PanelGroup
+        <dependencies.PanelGroup
           key={panelGroupKey ?? resetKey}
           ref={horizontalPanelGroupRef}
           data-split-resize-grid-root=""
@@ -349,7 +364,7 @@ export function SecondaryPanelLayout({
             ...getPanelCollapseTransitionStyle(transitionsReady),
           }}
         >
-          <Panel
+          <dependencies.Panel
             id={mainPanelId}
             {...(collapse === undefined
               ? {}
@@ -360,12 +375,12 @@ export function SecondaryPanelLayout({
             className="min-w-0 overflow-clip"
           >
             {mainContent}
-          </Panel>
+          </dependencies.Panel>
           {inlinePanel}
-        </PanelGroup>
+        </dependencies.PanelGroup>
       </div>
       {renderAsDrawer ? (
-        <PersistentResponsiveDrawerShell
+        <dependencies.ResponsiveDrawerShell
           open={open}
           onOpenChange={(nextOpen) => {
             if (!nextOpen) {
@@ -379,7 +394,7 @@ export function SecondaryPanelLayout({
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {isPanelRealized ? drawerPanel : drawerFallback}
           </div>
-        </PersistentResponsiveDrawerShell>
+        </dependencies.ResponsiveDrawerShell>
       ) : null}
     </>
   );

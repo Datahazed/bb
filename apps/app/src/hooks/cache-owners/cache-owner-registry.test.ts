@@ -45,7 +45,7 @@ const DEPRECATED_CACHE_SHIM_MODULES = new Set([
 
 const QUERY_KEYS_MODULE_PATH = "hooks/queries/query-keys";
 
-const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
+const CACHE_OWNER_QUERY_KEY_IMPORTS = {
   "hooks/cache-owners/cache-invalidation-groups.ts": [
     "allProjectPathsQueryKeyPrefix",
     "allProjectSourceBranchesQueryKeyPrefix",
@@ -253,7 +253,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
   ],
-};
+} satisfies CacheOwnerQueryKeyImportRegistry;
 
 function getSourceRoot(): string {
   return path.resolve(new URL("../../", import.meta.url).pathname);
@@ -454,7 +454,9 @@ function collectCacheOwnerQueryKeyImportViolations(): SourceFileViolation[] {
         actualImportsByFile,
         relativePath,
       );
-      const allowedImports = CACHE_OWNER_QUERY_KEY_IMPORTS[relativePath];
+      const allowedImports = Object.entries(CACHE_OWNER_QUERY_KEY_IMPORTS).find(
+        ([registeredPath]) => registeredPath === relativePath,
+      )?.[1];
       const allowedImportSet = allowedImports
         ? new Set(allowedImports)
         : undefined;

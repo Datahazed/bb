@@ -1,30 +1,85 @@
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+type ErrorFunction = (...args: never[]) => never;
+type ErrorValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ErrorFunction
+  | ErrorRecord
+  | ErrorValue[];
+type ErrorRecord = { readonly [key: string]: ErrorValue };
+
+interface ErrorExtractionOptions {
+  readonly legacyKeys?: readonly string[];
 }
 
-export function toRecord(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
+function isText<T>(value: T): value is T & string {
+  return Object.prototype.toString.call(value) === "[object String]";
 }
 
-export function extractErrorMessage(
-  value: unknown,
-  opts?: { legacyKeys?: readonly string[] },
+function isFunction<T>(value: T): value is T & ErrorFunction {
+  const tag = Object.prototype.toString.call(value);
+  return tag === "[object Function]" || tag === "[object AsyncFunction]";
+}
+
+function isRecord<T>(value: T): value is T & ErrorRecord {
+  return Object(value) === value && !Array.isArray(value) && !isFunction(value);
+}
+
+function parseErrorValue<T>(value: T): ErrorValue | null {
+  if (isText(value) || isFunction(value)) return value;
+  if (Array.isArray(value)) {
+    const parsedItems: ErrorValue[] = [];
+    for (const item of value) {
+      const parsedItem = parseErrorValue(item);
+      if (parsedItem !== null) parsedItems.push(parsedItem);
+    }
+    return parsedItems;
+  }
+  if (!isRecord(value)) return null;
+  const parsedRecord: Record<string, ErrorValue> = {};
+  const keys = new Set([
+    ...Object.keys(value),
+    "body",
+    "detail",
+    "headers",
+    "message",
+    "name",
+    "status",
+  ]);
+  for (const key of keys) {
+    const parsedValue = parseErrorValue(value[key]);
+    if (parsedValue !== null) parsedRecord[key] = parsedValue;
+  }
+  return parsedRecord;
+}
+
+export function toRecord<T>(value: T): ErrorRecord | null {
+  const parsedValue = parseErrorValue(value);
+  return parsedValue !== null && isRecord(parsedValue) ? parsedValue : null;
+}
+
+export function extractErrorMessage<T>(
+  value: T,
+  opts?: ErrorExtractionOptions,
 ): string | null {
-  if (typeof value === "string") {
-    const normalized = value.replace(/\s+/g, " ").trim();
+  const parsedValue = parseErrorValue(value);
+  if (parsedValue === null) return null;
+  if (isText(parsedValue)) {
+    const normalized = parsedValue.replace(/\s+/g, " ").trim();
     if (normalized.length === 0) return null;
     return normalized;
   }
-  if (Array.isArray(value)) {
-    for (const item of value) {
+  if (Array.isArray(parsedValue)) {
+    for (const item of parsedValue) {
       const message = extractErrorMessage(item, opts);
       if (message) return message;
     }
     return null;
   }
-  const record = toRecord(value);
+  const record = toRecord(parsedValue);
   if (!record) return null;
-  if (typeof record.message === "string") {
+  if (isText(record.message)) {
     const message = extractErrorMessage(record.message, opts);
     if (message) return message;
   }

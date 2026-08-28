@@ -296,12 +296,12 @@ export function SkillsLibrary() {
             ? skill
             : {
                 ...skill,
-                ...(registryRanking === "trending"
-                  ? { installs: entry.installs }
-                  : {}),
                 topic: entry.topic,
                 summary: entry.summary,
               };
+        if (entry !== undefined && registryRanking === "trending") {
+          return { ...describedSkill, installs: entry.installs };
+        }
         if (describedSkill.stars !== null) return describedSkill;
         const stars = registryRepositoryStars.values.get(
           registryRepositoryKey(describedSkill.source),

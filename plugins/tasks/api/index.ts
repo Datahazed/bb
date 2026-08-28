@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  JsonObject,
+  PluginRpcHandlers,
+} from "@get-bb/plugin-sdk";
 import {
   createTasksStore,
   type Attachment as StoredAttachment,
@@ -12,19 +16,19 @@ import {
   removeAttachmentBlobs,
 } from "../attachments";
 import { deliverCommentToLatestAgent } from "../steer";
-import { isSideChatShapedThread } from "../shared/side-chat";
+import { "isSideChatShapedThread" as isSideChatThread } from "../shared/side-chat";
 import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
-  type ProjectsChangedEvent,
   type SidebarProjectSummary,
   type Task,
   type TaskPullRequest,
-  type TasksChangedEvent,
   type TasksDomainError,
   type TaskStatus,
-  type CommentsChangedEvent,
   type CommentProvider,
+  type CommentsChangedEvent,
+  type ProjectsChangedEvent,
+  type TasksChangedEvent,
 } from "../shared/contract";
 
 interface TaskLabelIdRow {
@@ -185,7 +189,7 @@ export function publishTasksChanged(
   taskId: string,
   projectId: string,
 ): void {
-  const payload: TasksChangedEvent = { taskId, projectId };
+  const payload: JsonObject = { taskId, projectId };
   bb.realtime.publish("tasks:changed", payload);
 }
 
@@ -193,7 +197,7 @@ export function publishProjectsChanged(
   bb: BbPluginApi,
   projectId: string | null,
 ): void {
-  const payload: ProjectsChangedEvent = { projectId };
+  const payload: JsonObject = { projectId };
   bb.realtime.publish("projects:changed", payload);
 }
 
@@ -202,10 +206,8 @@ export function publishCommentsChanged(
   taskId: string,
   notifiedCount?: number,
 ): void {
-  const payload: CommentsChangedEvent = {
-    taskId,
-    ...(notifiedCount === undefined ? {} : { notifiedCount }),
-  };
+  const payload: JsonObject = { taskId };
+  if (notifiedCount !== undefined) payload.notifiedCount = notifiedCount;
   bb.realtime.publish("comments:changed", payload);
 }
 
@@ -375,7 +377,7 @@ async function resolveAgentThreadInfo(
     [...threadIds].map(async (threadId) => {
       try {
         const thread = await bb.sdk.threads.get({ threadId });
-        const isSideChat = isSideChatShapedThread(thread);
+        const isSideChat = isSideChatThread(thread);
         const title = isSideChat
           ? undefined
           : [thread.title, thread.titleFallback].find(

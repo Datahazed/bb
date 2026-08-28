@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import type { JsonSchema, JsonValue } from "./types.js";
 
 export const WORKFLOW_CALL_CACHE_VERSION: "workflow-call-cache-v1" =
@@ -35,6 +36,7 @@ export type WorkflowCallResultStatus =
   | "incomplete";
 
 type NonNullJsonValue = Exclude<JsonValue, null>;
+type CanonicalizeInput = JsonValue | object | bigint | symbol | undefined;
 
 interface WorkflowCallResultCandidate<Result extends NonNullJsonValue> {
   status: WorkflowCallResultStatus;
@@ -59,22 +61,37 @@ function pathForKey(path: string, key: string): string {
   return `${path}[${quoted(key)}]`;
 }
 
-function canonicalizeValue(
-  value: unknown,
+function isSymbolKey(key: PropertyKey): key is symbol {
+  return Object.prototype.toString.call(key) === "[object Symbol]";
+}
+
+function isObjectValue<Value extends CanonicalizeInput>(
+  value: Value,
+): value is Value & object {
+  return value !== null && Object(value) === value;
+}
+
+function canonicalizeValue<Value extends CanonicalizeInput>(
+  value: Value,
   path: string,
   ancestors: WeakSet<object>,
 ): string {
   if (value === null) return "null";
-  if (typeof value === "string") return quoted(value);
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
+  const stringValue = z.string().safeParse(value);
+  if (stringValue.success) return quoted(stringValue.data);
+  const booleanValue = z.boolean().safeParse(value);
+  if (booleanValue.success) return booleanValue.data ? "true" : "false";
+  const numberValue = z.union([z.number(), z.nan()]).safeParse(value);
+  if (numberValue.success) {
+    if (!Number.isFinite(numberValue.data)) {
       throw new Error(`${path} contains a non-finite number`);
     }
-    return Object.is(value, -0) ? "0" : String(value);
+    return Object.is(numberValue.data, -0) ? "0" : String(numberValue.data);
   }
-  if (typeof value !== "object") {
-    throw new Error(`${path} is not JSON-compatible (${typeof value})`);
+  if (!isObjectValue(value)) {
+    throw new Error(
+      `${path} is not JSON-compatible (${Object.prototype.toString.call(value)})`,
+    );
   }
   if (ancestors.has(value)) throw new Error(`${path} contains a cycle`);
 
@@ -85,7 +102,7 @@ function canonicalizeValue(
         throw new Error(`${path} must use the standard Array prototype`);
       }
       for (const key of Reflect.ownKeys(value)) {
-        if (typeof key === "symbol") {
+        if (isSymbolKey(key)) {
           throw new Error(`${path} contains a symbol property`);
         }
         if (key === "length") continue;
@@ -131,7 +148,7 @@ function canonicalizeValue(
 
     const keys: string[] = [];
     for (const key of Reflect.ownKeys(value)) {
-      if (typeof key === "symbol") {
+      if (isSymbolKey(key)) {
         throw new Error(`${path} contains a symbol property`);
       }
       if (FORBIDDEN_KEYS.has(key)) {
@@ -164,7 +181,9 @@ function canonicalizeValue(
   }
 }
 
-export function canonicalizeJson(value: unknown): string {
+export function canonicalizeJson<Value extends CanonicalizeInput>(
+  value: Value,
+): string {
   return canonicalizeValue(value, "$", new WeakSet<object>());
 }
 

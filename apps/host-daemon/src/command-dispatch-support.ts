@@ -18,6 +18,7 @@ import type {
 } from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
+import { z } from "zod";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
@@ -115,9 +116,9 @@ export class ExpectedCommandDispatchError extends CommandDispatchError {
   }
 }
 
-export function isExpectedCommandDispatchError(
-  error: unknown,
-): error is ExpectedCommandDispatchError {
+export function isExpectedCommandDispatchError<T>(
+  error: T,
+): error is T & ExpectedCommandDispatchError {
   return error instanceof ExpectedCommandDispatchError;
 }
 
@@ -126,7 +127,7 @@ const EXPECTED_ONLINE_RPC_FAILURE_CODES = new Set([
   "provision_cancelled",
 ]);
 
-export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
+export function isExpectedOnlineRpcFailureError<T>(error: T): boolean {
   return (
     isExpectedCommandDispatchError(error) ||
     EXPECTED_ONLINE_RPC_FAILURE_CODES.has(getErrorCode(error))
@@ -182,19 +183,23 @@ export async function resolveRuntimeBridgeLaunch(
   };
 }
 
-export function getErrorCode(error: unknown): string {
+const commandErrorSchema = z.instanceof(Error).and(
+  z.object({
+    code: z.string().optional(),
+    syscall: z.string().optional(),
+  }),
+);
+
+export function getErrorCode<T>(error: T): string {
   if (error instanceof CommandDispatchError) {
     return error.code;
   }
   if (isStructuredSpawnMissingExecutableError(error)) {
     return "missing_executable";
   }
-  if (
-    error instanceof Error &&
-    "code" in error &&
-    typeof error.code === "string"
-  ) {
-    return error.code;
+  const parsedError = commandErrorSchema.safeParse(error);
+  if (parsedError.success && parsedError.data.code !== undefined) {
+    return parsedError.data.code;
   }
   if (isMessageOnlySpawnMissingExecutableError(error)) {
     return "missing_executable";
@@ -202,21 +207,16 @@ export function getErrorCode(error: unknown): string {
   return "command_failed";
 }
 
-function isStructuredSpawnMissingExecutableError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
+function isStructuredSpawnMissingExecutableError<T>(error: T): boolean {
+  const parsedError = commandErrorSchema.safeParse(error);
   return (
-    "code" in error &&
-    error.code === "ENOENT" &&
-    "syscall" in error &&
-    typeof error.syscall === "string" &&
-    error.syscall.startsWith("spawn")
+    parsedError.success &&
+    parsedError.data.code === "ENOENT" &&
+    parsedError.data.syscall?.startsWith("spawn") === true
   );
 }
 
-function isMessageOnlySpawnMissingExecutableError(error: unknown): boolean {
+function isMessageOnlySpawnMissingExecutableError<T>(error: T): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
@@ -248,18 +248,23 @@ export async function requireWorkspaceEnvironment(
     }
   }
 
-  return runtimeManager.ensureEnvironment({
+  const ensureEnvironmentArgs: Parameters<
+    RuntimeManager["ensureEnvironment"]
+  >[0] = {
     environmentId: args.environmentId,
-    ...(args.injectedSkillSources !== undefined
-      ? { injectedSkillSources: args.injectedSkillSources }
-      : {}),
-    ...(args.targetThreadId !== undefined
-      ? { targetThreadId: args.targetThreadId }
-      : {}),
-    ...(args.dataDir
-      ? { personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir) }
-      : {}),
     workspacePath: args.workspaceContext.workspacePath,
     workspaceProvisionType: args.workspaceContext.workspaceProvisionType,
-  });
+  };
+  if (args.injectedSkillSources !== undefined) {
+    ensureEnvironmentArgs.injectedSkillSources = args.injectedSkillSources;
+  }
+  if (args.targetThreadId !== undefined) {
+    ensureEnvironmentArgs.targetThreadId = args.targetThreadId;
+  }
+  if (args.dataDir) {
+    ensureEnvironmentArgs.personalWorkspaceRoot = getPersonalWorkspaceRoot(
+      args.dataDir,
+    );
+  }
+  return runtimeManager.ensureEnvironment(ensureEnvironmentArgs);
 }

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -10,6 +11,20 @@ import {
 const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 const PLUGIN_ID = "review-fixes";
+const globalCounterSchema = z.number().optional();
+
+declare global {
+  var __rfLoads: number | undefined;
+  var __rfDisposals: number | undefined;
+}
+
+function readGlobalCounter(
+  name: "__rfLoads" | "__rfDisposals",
+): number | undefined {
+  return globalCounterSchema.parse(
+    name === "__rfLoads" ? globalThis.__rfLoads : globalThis.__rfDisposals,
+  );
+}
 
 const FIXTURE_SOURCE = `
   import { defineRpcContract } from "@get-bb/plugin-sdk";
@@ -43,13 +58,12 @@ const FIXTURE_SOURCE = `
 describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
   let harness: TestAppHarness;
   let workDir: string;
-  const globals = globalThis as Record<string, unknown>;
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-review-fixes-"));
-    delete globals.__rfLoads;
-    delete globals.__rfDisposals;
+    globalThis.__rfLoads = undefined;
+    globalThis.__rfDisposals = undefined;
     const rootDir = join(workDir, "bb-plugin-review-fixes");
     await mkdir(rootDir, { recursive: true });
     await writeFile(
@@ -76,11 +90,11 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
   });
 
   it("enabling an already-running plugin disposes the previous instance instead of orphaning it", async () => {
-    expect(globals.__rfLoads).toBe(1);
+    expect(readGlobalCounter("__rfLoads")).toBe(1);
     const entry = await harness.pluginService.setEnabled(PLUGIN_ID, true);
     expect(entry?.status).toBe("running");
-    expect(globals.__rfLoads).toBe(2);
-    expect(globals.__rfDisposals).toBe(1);
+    expect(readGlobalCounter("__rfLoads")).toBe(2);
+    expect(readGlobalCounter("__rfDisposals")).toBe(1);
   });
 
   it("POST /plugins/:id/cli rejects cross-origin requests like the rpc dispatcher", async () => {

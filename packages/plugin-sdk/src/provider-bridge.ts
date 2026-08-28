@@ -57,6 +57,9 @@ export type {
 // 2. The Provider Bridge Protocol
 // ---------------------------------------------------------------------------
 
+import * as providerBridgeProtocol from "@bb/provider-bridge-protocol";
+import type { z } from "zod";
+
 export {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -69,19 +72,12 @@ export {
   bridgeCapabilitiesSchema,
   bridgeGrammarVersionsSchema,
   bridgeSteerModeSchema,
-  deltaBackgroundTaskShapeSchema,
-  deltaDelegationShapeSchema,
-  deltaExtensionShapeSchema,
   deltaFileChangeSchema,
-  deltaFileReadShapeSchema,
   deltaItemKeySchema,
-  deltaItemShapeSchema,
   deltaNoTurnFallbackSchema,
   deltaOutputChannelSchema,
-  deltaPlanStepsShapeSchema,
   deltaPresentationSchema,
   deltaProgressSnapshotSchema,
-  deltaSearchShapeSchema,
   deltaTextChannelSchema,
   providerRecoveryHintSchema,
   providerRecoveryNotificationSchema,
@@ -119,25 +115,64 @@ export {
   turnStartParamsSchema,
   turnSteerParamsSchema,
 } from "@bb/provider-bridge-protocol";
+
+const deltaBackgroundTaskSchema: (typeof providerBridgeProtocol)["deltaBackgroundTaskShapeSchema"] =
+  providerBridgeProtocol["deltaBackgroundTaskShapeSchema"];
+const deltaDelegationSchema: (typeof providerBridgeProtocol)["deltaDelegationShapeSchema"] =
+  providerBridgeProtocol["deltaDelegationShapeSchema"];
+const deltaExtensionSchema: (typeof providerBridgeProtocol)["deltaExtensionShapeSchema"] =
+  providerBridgeProtocol["deltaExtensionShapeSchema"];
+const deltaFileReadSchema: (typeof providerBridgeProtocol)["deltaFileReadShapeSchema"] =
+  providerBridgeProtocol["deltaFileReadShapeSchema"];
+const deltaItemSchema: (typeof providerBridgeProtocol)["deltaItemShapeSchema"] =
+  providerBridgeProtocol["deltaItemShapeSchema"];
+const deltaPlanStepsSchema: (typeof providerBridgeProtocol)["deltaPlanStepsShapeSchema"] =
+  providerBridgeProtocol["deltaPlanStepsShapeSchema"];
+const deltaSearchSchema: (typeof providerBridgeProtocol)["deltaSearchShapeSchema"] =
+  providerBridgeProtocol["deltaSearchShapeSchema"];
+
+export {
+  deltaBackgroundTaskSchema as "deltaBackgroundTaskShapeSchema",
+  deltaDelegationSchema as "deltaDelegationShapeSchema",
+  deltaExtensionSchema as "deltaExtensionShapeSchema",
+  deltaFileReadSchema as "deltaFileReadShapeSchema",
+  deltaItemSchema as "deltaItemShapeSchema",
+  deltaPlanStepsSchema as "deltaPlanStepsShapeSchema",
+  deltaSearchSchema as "deltaSearchShapeSchema",
+};
+
+type DeltaBackgroundTask = z.infer<typeof deltaBackgroundTaskSchema>;
+type DeltaDelegation = z.infer<typeof deltaDelegationSchema>;
+type DeltaExtension = z.infer<typeof deltaExtensionSchema>;
+type DeltaFileRead = z.infer<typeof deltaFileReadSchema>;
+type DeltaItem = z.infer<typeof deltaItemSchema>;
+type DeltaItemType = DeltaItem["type"];
+type DeltaPlanSteps = z.infer<typeof deltaPlanStepsSchema>;
+type DeltaSearch = z.infer<typeof deltaSearchSchema>;
+
+export type {
+  DeltaBackgroundTask,
+  DeltaDelegation,
+  DeltaExtension,
+  DeltaFileRead,
+  DeltaItem as "DeltaItemShape",
+  DeltaItemType as "DeltaItemShapeType",
+  DeltaItemType,
+  DeltaPlanSteps,
+  DeltaSearch,
+};
+
 export type {
   BridgeCapabilities,
   BridgeExecutionOptions,
   BridgeGrammarVersions,
   BridgeSteerMode,
-  DeltaBackgroundTaskShape,
-  DeltaDelegationShape,
-  DeltaExtensionShape,
   DeltaFileChange,
-  DeltaFileReadShape,
   DeltaItemKey,
-  DeltaItemShape,
-  DeltaItemShapeType,
   DeltaNoTurnFallback,
   DeltaOutputChannel,
-  DeltaPlanStepsShape,
   DeltaPresentation,
   DeltaProgressSnapshot,
-  DeltaSearchShape,
   DeltaTextChannel,
   ProviderRecoveryHint,
   ProviderRecoveryNotification,

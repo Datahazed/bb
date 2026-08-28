@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import type { JsonValue } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -9,6 +11,13 @@ import { createMockHubSocket } from "../../helpers/mock-hub-socket.js";
 
 const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
+const tokenResponseSchema = z.object({ token: z.string() });
+
+declare global {
+  var __releaseSecondChunk: Promise<void> | undefined;
+  var __validatedRpcCalls: number | undefined;
+  var __wireGen: number | undefined;
+}
 
 const WIRE_SOURCE = `
   import { defineRpcContract } from "@get-bb/plugin-sdk";
@@ -137,7 +146,7 @@ async function writePlugin(
 async function rpc(
   harness: TestAppHarness,
   method: string,
-  input: unknown,
+  input: JsonValue,
   init: { origin?: string; contentType?: string | null } = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {};
@@ -318,7 +327,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       { method: "POST" },
     );
     expect(issued.status).toBe(200);
-    const { token } = (await issued.json()) as { token: string };
+    const { token } = tokenResponseSchema.parse(await issued.json());
     expect(token).toMatch(/^[0-9a-f]{64}$/);
 
     const malformed = await harness.app.request(
@@ -351,7 +360,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         body: JSON.stringify({ rotate: true }),
       },
     );
-    const { token: nextToken } = (await rotated.json()) as { token: string };
+    const { token: nextToken } = tokenResponseSchema.parse(
+      await rotated.json(),
+    );
     expect(nextToken).not.toBe(token);
 
     const staleToken = await harness.app.request(
@@ -434,8 +445,8 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   });
 
   it("streams a foreign response body instead of buffering it", async () => {
-    let release!: () => void;
-    (globalThis as any).__releaseSecondChunk = new Promise<void>((resolve) => {
+    let release = () => {};
+    globalThis.__releaseSecondChunk = new Promise<void>((resolve) => {
       release = resolve;
     });
     try {
@@ -457,7 +468,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       expect(rest).toBe("second");
     } finally {
       release();
-      delete (globalThis as any).__releaseSecondChunk;
+      delete globalThis.__releaseSecondChunk;
     }
   });
 
@@ -558,7 +569,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   });
 
   it("rpc rejects invalid input before invocation and rejects invalid output", async () => {
-    delete (globalThis as Record<string, unknown>).__validatedRpcCalls;
+    delete globalThis.__validatedRpcCalls;
     const invalidInput = await rpc(harness, "validated", { value: "" });
     expect(invalidInput.status).toBe(400);
     expect(await invalidInput.json()).toMatchObject({
@@ -569,9 +580,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         issues: [{ path: ["value"] }],
       },
     });
-    expect(
-      (globalThis as Record<string, unknown>).__validatedRpcCalls,
-    ).toBeUndefined();
+    expect(globalThis.__validatedRpcCalls).toBeUndefined();
 
     const invalidOutput = await rpc(harness, "invalidOutput", null);
     expect(invalidOutput.status).toBe(500);
@@ -673,8 +682,10 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
     const installed = await harness.pluginService.installPath(genDir);
     expect(installed.status).toBe("running");
-    const firstGen = (globalThis as Record<string, unknown>)
-      .__wireGen as number;
+    const firstGen = globalThis.__wireGen;
+    if (firstGen === undefined) {
+      throw new Error("The generated plugin did not set its generation");
+    }
 
     let releaseBody!: () => void;
     const gate = new Promise<void>((resolveGate) => {
@@ -687,14 +698,15 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         controller.close();
       },
     });
+    const requestInit: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      duplex: "half",
+    };
     const responsePromise = harness.app.request(
       `${BASE}/api/v1/plugins/gen/rpc/gen`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-        duplex: "half",
-      } as RequestInit,
+      requestInit,
     );
     await new Promise((resolveTick) => setTimeout(resolveTick, 25));
     await harness.pluginService.reload("gen");

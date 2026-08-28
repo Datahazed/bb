@@ -249,10 +249,7 @@ function parseColorValue(input: string): Color | null {
   return mixColors(space, first, second);
 }
 
-function normalizeWeights(
-  first: MixOperand,
-  second: MixOperand,
-): { p1: number; p2: number; alphaMultiplier: number } {
+function normalizeWeights(first: MixOperand, second: MixOperand) {
   const p1 =
     first.percentage ??
     (second.percentage === null ? 50 : 100 - second.percentage);
@@ -649,7 +646,7 @@ export function buildNativeThemeModel(
         }
       }
     }
-    const resolveMode = (mode: Mode): Record<string, string> => {
+    const resolveMode = (mode: Mode) => {
       const tokens = cascade(mode, [baseRules, mobileRules, paletteRules]);
       const resolved: Record<string, string> = {};
       for (const name of colorNames) {

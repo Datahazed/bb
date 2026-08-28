@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { jsonValueSchema, type JsonObject, type JsonValue } from "@bb/domain";
 
 interface PluginSdkDeclarations {
   root: string;
@@ -22,7 +23,7 @@ export function loadPluginSdkDeclarations(): Promise<PluginSdkDeclarations> {
 }
 
 async function loadUncached(): Promise<PluginSdkDeclarations> {
-  if (typeof __BB_PLUGIN_SDK_DTS_JSON__ === "string") {
+  if (__BB_PLUGIN_SDK_DTS_JSON__ !== undefined) {
     return parseDeclarations(__BB_PLUGIN_SDK_DTS_JSON__);
   }
   const typesDir = findWorkspaceBundledTypesDir();
@@ -41,18 +42,25 @@ async function loadUncached(): Promise<PluginSdkDeclarations> {
 }
 
 function parseDeclarations(json: string): PluginSdkDeclarations {
-  const parsed: unknown = JSON.parse(json);
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("root" in parsed) ||
-    !("app" in parsed) ||
-    typeof parsed.root !== "string" ||
-    typeof parsed.app !== "string"
-  ) {
+  const parsed: JsonValue = jsonValueSchema.parse(JSON.parse(json));
+  if (!isJsonObject(parsed)) {
     throw new Error("Inlined plugin SDK declarations have an unexpected shape");
   }
-  return { root: parsed.root, app: parsed.app };
+  return {
+    root: parseStringValue(parsed.root),
+    app: parseStringValue(parsed.app),
+  };
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function parseStringValue(value: JsonValue): string {
+  if (value === undefined || value !== String(value)) {
+    throw new Error("Inlined plugin SDK declarations have an unexpected shape");
+  }
+  return value;
 }
 
 function moduleDir(): string {

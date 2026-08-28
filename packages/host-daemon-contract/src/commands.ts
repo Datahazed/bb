@@ -22,6 +22,7 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   providerNativeRootSetSchema,
+  type JsonValue,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
@@ -890,7 +891,6 @@ const environmentProvisionCancelCommandSchema =
 const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("environment.destroy"),
-    /** Maximum time in ms to wait for the teardown script. */
     teardownTimeoutMs: z.number().int().positive(),
   })
   .strict();
@@ -1850,6 +1850,7 @@ function hostDaemonCommandDescriptorsForTransport<
 function hostDaemonCommandTypesForTransport<
   const Transport extends HostDaemonCommandTransport,
 >(transport: Transport): HostDaemonCommandTypeForTransport<Transport>[] {
+  // SAFETY: Each registry descriptor has a command type for the selected transport.
   return hostDaemonCommandDescriptorsForTransport(transport).map(
     (descriptor) => descriptor.type,
   ) as HostDaemonCommandTypeForTransport<Transport>[];
@@ -1863,6 +1864,7 @@ function hostDaemonCommandSchemaForTransport<
   const schemas = hostDaemonCommandDescriptorsForTransport(transport).map(
     (descriptor) => descriptor.schema,
   );
+  // SAFETY: Each transport registry contains at least two command schemas.
   return z.union(
     schemas as [
       HostDaemonSchemaForTransport<Transport>,
@@ -1875,6 +1877,7 @@ function hostDaemonCommandSchemaForTransport<
 function hostDaemonResultSchemaByTypeForTransport<
   const Transport extends HostDaemonCommandTransport,
 >(transport: Transport): HostDaemonResultSchemaMapForTransport<Transport> {
+  // SAFETY: The registry maps every command type to its matching result schema.
   return Object.fromEntries(
     hostDaemonCommandDescriptorsForTransport(transport).map((descriptor) => [
       descriptor.type,
@@ -1891,40 +1894,42 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES =
 const hostDaemonSettledCommandTypes = new Set<string>(
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
 );
-const hostDaemonOnlineRpcCommandTypes = new Set<string>(
-  HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
-);
-
 function isHostDaemonSettledCommandType(
   type: string,
 ): type is HostDaemonSettledCommandType {
   return hostDaemonSettledCommandTypes.has(type);
 }
 
-function isHostDaemonOnlineRpcCommandType(
-  type: string,
-): type is HostDaemonOnlineRpcCommandType {
-  return hostDaemonOnlineRpcCommandTypes.has(type);
-}
-
-function isHostDaemonSettledCommandTypeValue(
-  value: unknown,
-): value is HostDaemonSettledCommandType {
-  return typeof value === "string" && isHostDaemonSettledCommandType(value);
-}
-
-function isHostDaemonOnlineRpcCommandTypeValue(
-  value: unknown,
-): value is HostDaemonOnlineRpcCommandType {
-  return typeof value === "string" && isHostDaemonOnlineRpcCommandType(value);
-}
-
-export const hostDaemonSettledCommandTypeSchema =
-  z.custom<HostDaemonSettledCommandType>(isHostDaemonSettledCommandTypeValue);
-const hostDaemonOnlineRpcCommandTypeSchema =
-  z.custom<HostDaemonOnlineRpcCommandType>(
-    isHostDaemonOnlineRpcCommandTypeValue,
+function parseHostDaemonSettledCommandTypeValue(
+  value: string,
+): HostDaemonSettledCommandType {
+  const commandType = HOST_DAEMON_SETTLED_COMMAND_TYPES.find(
+    (candidate) => candidate === value,
   );
+  if (commandType === undefined) {
+    throw new Error(`Unknown settled host daemon command type: ${value}`);
+  }
+  return commandType;
+}
+
+function parseHostDaemonOnlineRpcCommandTypeValue(
+  value: string,
+): HostDaemonOnlineRpcCommandType {
+  const commandType = HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES.find(
+    (candidate) => candidate === value,
+  );
+  if (commandType === undefined) {
+    throw new Error(`Unknown online RPC host daemon command type: ${value}`);
+  }
+  return commandType;
+}
+
+export const hostDaemonSettledCommandTypeSchema = z
+  .string()
+  .transform(parseHostDaemonSettledCommandTypeValue);
+const hostDaemonOnlineRpcCommandTypeSchema = z
+  .string()
+  .transform(parseHostDaemonOnlineRpcCommandTypeValue);
 
 export const hostDaemonCommandSchema =
   hostDaemonCommandSchemaForTransport("settled");
@@ -2015,11 +2020,11 @@ export function parseHostDaemonCommandResultForCommand<
   TCommand extends HostDaemonCommand,
 >(
   command: TCommand,
-  value: unknown,
+  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
 ): HostDaemonCommandResultForCommand<TCommand>;
 export function parseHostDaemonCommandResultForCommand(
   command: HostDaemonCommand,
-  value: unknown,
+  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
 ): HostDaemonCommandResultForCommand {
   return hostDaemonCommandResultSchemaByType[command.type].parse(value);
 }
@@ -2028,21 +2033,24 @@ export function parseHostDaemonOnlineRpcResultForCommand<
   TCommand extends HostDaemonOnlineRpcCommand,
 >(
   command: TCommand,
-  value: unknown,
+  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
 ): HostDaemonOnlineRpcResultForCommand<TCommand>;
 export function parseHostDaemonOnlineRpcResultForCommand(
   command: HostDaemonOnlineRpcCommand,
-  value: unknown,
+  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
 ): HostDaemonOnlineRpcResultForCommand {
   return hostDaemonOnlineRpcResultSchemaByType[command.type].parse(value);
 }
 
 export function parseHostDaemonRpcResultForCommand<
   TCommand extends HostDaemonRpcCommand,
->(command: TCommand, value: unknown): HostDaemonRpcResultForCommand<TCommand>;
+>(
+  command: TCommand,
+  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
+): HostDaemonRpcResultForCommand<TCommand>;
 export function parseHostDaemonRpcResultForCommand(
   command: HostDaemonRpcCommand,
-  value: unknown,
+  value: JsonValue | HostDaemonCommandResult | HostDaemonOnlineRpcResult,
 ): HostDaemonRpcResultForCommand {
   if (isHostDaemonCommand(command)) {
     return parseHostDaemonCommandResultForCommand(command, value);

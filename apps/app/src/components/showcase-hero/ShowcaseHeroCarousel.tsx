@@ -29,6 +29,15 @@ const ORBIT_POSITIONS: readonly CSSProperties[] = [
   { top: "82%", right: 0 },
 ];
 
+interface ShowcaseChipStyle extends CSSProperties {
+  "--bb-hero-drift-delay": string;
+  "--bb-hero-drift-duration": string;
+}
+
+interface ShowcaseProgressStyle extends CSSProperties {
+  "--bb-hero-slide-duration": string;
+}
+
 export interface ShowcaseHeroCopy {
   ariaLabel: string;
   headlineLead: string;
@@ -94,11 +103,13 @@ export function ShowcaseHeroCarousel({
     !autoplay || reducedMotion || interacting || composing || documentHidden;
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const update = () => setDocumentHidden(document.hidden);
+    const browserDocument = globalThis.document;
+    if (browserDocument === undefined) return;
+    const update = () => setDocumentHidden(browserDocument.hidden);
     update();
-    document.addEventListener("visibilitychange", update);
-    return () => document.removeEventListener("visibilitychange", update);
+    browserDocument.addEventListener("visibilitychange", update);
+    return () =>
+      browserDocument.removeEventListener("visibilitychange", update);
   }, []);
 
   const composingRef = useRef(false);
@@ -181,7 +192,11 @@ export function ShowcaseHeroCarousel({
       onPointerLeave={() => setInteracting(false)}
       onFocusCapture={() => setInteracting(true)}
       onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+        const relatedTarget = event.relatedTarget;
+        if (
+          !(relatedTarget instanceof globalThis.Node) ||
+          !event.currentTarget.contains(relatedTarget)
+        ) {
           setInteracting(false);
         }
       }}
@@ -225,6 +240,20 @@ export function ShowcaseHeroCarousel({
             const position = ORBIT_POSITIONS[index];
             if (position === undefined) return null;
             const isActive = index === activeIndex;
+            const chipStyle: ShowcaseChipStyle = {
+              ...position,
+              "--bb-hero-drift-duration": `${6 + index * 0.7}s`,
+              "--bb-hero-drift-delay": `${index * 0.45}s`,
+              background: isActive
+                ? accentTint(archetype.accentToken, 12)
+                : "var(--canvas)",
+              borderColor: isActive
+                ? accentTint(archetype.accentToken, 40)
+                : neutral(13),
+              color: isActive
+                ? accentInk(archetype.accentToken, 62)
+                : neutral(46),
+            };
             return (
               <button
                 key={archetype.id}
@@ -232,22 +261,7 @@ export function ShowcaseHeroCarousel({
                 tabIndex={-1}
                 aria-hidden="true"
                 onClick={() => setActiveIndex(index)}
-                style={
-                  {
-                    ...position,
-                    "--bb-hero-drift-duration": `${6 + index * 0.7}s`,
-                    "--bb-hero-drift-delay": `${index * 0.45}s`,
-                    background: isActive
-                      ? accentTint(archetype.accentToken, 12)
-                      : "var(--canvas)",
-                    borderColor: isActive
-                      ? accentTint(archetype.accentToken, 40)
-                      : neutral(13),
-                    color: isActive
-                      ? accentInk(archetype.accentToken, 62)
-                      : neutral(46),
-                  } as CSSProperties
-                }
+                style={chipStyle}
                 className={cn(
                   "bb-hero-chip absolute z-10 hidden max-w-[9rem] cursor-pointer items-center gap-1.5",
                   "rounded-lg border px-2 py-1.5 text-2xs font-medium shadow-sm lg:flex",
@@ -289,19 +303,22 @@ export function ShowcaseHeroCarousel({
                 draftKey={composer.draftKey}
                 focusRequest={composerKey}
                 onSubmit={async (request) => {
-                  const thread = await createThread.mutateAsync({
+                  const threadInput: Parameters<
+                    typeof createThread.mutateAsync
+                  >[0] = {
                     input: request.input,
                     projectId: request.projectId,
                     providerId: request.providerId,
                     model: request.model,
                     reasoningLevel: request.reasoningLevel,
                     permissionMode: request.permissionMode,
-                    ...(request.serviceTier
-                      ? { serviceTier: request.serviceTier }
-                      : {}),
                     executionInputSources: request.executionInputSources,
                     environment: request.environment,
-                  });
+                  };
+                  if (request.serviceTier) {
+                    threadInput.serviceTier = request.serviceTier;
+                  }
+                  const thread = await createThread.mutateAsync(threadInput);
                   navigate(
                     getThreadRoutePath({
                       projectId: thread.projectId ?? request.projectId,
@@ -326,6 +343,10 @@ export function ShowcaseHeroCarousel({
           >
             {archetypes.map((archetype, index) => {
               const isActive = index === activeIndex;
+              const progressStyle: ShowcaseProgressStyle = {
+                "--bb-hero-slide-duration": `${SLIDE_MS}ms`,
+                background: `var(${archetype.accentToken})`,
+              };
               return (
                 <button
                   key={archetype.id}
@@ -356,12 +377,7 @@ export function ShowcaseHeroCarousel({
                         key={`${archetype.id}-${activeIndex}`}
                         data-paused={paused}
                         className="bb-hero-progress-fill block h-full w-full"
-                        style={
-                          {
-                            "--bb-hero-slide-duration": `${SLIDE_MS}ms`,
-                            background: `var(${archetype.accentToken})`,
-                          } as CSSProperties
-                        }
+                        style={progressStyle}
                       />
                     ) : null}
                   </span>

@@ -21,9 +21,11 @@ export function installDeprecatedAliases<T extends object>(
       get() {
         const existing = componentAliases.get(oldName);
         if (existing !== undefined) return existing;
+        /* SAFETY: Alias declarations map each old component name to a component member on the target. */
         const Member = target[newName] as ComponentType<never>;
-        function DeprecatedMember(props: Record<string, unknown>) {
+        function DeprecatedMember(props: Record<string, never>) {
           warnDeprecatedMember(oldName, newName);
+          /* SAFETY: React supplies the aliased component's props at runtime. */
           return createElement(Member, props as never);
         }
         componentAliases.set(oldName, DeprecatedMember);
