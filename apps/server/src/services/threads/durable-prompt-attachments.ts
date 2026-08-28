@@ -1,10 +1,13 @@
 import { getEnvironment } from "@bb/db";
 import type { PromptInput, Thread } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
-import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { remapDaemonFileRouteError } from "../hosts/daemon-file-response.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  threadEnvironmentUnavailableDetails,
+  throwThreadEnvironmentUnavailable,
+} from "../lib/lifecycle-api-errors.js";
 import { preparePromptAttachmentInputGroups } from "../projects/attachments.js";
 import { getActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
@@ -49,10 +52,8 @@ function resolveThreadPromptHostId(
     return hostId;
   }
 
-  throw new ApiError(
-    409,
-    "thread_environment_unavailable",
-    "Cannot import a host image because the thread has no execution host",
+  throwThreadEnvironmentUnavailable(
+    threadEnvironmentUnavailableDetails("never_attached", null),
   );
 }
 

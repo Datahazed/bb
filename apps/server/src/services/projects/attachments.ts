@@ -69,11 +69,21 @@ function sanitizeFilename(name: string): string {
   return base.length > 0 ? base : "attachment";
 }
 
-function buildStoredFilename(originalName: string): string {
+function buildStoredFilename(
+  originalName: string,
+  mimeType: string | undefined,
+): string {
   const sanitized = sanitizeFilename(originalName);
-  const extension = extname(sanitized);
+  const originalExtension = extname(sanitized);
+  const inferredExtension = mimeType
+    ? mimeTypes.extension(mimeType.split(";")[0]?.trim() ?? "")
+    : false;
+  const extension =
+    originalExtension || (inferredExtension ? `.${inferredExtension}` : "");
   const stem =
-    extension.length > 0 ? sanitized.slice(0, -extension.length) : sanitized;
+    originalExtension.length > 0
+      ? sanitized.slice(0, -originalExtension.length)
+      : sanitized;
   return `${stem}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`;
 }
 
@@ -178,9 +188,11 @@ function attachmentSizeLimitBytes(type: StoredPromptAttachmentType): number {
   return type === "localImage" ? IMAGE_LIMIT_BYTES : FILE_LIMIT_BYTES;
 }
 
-async function storeAttachmentBytes(
-  args: StoreAttachmentBytesArgs,
-): Promise<UploadedPromptAttachment> {
+function validateAttachmentMetadata(args: {
+  mimeType: string | undefined;
+  sizeBytes: number;
+  type: StoredPromptAttachmentType;
+}): void {
   if (args.type === "localImage" && isHeifImageMimeType(args.mimeType)) {
     throw new ApiError(
       400,
@@ -189,18 +201,28 @@ async function storeAttachmentBytes(
     );
   }
   const sizeLimit = attachmentSizeLimitBytes(args.type);
-  if (args.bytes.byteLength > sizeLimit) {
+  if (args.sizeBytes > sizeLimit) {
     throw new ApiError(
       400,
       "invalid_request",
       `Attachment exceeds ${Math.floor(sizeLimit / (1024 * 1024))}MB limit`,
     );
   }
+}
+
+async function storeAttachmentBytes(
+  args: StoreAttachmentBytesArgs,
+): Promise<UploadedPromptAttachment> {
+  validateAttachmentMetadata({
+    mimeType: args.mimeType,
+    sizeBytes: args.bytes.byteLength,
+    type: args.type,
+  });
 
   const dir = projectAttachmentDir(args.dataDir, args.projectId);
   await mkdir(dir, { recursive: true });
 
-  const storedName = buildStoredFilename(args.originalName);
+  const storedName = buildStoredFilename(args.originalName, args.mimeType);
   await writeFile(join(dir, storedName), args.bytes);
 
   return {
@@ -218,18 +240,43 @@ export async function storeAttachment(
   file: File,
 ): Promise<UploadedPromptAttachment> {
   const isImage = (file.type || "").startsWith("image/");
+  const type = isImage ? "localImage" : "localFile";
+  validateAttachmentMetadata({
+    mimeType: file.type || undefined,
+    sizeBytes: file.size,
+    type,
+  });
   return storeAttachmentBytes({
     bytes: new Uint8Array(await file.arrayBuffer()),
     dataDir,
     mimeType: file.type || undefined,
     originalName: file.name,
     projectId,
-    type: isImage ? "localImage" : "localFile",
+    type,
   });
 }
 
-function absoluteHostPath(path: string): boolean {
-  return isAbsolute(path) || win32.isAbsolute(path);
+function hostPathFromImageReference(pathOrUrl: string): string | null {
+  if (isAbsolute(pathOrUrl) || win32.isAbsolute(pathOrUrl)) {
+    return pathOrUrl;
+  }
+  if (!pathOrUrl.toLowerCase().startsWith("file:")) {
+    return null;
+  }
+
+  try {
+    const url = new URL(pathOrUrl);
+    if (url.protocol !== "file:") {
+      return null;
+    }
+    const pathname = decodeURIComponent(url.pathname);
+    if (/^\/[a-zA-Z]:\//u.test(pathname)) {
+      return pathname.slice(1);
+    }
+    return url.hostname ? `//${url.hostname}${pathname}` : pathname;
+  } catch {
+    return null;
+  }
 }
 
 function originalNameFromHostPath(path: string): string {
@@ -259,11 +306,6 @@ function decodeHostFileBytes(
   return bytes;
 }
 
-/**
- * Turn host-readable image paths into server-owned project attachments before
- * prompt input is persisted. URL-like image inputs and existing uploaded
- * attachment references retain their established behavior.
- */
 export async function preparePromptAttachmentInputGroups(
   args: PreparePromptAttachmentInputGroupsArgs,
 ): Promise<PromptInput[][]> {
@@ -275,35 +317,78 @@ export async function preparePromptAttachmentInputGroups(
     });
   }
 
-  const storedByHostPath = new Map<string, Promise<PromptInput>>();
+  const storedPathByHostPath = new Map<string, Promise<string | null>>();
   const prepareInput = async (input: PromptInput): Promise<PromptInput> => {
-    if (input.type !== "localImage" || !absoluteHostPath(input.path)) {
+    if (input.type !== "localImage") {
       return input;
     }
-    let stored = storedByHostPath.get(input.path);
-    if (!stored) {
-      stored = (async () => {
-        const hostFile = await args.readHostFile(input.path);
+    const hostPath = hostPathFromImageReference(input.path);
+    if (!hostPath) {
+      return input;
+    }
+    let storedPath = storedPathByHostPath.get(hostPath);
+    if (!storedPath) {
+      storedPath = (async () => {
+        let hostFile: HostDaemonOnlineRpcResultByType["host.read_file"];
+        try {
+          hostFile = await args.readHostFile(hostPath);
+        } catch (error) {
+          if (
+            error instanceof ApiError &&
+            error.body.code === "file_too_large"
+          ) {
+            return null;
+          }
+          throw error;
+        }
         const mimeType =
-          hostFile.mimeType || mimeTypes.lookup(input.path) || undefined;
+          hostFile.mimeType || mimeTypes.lookup(hostPath) || undefined;
+        if (
+          isHeifImageMimeType(mimeType) ||
+          hostFile.sizeBytes > IMAGE_LIMIT_BYTES
+        ) {
+          return null;
+        }
+        const bytes = decodeHostFileBytes(hostFile);
+        if (bytes.byteLength > IMAGE_LIMIT_BYTES) {
+          return null;
+        }
         const attachment = await storeAttachmentBytes({
-          bytes: decodeHostFileBytes(hostFile),
+          bytes,
           dataDir: args.dataDir,
           ...(mimeType ? { mimeType } : {}),
-          originalName: originalNameFromHostPath(input.path),
+          originalName: originalNameFromHostPath(hostPath),
           projectId: args.projectId,
           type: "localImage",
         });
-        return { type: "localImage", path: attachment.path };
+        return attachment.path;
       })();
-      storedByHostPath.set(input.path, stored);
+      storedPathByHostPath.set(hostPath, storedPath);
     }
-    return stored;
+    const path = await storedPath;
+    return path === null ? input : { ...input, path };
   };
 
-  return Promise.all(
-    args.inputGroups.map((input) => Promise.all(input.map(prepareInput))),
-  );
+  try {
+    return await Promise.all(
+      args.inputGroups.map((input) => Promise.all(input.map(prepareInput))),
+    );
+  } catch (error) {
+    const storedPaths = (
+      await Promise.allSettled(storedPathByHostPath.values())
+    ).flatMap((result) =>
+      result.status === "fulfilled" && result.value !== null
+        ? [result.value]
+        : [],
+    );
+    const attachmentDir = projectAttachmentDir(args.dataDir, args.projectId);
+    await Promise.allSettled(
+      storedPaths.map((path) =>
+        rm(resolveAttachmentPath(attachmentDir, path), { force: true }),
+      ),
+    );
+    throw error;
+  }
 }
 
 interface StoredAttachmentContent {

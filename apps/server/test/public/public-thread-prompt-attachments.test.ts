@@ -4,6 +4,7 @@ import {
   threadSchema,
   turnRequestEventDataSchema,
 } from "@bb/domain";
+import { threadEnvironmentUnavailableApiErrorSchema } from "@bb/server-contract";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
@@ -300,6 +301,13 @@ describe("public thread prompt attachments", () => {
           sourceThreadId: sourceThread.id,
           workspace: "reuse",
           origin: "cli",
+          agentContextSeed: [
+            {
+              type: "localImage",
+              path: absoluteImagePath,
+              visibility: "agent-only",
+            },
+          ],
           input: [
             { type: "text", text: "Inspect the fork image", mentions: [] },
             { type: "localImage", path: absoluteImagePath },
@@ -309,15 +317,175 @@ describe("public thread prompt attachments", () => {
 
       expect(response.status).toBe(201);
       const fork = threadSchema.parse(await readJson(response));
-      const storedImage = persistedImages(harness, fork.id)[0];
-      expect(storedImage?.path).toMatch(/^fork-\d+-[a-z0-9]{6}\.png$/u);
+      const storedImages = persistedImages(harness, fork.id);
+      expect(storedImages).toHaveLength(2);
+      expect(storedImages[0]).toMatchObject({
+        type: "localImage",
+        visibility: "agent-only",
+      });
+      expect(storedImages[1]).not.toHaveProperty("visibility");
+      expect(storedImages[0]?.path).toMatch(/^fork-\d+-[a-z0-9]{6}\.png$/u);
+      expect(storedImages[1]?.path).toBe(storedImages[0]?.path);
       await expect(
         readAttachment(
           harness.config.dataDir,
           project.id,
-          storedImage?.path ?? "missing",
+          storedImages[0]?.path ?? "missing",
         ),
       ).resolves.toMatchObject({ content: ONE_PIXEL_PNG });
+    });
+  });
+
+  it("returns a schema-valid lifecycle error when an absolute image has no execution host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-image-without-thread-environment",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/remote/project",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: null,
+        projectId: project.id,
+        status: "active",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [
+              {
+                type: "localImage",
+                path: "/remote/references/unavailable.png",
+              },
+            ],
+            model: "gpt-5",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      expect(
+        threadEnvironmentUnavailableApiErrorSchema.parse(
+          await readJson(response),
+        ),
+      ).toMatchObject({
+        code: "thread_environment_unavailable",
+        details: { environmentStatus: null, reason: "never_attached" },
+      });
+    });
+  });
+
+  it("preserves an oversized absolute image as a runtime path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-cli-oversized-image",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/remote/project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/remote/project",
+      });
+      const absoluteImagePath = "/remote/references/large.png";
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        handle: ({ command }) => {
+          if (command.type !== "host.read_file") {
+            throw new Error(`Unexpected host RPC ${command.type}`);
+          }
+          return {
+            ok: false,
+            errorCode: "file_too_large",
+            errorMessage: "File exceeds the host image transport limit",
+          };
+        },
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          input: [{ type: "localImage", path: absoluteImagePath }],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const thread = threadSchema.parse(await readJson(response));
+      expect(persistedImages(harness, thread.id)).toEqual([
+        { type: "localImage", path: absoluteImagePath },
+      ]);
+    });
+  });
+
+  it("returns a public 404 when a host image path does not exist", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-cli-missing-image",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/remote/project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/remote/project",
+      });
+      const absoluteImagePath = "/remote/references/missing.png";
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          if (command.type !== "host.read_file") {
+            throw new Error(`Unexpected host RPC ${command.type}`);
+          }
+          return {
+            ok: false,
+            errorCode: "ENOENT",
+            errorMessage: `Path does not exist: ${absoluteImagePath}`,
+          };
+        },
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          input: [{ type: "localImage", path: absoluteImagePath }],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(404);
+      expect(await readJson(response)).toMatchObject({
+        code: "ENOENT",
+        message: `Path does not exist: ${absoluteImagePath}`,
+      });
     });
   });
 });
