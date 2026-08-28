@@ -1208,7 +1208,7 @@ describe("generated managed branch names", () => {
   });
 
   it("returns no metadata when inference times out", async () => {
-    mockPendingMetadata(() => undefined);
+    mockMetadataPlans({ kind: "service-failure", code: "timeout" });
     const harness = await createTestAppHarness();
     registerTestAiService(harness);
     seedHostSession(harness.deps, { id: "host-timeout" });
@@ -1241,7 +1241,7 @@ describe("generated managed branch names", () => {
 
   it("retries once when metadata inference times out", async () => {
     mockMetadataPlans(
-      { kind: "pending", onStart: () => undefined },
+      { kind: "service-failure", code: "timeout" },
       metadataSuccess({ title: "Recovered Metadata" }),
     );
     const harness = await createTestAppHarness();
@@ -1294,6 +1294,9 @@ describe("generated managed branch names", () => {
     );
 
     await withFakeAiHarness(async (harness) => {
+      seedHostSession(harness.deps, {
+        id: "host-retry-service-unavailable",
+      });
       await expect(
         generateThreadMetadataWithOutcome(harness.deps, {
           input: textInput("Recover transient metadata provider failures"),
@@ -1318,6 +1321,7 @@ describe("generated managed branch names", () => {
       kind: "failure",
     });
     await withFakeAiHarness(async (harness) => {
+      seedHostSession(harness.deps, { id: "host-failed-metadata" });
       await expect(
         generateThreadMetadataWithOutcome(harness.deps, {
           input: textInput("Improve failed metadata generation behavior"),

@@ -6,6 +6,8 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
+const { mkdir, readFile, rename, rm } =
+  process.getBuiltinModule("node:fs/promises");
 
 export interface BbAppArtifactService {
   getTarballPath(): Promise<string>;
@@ -33,15 +35,6 @@ const bbAppPackageJsonSchema: z.ZodType<BbAppPackageJson> = z.object({
   version: z.string(),
 });
 
-const NODE_FILE_READ_SCRIPT =
-  "process.stdout.write(require('node:fs').readFileSync(process.argv[1], 'utf8'))";
-const NODE_DIRECTORY_CREATE_SCRIPT =
-  "require('node:fs').mkdirSync(process.argv[1], { recursive: true })";
-const NODE_FILE_REMOVE_SCRIPT =
-  "require('node:fs').rmSync(process.argv[1], { force: true })";
-const NODE_FILE_RENAME_SCRIPT =
-  "require('node:fs').renameSync(process.argv[1], process.argv[2])";
-
 async function defaultCommandRunner(
   command: string,
   args: readonly string[],
@@ -56,16 +49,9 @@ async function defaultCommandRunner(
 
 async function readBbAppPackageJson(
   packageRoot: string,
-  commandRunner: BbAppArtifactCommandRunner,
 ): Promise<BbAppPackageJson> {
   const parsed = bbAppPackageJsonSchema.safeParse(
-    JSON.parse(
-      await commandRunner(
-        process.execPath,
-        [NODE_FILE_READ_SCRIPT, join(packageRoot, "package.json")],
-        packageRoot,
-      ),
-    ),
+    JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")),
   );
   if (!parsed.success) {
     throw new Error(`Expected a bb-app package at ${packageRoot}`);
@@ -81,7 +67,6 @@ interface ResolvedBbAppPackage {
 
 export async function resolveBbAppPackage(
   serverEntryUrl: string,
-  commandRunner: BbAppArtifactCommandRunner = defaultCommandRunner,
 ): Promise<ResolvedBbAppPackage> {
   const serverEntryDir = dirname(fileURLToPath(serverEntryUrl));
   const candidates: readonly { layout: "packaged" | "repo"; root: string }[] = [
@@ -93,10 +78,7 @@ export async function resolveBbAppPackage(
   ];
   for (const candidate of candidates) {
     try {
-      const packageJson = await readBbAppPackageJson(
-        candidate.root,
-        commandRunner,
-      );
+      const packageJson = await readBbAppPackageJson(candidate.root);
       return { ...candidate, packageJson };
     } catch {}
   }
@@ -123,10 +105,7 @@ export function createBbAppArtifactService(
   let artifactPromise: Promise<string> | undefined;
 
   function getResolvedPackage(): Promise<ResolvedBbAppPackage> {
-    resolvedPackagePromise ??= resolveBbAppPackage(
-      serverEntryUrl,
-      commandRunner,
-    );
+    resolvedPackagePromise ??= resolveBbAppPackage(serverEntryUrl);
     return resolvedPackagePromise;
   }
 
@@ -137,16 +116,8 @@ export function createBbAppArtifactService(
       cacheDir,
       `bb-app-${safeVersionFilePart(packageJson.version)}-protocol-${protocolVersion}.tgz`,
     );
-    await commandRunner(
-      process.execPath,
-      [NODE_DIRECTORY_CREATE_SCRIPT, cacheDir],
-      packageRoot,
-    );
-    await commandRunner(
-      process.execPath,
-      [NODE_FILE_REMOVE_SCRIPT, `${tarballPath}.json`],
-      packageRoot,
-    );
+    await mkdir(cacheDir, { recursive: true });
+    await rm(`${tarballPath}.json`, { force: true });
 
     if (resolved.layout === "repo") {
       const repoRoot = resolve(packageRoot, "../..");
@@ -167,11 +138,7 @@ export function createBbAppArtifactService(
       throw new Error("npm pack did not report a tarball name");
     }
     const packedPath = join(cacheDir, packedName);
-    await commandRunner(
-      process.execPath,
-      [NODE_FILE_RENAME_SCRIPT, packedPath, tarballPath],
-      packageRoot,
-    );
+    await rename(packedPath, tarballPath);
     return tarballPath;
   }
 

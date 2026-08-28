@@ -7,7 +7,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@get-bb/plugin-sdk/testing";
 import {
   installTestPluginRuntime,
   renderSlot,
@@ -231,6 +234,8 @@ async function renderComposerWithTask(options?: {
     pluginId: "tasks",
     sdk: {
       threads: {
+        get: async ({ threadId }) =>
+          makeThreadResponse({ id: threadId, status: "active" }),
         send: async () => sendGate,
       },
     },
@@ -282,12 +287,18 @@ async function renderComposerWithTask(options?: {
     },
   );
   const editor = () => slot.container.querySelector<HTMLElement>(".tiptap")!;
-  const setEditorText = (value: string) => {
+  const setEditorText = async (value: string) => {
     editor().textContent = value;
     fireEvent.input(editor());
+    await waitFor(() =>
+      expect(
+        screen.getByRole<HTMLButtonElement>("button", { name: "Comment" })
+          .disabled,
+      ).toBe(value.trim().length === 0),
+    );
   };
   if (options?.body !== undefined) {
-    setEditorText(options.body);
+    await setEditorText(options.body);
   }
   return { store, task, harness, releaseSend, slot, editor };
 }

@@ -115,7 +115,7 @@ describe("commit message generation", () => {
       expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({
           attempts: 2,
-          model: "mock-fallback-model",
+          model: "codex/mock-fallback-model",
           reason: "transient-failure",
         }),
         "Commit message inference completed with fallback model",

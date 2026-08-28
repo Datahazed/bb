@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createStore } from "../api";
+import { registerAttachments, saveAttachmentFromBytes } from "../attachments";
 import plugin from "../server";
 import { registerTasksCli } from "./index";
 
@@ -1367,13 +1368,27 @@ describe("bb tasks CLI", () => {
     const boomPath = join(directory, "boom.bin");
     const lastPath = join(directory, "last.txt");
     await writeFile(firstPath, "first", "utf8");
-    await mkdir(boomPath);
+    await writeFile(boomPath, "will fail at blob write", "utf8");
     await writeFile(lastPath, "last", "utf8");
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: { files: localFilesSdk() },
     });
-    await plugin(bb);
+    const store = createStore(bb);
+    registerAttachments(bb, store.tasks);
+    registerTasksCli(
+      bb,
+      store,
+      { name: "tasks", version: "test" },
+      {
+        async saveAttachmentFromBytes(tasksStore, bytes, options) {
+          if (options.fileName === "boom.bin") {
+            throw new Error("simulated blob write failure");
+          }
+          return saveAttachmentFromBytes(tasksStore, bytes, options);
+        },
+      },
+    );
 
     try {
       stdout(
@@ -1411,10 +1426,7 @@ describe("bb tasks CLI", () => {
         ),
       ).toEqual(["first.txt", "last.txt"]);
       expect(payload.failedAttachments).toEqual([
-        {
-          path: boomPath,
-          error: `attachment source is not a file: ${boomPath}`,
-        },
+        { path: boomPath, error: "simulated blob write failure" },
       ]);
       const listed = JSON.parse(
         stdout(await harness.runCli(["attachment", "list", "MIX-1", "--json"])),
@@ -1436,7 +1448,7 @@ describe("bb tasks CLI", () => {
       expect(human.stdout).toContain("Created MIX-2");
       expect(human.stdout).toContain("Attached first.txt");
       expect(human.stdout).toContain(
-        `Failed to attach ${boomPath}: attachment source is not a file: ${boomPath}`,
+        `Failed to attach ${boomPath}: simulated blob write failure`,
       );
       expect(human.stdout).toContain(
         `Retry with: bb tasks attachment add MIX-2 --file ${boomPath}`,

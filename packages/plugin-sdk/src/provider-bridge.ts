@@ -116,6 +116,7 @@ export {
   turnSteerParamsSchema,
 } from "@bb/provider-bridge-protocol";
 
+// oxlint-disable anti-slop/no-shape-in-symbol-names
 const deltaBackgroundTaskSchema: (typeof providerBridgeProtocol)["deltaBackgroundTaskShapeSchema"] =
   providerBridgeProtocol["deltaBackgroundTaskShapeSchema"];
 const deltaDelegationSchema: (typeof providerBridgeProtocol)["deltaDelegationShapeSchema"] =
@@ -132,13 +133,13 @@ const deltaSearchSchema: (typeof providerBridgeProtocol)["deltaSearchShapeSchema
   providerBridgeProtocol["deltaSearchShapeSchema"];
 
 export {
-  deltaBackgroundTaskSchema as "deltaBackgroundTaskShapeSchema",
-  deltaDelegationSchema as "deltaDelegationShapeSchema",
-  deltaExtensionSchema as "deltaExtensionShapeSchema",
-  deltaFileReadSchema as "deltaFileReadShapeSchema",
-  deltaItemSchema as "deltaItemShapeSchema",
-  deltaPlanStepsSchema as "deltaPlanStepsShapeSchema",
-  deltaSearchSchema as "deltaSearchShapeSchema",
+  deltaBackgroundTaskSchema as deltaBackgroundTaskShapeSchema,
+  deltaDelegationSchema as deltaDelegationShapeSchema,
+  deltaExtensionSchema as deltaExtensionShapeSchema,
+  deltaFileReadSchema as deltaFileReadShapeSchema,
+  deltaItemSchema as deltaItemShapeSchema,
+  deltaPlanStepsSchema as deltaPlanStepsShapeSchema,
+  deltaSearchSchema as deltaSearchShapeSchema,
 };
 
 type DeltaBackgroundTaskShape = z.infer<typeof deltaBackgroundTaskSchema>;
@@ -155,11 +156,12 @@ export type {
   DeltaDelegationShape,
   DeltaExtensionShape,
   DeltaFileReadShape,
-  DeltaItem as "DeltaItemShape",
+  DeltaItem as DeltaItemShape,
   DeltaItemShapeType,
   DeltaPlanStepsShape,
   DeltaSearchShape,
 };
+// oxlint-enable anti-slop/no-shape-in-symbol-names
 
 export type {
   BridgeCapabilities,

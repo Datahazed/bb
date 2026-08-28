@@ -168,7 +168,6 @@ describe("bb thread log command output", () => {
     expect(output).toContain("steer pending");
     expect(getTimeline).toHaveBeenCalledWith({
       param: { id: "thread-log" },
-      query: {},
     });
     expect(getEvents).not.toHaveBeenCalled();
   });
@@ -495,7 +494,6 @@ describe("bb thread log command output", () => {
     expect(getEvents).not.toHaveBeenCalled();
     expect(getTimeline).toHaveBeenCalledWith({
       param: { id: "thread-log-self" },
-      query: {},
     });
     expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
   });

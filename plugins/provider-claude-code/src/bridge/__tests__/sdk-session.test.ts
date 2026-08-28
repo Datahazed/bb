@@ -1,12 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type {
   Options,
   Query,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import * as claudeSdk from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { installClaudeSdkDependencies } from "../claude-sdk-dependencies.js";
 
 const mockQueryInstance = {
   applyFlagSettings: vi.fn(),
@@ -19,6 +27,15 @@ const mockQueryInstance = {
 import { SdkSession, type SdkSessionOptions } from "../sdk-session.js";
 
 const queryMock = vi.fn();
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => {
+    const query = queryMock(params);
+    // SAFETY: The controlled query implements the SDK methods used by this test suite.
+    return query as Query;
+  },
+});
+
+afterAll(restoreClaudeSdkDependencies);
 
 const defaultOptions: SdkSessionOptions = {
   cwd: "/tmp/test",
@@ -71,11 +88,6 @@ function waitForAsyncWork(): Promise<void> {
 describe("SdkSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(claudeSdk, "query").mockImplementation((params) => {
-      const query = queryMock(params);
-      // SAFETY: The controlled query implements the SDK methods used by this test suite.
-      return query as Query;
-    });
     queryMock.mockImplementation(() => mockQueryInstance);
     mockQueryInstance.applyFlagSettings.mockResolvedValue(undefined);
     mockQueryInstance.setModel.mockResolvedValue(undefined);

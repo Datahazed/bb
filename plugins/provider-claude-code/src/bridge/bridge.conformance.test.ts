@@ -1,12 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import * as claudeSdk from "@anthropic-ai/claude-agent-sdk";
 import type { JsonObject } from "@bb/domain";
 import {
   experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
@@ -14,13 +13,16 @@ import {
   experimental_runBridgeConformance as runBridgeConformance,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import { installClaudeSdkDependencies } from "./claude-sdk-dependencies.js";
 
 const forkSessionMock = vi.fn();
 const queryMock = vi.fn();
-vi.spyOn(claudeSdk, "query").mockImplementation((params) => queryMock(params));
-vi.spyOn(claudeSdk, "forkSession").mockImplementation((sessionId, options) =>
-  forkSessionMock(sessionId, options),
-);
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => queryMock(params),
+  forkSession: (sessionId, options) => forkSessionMock(sessionId, options),
+});
+
+afterAll(restoreClaudeSdkDependencies);
 
 import { handleLine } from "./bridge.js";
 

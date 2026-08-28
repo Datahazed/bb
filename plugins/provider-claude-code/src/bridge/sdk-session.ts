@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import {
-  query,
   type CanUseTool,
   type McpSdkServerConfigWithInstance,
   type Options,
@@ -20,6 +19,7 @@ import {
   missingClaudeCliGuidance,
   translateMissingClaudeCliError,
 } from "./missing-cli-error.js";
+import { getClaudeSdkDependencies } from "./claude-sdk-dependencies.js";
 
 export interface SdkSessionOptions {
   cwd: string;
@@ -286,7 +286,7 @@ export class SdkSession {
     if (this.options.settings) sdkOptions.settings = this.options.settings;
 
     try {
-      this.query = query({
+      this.query = getClaudeSdkDependencies().query({
         prompt: this.createInputIterable(),
         options: sdkOptions,
       });

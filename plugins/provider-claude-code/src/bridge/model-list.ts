@@ -1,6 +1,7 @@
 import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import type { Options, Query } from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
+import { getClaudeSdkDependencies } from "./claude-sdk-dependencies.js";
 import { translateMissingClaudeCliError } from "./missing-cli-error.js";
 import { resolveClaudeCodeExecutable } from "./session-options.js";
 
@@ -26,9 +27,9 @@ export async function listClaudeCodeBridgeModels(
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  let session: ReturnType<typeof query>;
+  let session: Query;
   try {
-    session = query({
+    session = getClaudeSdkDependencies().query({
       prompt: ".",
       options: buildModelProbeOptions(env),
     });

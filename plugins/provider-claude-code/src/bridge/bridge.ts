@@ -33,7 +33,6 @@ import { randomUUID } from "node:crypto";
 import { join as joinPath, resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
-  forkSession,
   type CanUseTool,
   type HookCallback,
   type PermissionResult,
@@ -57,6 +56,7 @@ import {
 } from "../session-params.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
+import { getClaudeSdkDependencies } from "./claude-sdk-dependencies.js";
 import {
   claudeThreadForkParamsSchema,
   claudeThreadResumeParamsSchema,
@@ -2198,7 +2198,7 @@ async function handleThreadFork(
     if (params.sourceProviderCheckpointId !== undefined) {
       forkOptions.upToMessageId = params.sourceProviderCheckpointId;
     }
-    const forkResult = await forkSession(
+    const forkResult = await getClaudeSdkDependencies().forkSession(
       params.sourceProviderThreadId,
       forkOptions,
     );

@@ -9,7 +9,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type {
   CanUseTool,
   Query,
@@ -23,19 +31,21 @@ import {
   type RuntimePermissionPolicy,
   type ThreadEvent,
 } from "@bb/domain";
-import * as claudeSdk from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { installClaudeSdkDependencies } from "../claude-sdk-dependencies.js";
 
 const forkSessionMock = vi.fn();
 const queryMock = vi.fn();
-vi.spyOn(claudeSdk, "query").mockImplementation((params) => {
-  const query = queryMock(params);
-  // SAFETY: The controlled query implements the SDK methods used by this test suite.
-  return query as Query;
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => {
+    const query = queryMock(params);
+    // SAFETY: The controlled query implements the SDK methods used by this test suite.
+    return query as Query;
+  },
+  forkSession: (sessionId, options) => forkSessionMock(sessionId, options),
 });
-vi.spyOn(claudeSdk, "forkSession").mockImplementation((sessionId, options) =>
-  forkSessionMock(sessionId, options),
-);
+
+afterAll(restoreClaudeSdkDependencies);
 
 import { handleLine } from "../bridge.js";
 import { buildSessionOptions } from "../session-options.js";

@@ -861,6 +861,12 @@ function availableModel(model: string) {
   };
 }
 
+interface MutableExecutionOptions {
+  model: string;
+  reasoningLevel: "medium" | "high";
+  permissionMode: "accept-edits" | "auto";
+}
+
 describe("workflow resume cache integration", () => {
   const hosts: Array<ReturnType<typeof createFakePluginHost>["harness"]> = [];
 
@@ -871,10 +877,10 @@ describe("workflow resume cache integration", () => {
 
   function setup() {
     let childCount = 0;
-    const execution = {
+    const execution: MutableExecutionOptions = {
       model: "model-a",
-      reasoningLevel: "medium" as const,
-      permissionMode: "accept-edits" as const,
+      reasoningLevel: "medium",
+      permissionMode: "accept-edits",
     };
     let activeModels = [availableModel("model-a"), availableModel("model-b")];
     let selectedOnlyModels = [availableModel("retired-model")];
@@ -1393,8 +1399,8 @@ describe("workflow resume cache integration", () => {
     expect(test.childCount()).toBe(1);
 
     test.execution.model = "model-b";
-    test.execution.reasoningLevel = "medium";
-    test.execution.permissionMode = "accept-edits";
+    test.execution.reasoningLevel = "high";
+    test.execution.permissionMode = "auto";
     const changedSelection = await test.start(
       workflowSource(
         `return await agent("structured", { outputSchema: ${reorderedSchema} });`,

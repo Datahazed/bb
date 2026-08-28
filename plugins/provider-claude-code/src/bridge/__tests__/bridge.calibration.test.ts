@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import type {
   CanUseTool,
   PermissionResult,
@@ -9,7 +9,6 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import * as claudeSdk from "@anthropic-ai/claude-agent-sdk";
 import {
   type JsonObject,
   type JsonValue,
@@ -19,6 +18,7 @@ import {
 } from "@bb/domain";
 import { BRIDGE_INBOUND_REQUEST_METHODS } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
+import { installClaudeSdkDependencies } from "../claude-sdk-dependencies.js";
 
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
@@ -37,15 +37,17 @@ const jsonObjectSchema: z.ZodType<JsonObject> = z.record(
 
 const forkSessionMock = vi.fn();
 const queryMock = vi.fn();
-vi.spyOn(claudeSdk, "query").mockImplementation((params) => {
-  // SAFETY: This test invokes query only with the bridge's streaming prompt contract.
-  const query = queryMock(params as ScriptedClaudeQueryCall);
-  // SAFETY: The controlled query implements the SDK methods used by this test suite.
-  return query as Query;
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => {
+    // SAFETY: This test invokes query only with the bridge's streaming prompt contract.
+    const query = queryMock(params as ScriptedClaudeQueryCall);
+    // SAFETY: The controlled query implements the SDK methods used by this test suite.
+    return query as Query;
+  },
+  forkSession: (sessionId, options) => forkSessionMock(sessionId, options),
 });
-vi.spyOn(claudeSdk, "forkSession").mockImplementation((sessionId, options) =>
-  forkSessionMock(sessionId, options),
-);
+
+afterAll(restoreClaudeSdkDependencies);
 
 import { handleLine } from "../bridge.js";
 import {

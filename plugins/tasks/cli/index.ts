@@ -54,6 +54,14 @@ const ACTIVE_THREAD_STATUSES = new Set(["starting", "working"]);
 const DEFAULT_PROJECT_COLOR = "blue";
 const DEFAULT_LABEL_COLOR = "gray";
 
+interface TasksCliDependencies {
+  saveAttachmentFromBytes: typeof saveAttachmentFromBytes;
+}
+
+const defaultTasksCliDependencies: TasksCliDependencies = {
+  saveAttachmentFromBytes,
+};
+
 const ROOT_HELP = `Usage: bb tasks <command> [options]
 
 Commands:
@@ -867,6 +875,7 @@ async function runCreate(
   domain: TasksDomain,
   ctx: PluginCliContext,
   argv: string[],
+  dependencies: TasksCliDependencies,
 ): Promise<PluginCliResult> {
   const args = parseArgs(argv);
   if (args.flags.has("help")) return { exitCode: 0, stdout: CREATE_HELP };
@@ -940,7 +949,7 @@ async function runCreate(
   const failedAttachments: Array<{ path: string; error: string }> = [];
   for (const source of attachSources) {
     try {
-      const attachment = await saveAttachmentFromBytes(
+      const attachment = await dependencies.saveAttachmentFromBytes(
         store.tasks,
         source.bytes,
         {
@@ -1957,7 +1966,9 @@ export function registerTasksCli(
   bb: BbPluginApi,
   store: TasksApiStore,
   status: PluginStatus,
+  dependencies?: TasksCliDependencies,
 ): void {
+  const resolvedDependencies = dependencies ?? defaultTasksCliDependencies;
   const domain = registerHandlers(bb, store);
   bb.cli.register({
     name: "tasks",
@@ -2069,7 +2080,14 @@ export function registerTasksCli(
             stdout = await runFolder(bb, store, domain, rest);
             break;
           case "create": {
-            const result = await runCreate(bb, store, domain, ctx, rest);
+            const result = await runCreate(
+              bb,
+              store,
+              domain,
+              ctx,
+              rest,
+              resolvedDependencies,
+            );
             return result;
           }
           case "list":

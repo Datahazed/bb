@@ -403,23 +403,25 @@ export type ThreadDeltaNotificationParams = z.infer<
   typeof threadDeltaNotificationParamsSchema
 >;
 
+// oxlint-disable anti-slop/no-shape-in-symbol-names
 export {
-  deltaBackgroundTaskSchema as "deltaBackgroundTaskShapeSchema",
-  deltaDelegationSchema as "deltaDelegationShapeSchema",
-  deltaExtensionSchema as "deltaExtensionShapeSchema",
-  deltaFileReadSchema as "deltaFileReadShapeSchema",
-  deltaItemSchema as "deltaItemShapeSchema",
-  deltaPlanStepsSchema as "deltaPlanStepsShapeSchema",
-  deltaSearchSchema as "deltaSearchShapeSchema",
+  deltaBackgroundTaskSchema as deltaBackgroundTaskShapeSchema,
+  deltaDelegationSchema as deltaDelegationShapeSchema,
+  deltaExtensionSchema as deltaExtensionShapeSchema,
+  deltaFileReadSchema as deltaFileReadShapeSchema,
+  deltaItemSchema as deltaItemShapeSchema,
+  deltaPlanStepsSchema as deltaPlanStepsShapeSchema,
+  deltaSearchSchema as deltaSearchShapeSchema,
 };
 
 export type {
-  DeltaBackgroundTask as "DeltaBackgroundTaskShape",
-  DeltaDelegation as "DeltaDelegationShape",
-  DeltaExtension as "DeltaExtensionShape",
-  DeltaFileRead as "DeltaFileReadShape",
-  DeltaItem as "DeltaItemShape",
-  DeltaItemType as "DeltaItemShapeType",
-  DeltaPlanSteps as "DeltaPlanStepsShape",
-  DeltaSearch as "DeltaSearchShape",
+  DeltaBackgroundTask as DeltaBackgroundTaskShape,
+  DeltaDelegation as DeltaDelegationShape,
+  DeltaExtension as DeltaExtensionShape,
+  DeltaFileRead as DeltaFileReadShape,
+  DeltaItem as DeltaItemShape,
+  DeltaItemType as DeltaItemShapeType,
+  DeltaPlanSteps as DeltaPlanStepsShape,
+  DeltaSearch as DeltaSearchShape,
 };
+// oxlint-enable anti-slop/no-shape-in-symbol-names

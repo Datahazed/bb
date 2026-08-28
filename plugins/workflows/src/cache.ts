@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { z } from "zod";
 import type { JsonSchema, JsonValue } from "./types.js";
 
 export const WORKFLOW_CALL_CACHE_VERSION: "workflow-call-cache-v1" =
@@ -77,16 +76,20 @@ function canonicalizeValue<Value extends CanonicalizeInput>(
   ancestors: WeakSet<object>,
 ): string {
   if (value === null) return "null";
-  const stringValue = z.string().safeParse(value);
-  if (stringValue.success) return quoted(stringValue.data);
-  const booleanValue = z.boolean().safeParse(value);
-  if (booleanValue.success) return booleanValue.data ? "true" : "false";
-  const numberValue = z.union([z.number(), z.nan()]).safeParse(value);
-  if (numberValue.success) {
-    if (!Number.isFinite(numberValue.data)) {
+  const tag = Object.prototype.toString.call(value);
+  const isPrimitive = Object(value) !== value;
+  if (isPrimitive && tag === "[object String]") return quoted(String(value));
+  if (isPrimitive && tag === "[object Boolean]") {
+    return value === true ? "true" : "false";
+  }
+  if (isPrimitive && tag === "[object Number]") {
+    if (!Number.isFinite(value)) {
       throw new Error(`${path} contains a non-finite number`);
     }
-    return Object.is(numberValue.data, -0) ? "0" : String(numberValue.data);
+    return Object.is(value, -0) ? "0" : String(value);
+  }
+  if (isPrimitive && tag === "[object Symbol]") {
+    throw new Error(`${path} is not JSON-compatible (symbol)`);
   }
   if (!isObjectValue(value)) {
     throw new Error(

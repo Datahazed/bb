@@ -132,7 +132,7 @@ function runSession(messages: TranscriptRecord[]): SessionRun {
   const toolUses: ToolUseBlock[] = [];
   const toolResultIds = new Set<string>();
   const sidechainToolUses = new Map<string, string[]>();
-  events.push(...harness.acceptInput("creq-transcript", THREAD_ID));
+  events.push(...harness.acceptInput("creq_23456789ab", THREAD_ID));
   for (const message of messages) {
     const parent = asString(message.parent_tool_use_id);
     for (const block of toolUseBlocksOf(message)) {

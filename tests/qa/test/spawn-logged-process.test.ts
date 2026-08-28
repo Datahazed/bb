@@ -47,6 +47,13 @@ function useIsolatedStandaloneTmpDir(): string {
   return tempDir;
 }
 
+function useProcessScanFixture(tempDir: string, source: string): void {
+  const psPath = path.join(tempDir, "ps");
+  writeFileSync(psPath, `#!${process.execPath}\n${source}\n`, "utf8");
+  chmodSync(psPath, 0o755);
+  vi.stubEnv("PATH", tempDir);
+}
+
 function createStandaloneRoot(args: CreateStandaloneRootArgs): string {
   const tmpRoot = path.join(args.tmpDir, args.name);
   mkdirSync(tmpRoot, { recursive: true });
@@ -84,17 +91,22 @@ function useFakeQaServerProcess(tempDir: string): void {
   );
   writeFileSync(
     runnerPath,
-    `#!${originalExecPath}\nexec ${JSON.stringify(originalExecPath)} ${JSON.stringify(serverPath)} "$@"\n`,
+    `#!/bin/sh\nexec ${JSON.stringify(originalExecPath)} ${JSON.stringify(serverPath)} "$@"\n`,
     "utf8",
   );
   chmodSync(runnerPath, 0o755);
   process.execPath = runnerPath;
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
   for (const child of spawnedChildren) {
-    child.kill();
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise<void>((resolve) => {
+        child.once("exit", () => resolve());
+        child.kill();
+      });
+    }
   }
   spawnedChildren.length = 0;
   if (originalExecPath !== null) {
@@ -237,14 +249,7 @@ describe("cleanupStandaloneOrphans", () => {
     "warns and continues when process enumeration is blocked with %s",
     async (errorCode) => {
       const tmpDir = useIsolatedStandaloneTmpDir();
-      const psPath = path.join(tmpDir, "ps");
-      writeFileSync(
-        psPath,
-        `#!${process.execPath}\nprocess.exit(${String(errorCode)});\n`,
-        "utf8",
-      );
-      chmodSync(psPath, 0o755);
-      vi.stubEnv("PATH", tmpDir);
+      useProcessScanFixture(tmpDir, `process.exit(${String(errorCode)});`);
       const warn = vi
         .spyOn(console, "warn")
         .mockImplementation(() => undefined);
@@ -263,6 +268,7 @@ describe("cleanupStandaloneOrphans", () => {
 
   it("skips a standalone root whose parent process exists but is not signalable", async () => {
     const tmpDir = useIsolatedStandaloneTmpDir();
+    useProcessScanFixture(tmpDir, "");
     const tmpRoot = createStandaloneRoot({
       name: "bb-standalone-unowned",
       state: {
@@ -295,6 +301,7 @@ describe("cleanupStandaloneOrphans", () => {
 
   it("removes stale standalone roots whose parent process is gone", async () => {
     const tmpDir = useIsolatedStandaloneTmpDir();
+    useProcessScanFixture(tmpDir, "");
     const tmpRoot = createStandaloneRoot({
       name: "bb-standalone-owned-stale",
       state: {

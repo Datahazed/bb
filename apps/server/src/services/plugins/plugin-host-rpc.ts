@@ -21,7 +21,6 @@ async function validateValue(
   schema: StandardSchemaV1,
   value: JsonValue,
   phase: "input" | "output",
-  label: string,
 ): Promise<PluginHostCallResult> {
   let result: StandardSchemaV1Result<unknown>;
   try {
@@ -36,7 +35,7 @@ async function validateValue(
       `host rpc ${phase} validation failed: ${result.issues.map((issue) => issue.message).join("; ")}`,
     );
   }
-  return normalizeJson(result.value, label);
+  return result.value;
 }
 
 function normalizeJson<T>(value: T, label: string): JsonValue {
@@ -79,10 +78,12 @@ export async function callPluginHostRpc(
     throw new Error(`unknown host rpc method "${args.method}"`);
   }
   if (args.signal?.aborted) throw abortError();
-  const input = await validateValue(
-    method.input,
-    jsonValueSchema.parse(args.input),
-    "input",
+  const input = normalizeJson(
+    await validateValue(
+      method.input,
+      jsonValueSchema.parse(args.input),
+      "input",
+    ),
     `host rpc input for ${args.method}`,
   );
   const callId = randomUUID();
@@ -136,12 +137,7 @@ export async function callPluginHostRpc(
             (error) => finish(() => reject(error)),
           );
         });
-  const output = await validateValue(
-    method.output,
-    result.output,
-    "output",
-    `host rpc output for ${args.method}`,
-  );
+  const output = await validateValue(method.output, result.output, "output");
   return output;
 }
 

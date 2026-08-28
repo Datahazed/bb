@@ -11,7 +11,7 @@ import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
 const attachmentUploadResponseSchema = z
-  .object({ attachmentId: z.string() })
+  .object({ attachmentId: z.string(), url: z.string() })
   .strict();
 const environmentPullRequestInputSchema = z
   .object({ environmentId: z.string() })

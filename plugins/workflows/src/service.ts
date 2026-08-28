@@ -222,12 +222,8 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 
 type BoundedJsonValue = JsonValue | boolean;
 
-function isJsonObject(value: BoundedJsonValue): value is JsonObject {
-  return (
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.prototype.toString.call(value) === "[object Object]"
-  );
+function isObjectValue(value: BoundedJsonValue): value is JsonObject {
+  return value !== null && !Array.isArray(value) && Object(value) === value;
 }
 
 function isStringJsonValue(value: BoundedJsonValue): value is string {
@@ -286,7 +282,7 @@ function assertBoundedJson(
       }
       return;
     }
-    if (!Array.isArray(current) && !isJsonObject(current)) {
+    if (!Array.isArray(current) && !isObjectValue(current)) {
       throw new Error(`${path} contains a non-JSON value`);
     }
     if (ancestors.has(current)) {

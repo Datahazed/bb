@@ -131,12 +131,12 @@ describe("task detail pull request pills", () => {
       },
     );
 
-    const link = await slot.findByRole("link", {
+    const link = await slot.findByRole<HTMLAnchorElement>("link", {
       name: "Pull request #12: Ship the PR pill (Merged)",
     });
-    expect(link).toHaveAttribute("href", "https://github.com/acme/bb/pull/12");
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    expect(link.href).toBe("https://github.com/acme/bb/pull/12");
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toContain("noopener");
     expect(link.textContent).toContain("#12");
     fireEvent.click(link);
     expect(slot.navigateCalls).toEqual([]);

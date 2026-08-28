@@ -65,7 +65,10 @@ const mentionSearchGroupResponseSchema = z
   })
   .strict();
 const mentionProvidersResponseSchema = z
-  .object({ mentionProviders: z.array(mentionProviderResponseSchema) })
+  .object({
+    cliCommands: z.array(z.json()),
+    mentionProviders: z.array(mentionProviderResponseSchema),
+  })
   .strict();
 const mentionSearchResponseSchema = z
   .object({

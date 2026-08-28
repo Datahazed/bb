@@ -31,7 +31,7 @@ export function assertJsonValue(
     ancestors.delete(value);
     return;
   }
-  if (tag === "[object Object]") {
+  if (value !== null && Object(value) === value) {
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
       throw new Error(`${path} must contain only plain objects and arrays`);

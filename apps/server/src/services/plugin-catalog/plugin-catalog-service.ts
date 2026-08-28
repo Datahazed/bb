@@ -79,6 +79,8 @@ import {
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
 
+const { mkdir, rm } = process.getBuiltinModule("node:fs/promises");
+
 const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
 const BUNDLED_ICON_CONTENT_TYPE = "image/svg+xml";
@@ -175,6 +177,18 @@ export function createPluginCatalogService(deps: {
       return () => clearTimeout(timer);
     });
   const stagingDir = join(deps.dataDir, "marketplaces", "staging");
+  let stagingReady: Promise<void> | null = null;
+
+  function prepareMarketplaceStaging(): Promise<void> {
+    if (stagingReady === null) {
+      stagingReady = rm(stagingDir, { recursive: true, force: true }).then(
+        async () => {
+          await mkdir(stagingDir, { recursive: true });
+        },
+      );
+    }
+    return stagingReady;
+  }
 
   seedOfficialMarketplace();
 
@@ -480,6 +494,7 @@ export function createPluginCatalogService(deps: {
   ): Promise<void> {
     let collisionError: string | null = null;
     const source = marketplaceSourceFromRow(row);
+    if (source.kind === "git") await prepareMarketplaceStaging();
     const materialized = await materializeMarketplace({
       source,
       cached: {
@@ -910,6 +925,7 @@ export function createPluginCatalogService(deps: {
     async addMarketplace(rawSource) {
       return withLock(ADD_LOCK_KEY, async () => {
         const source = parseMarketplaceSource(rawSource);
+        if (source.kind === "git") await prepareMarketplaceStaging();
         const materialized = await materializeMarketplace({
           source,
           cached: null,

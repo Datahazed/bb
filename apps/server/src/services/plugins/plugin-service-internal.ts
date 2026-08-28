@@ -1,6 +1,6 @@
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
-import type { DynamicTool, JsonValue, Thread } from "@bb/domain";
+import type { DynamicTool, Thread } from "@bb/domain";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import {
   pluginUpdateCheckEntrySchema,
@@ -9,6 +9,10 @@ import {
   type PluginRuntimeStatus,
   type PluginSourceDetail,
 } from "@bb/server-contract";
+import type {
+  StandardSchemaV1,
+  StandardSchemaV1InferOutput,
+} from "@get-bb/plugin-sdk";
 import type { ServerLogger } from "../../types.js";
 import type { TelemetryService } from "../system/telemetry.js";
 import type { NotificationHub } from "../../ws/hub.js";
@@ -32,7 +36,8 @@ type PluginServiceState = "running" | "backoff" | "stopped";
 
 export type PluginListEntry = InstalledPlugin;
 
-export type PluginHostCallResult = JsonValue;
+export type PluginHostCallResult =
+  StandardSchemaV1InferOutput<StandardSchemaV1>;
 
 export interface ServiceRuntime {
   record: PluginBackgroundServiceRecord;
