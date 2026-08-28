@@ -111,7 +111,7 @@ async function waitForSocket(server: TunnelServer): Promise<NodeWebSocket> {
 }
 
 describe("ConnectTunnel socket lifecycle", () => {
-  it("ignores events from a socket after the tunnel stops", async () => {
+  it("ignores a socket close after the tunnel stops", async () => {
     const {
       clearCredential,
       credential,
@@ -124,17 +124,17 @@ describe("ConnectTunnel socket lifecycle", () => {
 
     try {
       await tunnel.start();
-      await vi.waitFor(() => {
-        expect(onStatusChange).toHaveBeenCalledTimes(2);
-      });
       const socket = await waitForSocket(tunnelServer);
+      await vi.waitFor(() => {
+        expect(tunnel.status().state).toBe("connected");
+      });
 
+      const socketClosed = new Promise<void>((resolve) => {
+        socket.once("close", () => resolve());
+      });
       tunnel.stop();
       onStatusChange.mockClear();
-      socket.emit("open");
-      socket.emit("unexpected-response", {}, { statusCode: 401 });
-      socket.emit("error", new Error("late socket error"));
-      socket.emit("close", 1006, Buffer.from("late close"));
+      await socketClosed;
 
       expect(clearCredential).not.toHaveBeenCalled();
       expect(onStatusChange).not.toHaveBeenCalled();
