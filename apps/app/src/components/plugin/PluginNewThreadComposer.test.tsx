@@ -356,6 +356,7 @@ vi.spyOn(projectQueries, "useProjectSourceBranches").mockImplementation(() => ({
     selectedBranch: null,
     defaultWorktreeBaseBranch: null,
   }),
+  refreshFromRemote: () => Promise.resolve(),
 }));
 
 vi.spyOn(
