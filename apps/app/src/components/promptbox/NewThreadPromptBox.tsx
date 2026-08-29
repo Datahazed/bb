@@ -82,6 +82,8 @@ export interface NewThreadEnvironmentConfig {
   host: EnvironmentPickerUIProps["host"];
   isLocal: EnvironmentPickerUIProps["isLocal"];
   machines?: EnvironmentPickerMachines | null;
+  /** Opens Machines settings so another host can be enrolled. */
+  onNewMachine?: () => void;
   /** Opens the guided machine-setup flow for a machine without a project
    * source (multi-machine menu only). */
   onRequestMachineSetup?: (host: Host) => void;
@@ -578,6 +580,7 @@ export function ProjectlessMachineSlot({
         parsedEnvironment?.type === "host" ? parsedEnvironment.hostId : null
       }
       onChange={handleMachineChange}
+      onNewMachine={environment.onNewMachine}
       disabled={environment.disabled}
       className="shrink-0"
       muted

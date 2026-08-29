@@ -133,6 +133,23 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
 }
 
 describe("theme.css neutral ramp", () => {
+  it("reserves a sticky toolbar tier above existing sidebar labels", () => {
+    const stackRule = css.match(
+      /\[data-sidebar-sticky-stack\]\[data-sidebar-sticky-toolbar\]\s*\{([^}]*)\}/s,
+    )?.[1];
+    const toolbarRule = css.match(
+      /\[data-sidebar-sticky-tier="toolbar"\]\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(stackRule).toContain(
+      "--bb-sidebar-sticky-toolbar-height: var(--bb-sidebar-sticky-row-height)",
+    );
+    expect(toolbarRule).toContain(
+      "--bb-sidebar-sticky-tier-top: var(--bb-sidebar-sticky-toolbar-top)",
+    );
+    expect(toolbarRule).toContain("--bb-sidebar-sticky-tier-z-index: 70");
+  });
+
   it("backs selected sticky sidebar rows with an opaque sidebar layer", () => {
     const rule = css.match(
       /\[data-sidebar-sticky-tier\]\.bb-sidebar-selected-row\s*\{([^}]*)\}/s,

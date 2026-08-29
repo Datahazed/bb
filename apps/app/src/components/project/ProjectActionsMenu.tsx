@@ -32,6 +32,7 @@ interface ProjectActionsMenuBaseProps {
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
   triggerClassName?: string;
+  onCreateThread?: () => void;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -43,6 +44,7 @@ interface ProjectActionsContextMenuProps extends ProjectActionsMenuBaseProps {
 type ProjectActionsMenuSurface = "context" | "dropdown";
 
 interface ProjectActionsMenuItemsProps extends ProjectActionsMenuBaseProps {
+  onCreateThread?: () => void;
   surface: ProjectActionsMenuSurface;
 }
 
@@ -115,6 +117,7 @@ function ProjectActionMenuSeparator({
 }
 
 function ProjectActionsMenuItems({
+  onCreateThread,
   project,
   surface,
 }: ProjectActionsMenuItemsProps) {
@@ -128,6 +131,18 @@ function ProjectActionsMenuItems({
 
   return (
     <>
+      {onCreateThread ? (
+        <>
+          <ProjectActionMenuItem
+            surface={surface}
+            icon="MessageSquarePlus"
+            onSelect={onCreateThread}
+          >
+            New thread
+          </ProjectActionMenuItem>
+          <ProjectActionMenuSeparator surface={surface} />
+        </>
+      ) : null}
       <ProjectActionMenuItem
         surface={surface}
         icon="Settings"
@@ -173,6 +188,7 @@ function ProjectActionsMenuItems({
 }
 
 export function ProjectActionsMenu({
+  onCreateThread,
   project,
   triggerClassName,
   onOpenChange,
@@ -204,7 +220,11 @@ export function ProjectActionsMenu({
         align="end"
         onClick={stopProjectActionsMenuClickPropagation}
       >
-        <ProjectActionsMenuItems project={project} surface="dropdown" />
+        <ProjectActionsMenuItems
+          project={project}
+          onCreateThread={onCreateThread}
+          surface="dropdown"
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

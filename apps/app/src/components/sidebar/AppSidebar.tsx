@@ -72,6 +72,12 @@ import {
   sidebarTopRegionItemPreferencesAtom,
   type SidebarTopRegionItemId,
 } from "./sidebarTopRegionItemPreferences";
+import {
+  DEFAULT_SIDEBAR_REGION_ORDER,
+  normalizeSidebarRegionOrder,
+  sidebarRegionOrderAtom,
+  type SidebarRegionId,
+} from "./sidebarRegionOrderPreferences";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -81,15 +87,19 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
 
 interface SidebarTopLevelSectionsProps {
   sections: Readonly<Record<SidebarTopLevelSectionId, ReactNode>>;
+  order?: readonly SidebarRegionId[];
 }
 
-const SIDEBAR_TOP_LEVEL_SECTION_IDS = [
-  "new-thread-extensions",
-  "plugin-pages",
-  "thread-list",
-] as const;
+const SIDEBAR_REGION_SECTION_IDS: Readonly<
+  Record<SidebarRegionId, SidebarTopLevelSectionId>
+> = {
+  "bb-controls": "new-thread-extensions",
+  plugins: "plugin-pages",
+  threads: "thread-list",
+};
 
-type SidebarTopLevelSectionId = (typeof SIDEBAR_TOP_LEVEL_SECTION_IDS)[number];
+type SidebarTopLevelSectionId =
+  (typeof SIDEBAR_REGION_SECTION_IDS)[SidebarRegionId];
 
 /**
  * Renders the three persistent sidebar regions and derives dividers from the
@@ -98,13 +108,17 @@ type SidebarTopLevelSectionId = (typeof SIDEBAR_TOP_LEVEL_SECTION_IDS)[number];
  */
 export function SidebarTopLevelSections({
   sections,
+  order = DEFAULT_SIDEBAR_REGION_ORDER,
 }: SidebarTopLevelSectionsProps) {
-  const visibleSections = SIDEBAR_TOP_LEVEL_SECTION_IDS.flatMap((id) => {
-    const content = sections[id];
-    return content === null ? [] : [{ id, content }];
-  });
+  const visibleSections = normalizeSidebarRegionOrder(order).flatMap(
+    (regionId) => {
+      const id = SIDEBAR_REGION_SECTION_IDS[regionId];
+      const content = sections[id];
+      return content === null ? [] : [{ id, regionId, content }];
+    },
+  );
 
-  return visibleSections.map(({ id, content }, index) => (
+  return visibleSections.map(({ id, regionId, content }, index) => (
     <Fragment key={id}>
       {index > 0 ? (
         <div
@@ -114,6 +128,7 @@ export function SidebarTopLevelSections({
         />
       ) : null}
       <div
+        data-sidebar-region={regionId}
         data-sidebar-top-level-section={id}
         className={cn(
           "min-w-0",
@@ -188,6 +203,7 @@ export function AppSidebar({
   const topRegionItemPreferences = useAtomValue(
     sidebarTopRegionItemPreferencesAtom,
   );
+  const sidebarRegionOrder = useAtomValue(sidebarRegionOrderAtom);
   const pluginNavPanels = usePluginNavPanelChrome();
   const automationsNavPanel = pluginNavPanels.find(
     ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
@@ -332,7 +348,13 @@ export function AppSidebar({
   const visibleTopRegionItems = topRegionItemPreferences.order.flatMap((id) => {
     if (topRegionItemPreferences.hiddenIds.includes(id)) return [];
     const node = topRegionItemNodes[id];
-    return node === null ? [] : [<Fragment key={id}>{node}</Fragment>];
+    return node === null
+      ? []
+      : [
+          <div key={id} data-sidebar-top-region-item={id}>
+            {node}
+          </div>,
+        ];
   });
 
   const body = (
@@ -350,7 +372,8 @@ export function AppSidebar({
              route-history controls live on the right of this chrome row, clear
              of the pinned toggle/traffic lights on the left and the resize
              handle on the right; they opt out of the desktop drag region so
-             clicks register. */
+             clicks register. Customize owns a compact toolbar row immediately
+             below this chrome and above the top-region items. */
         <div
           data-testid="app-sidebar-top-reserve-row"
           className={cn(
@@ -361,41 +384,47 @@ export function AppSidebar({
         >
           <div
             className={cn(
-              "flex items-center gap-1 group-data-[collapsible=icon]:hidden",
+              "group-data-[collapsible=icon]:hidden",
               usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
             )}
           >
             <SidebarHistoryNavigationControls onNavigate={closeOnMobile} />
-            <SidebarTopRegionCustomizeMenu />
           </div>
         </div>
       ) : null}
-      <SidebarTopLevelSections
-        sections={{
-          "new-thread-extensions":
-            visibleTopRegionItems.length > 0 ? (
-              <div
-                data-testid="app-sidebar-primary-actions"
-                className="space-y-1 px-2 py-2 group-data-[collapsible=icon]:hidden"
-              >
-                {visibleTopRegionItems}
-              </div>
+      <div
+        data-testid="app-sidebar-customize-toolbar"
+        className="flex h-8 shrink-0 items-center justify-end px-2 group-data-[collapsible=icon]:hidden"
+      >
+        <SidebarTopRegionCustomizeMenu />
+      </div>
+      <SidebarContent>
+        <SidebarTopLevelSections
+          order={sidebarRegionOrder}
+          sections={{
+            "new-thread-extensions":
+              visibleTopRegionItems.length > 0 ? (
+                <div
+                  data-testid="app-sidebar-primary-actions"
+                  className="space-y-1 px-2 pb-2 group-data-[collapsible=icon]:hidden"
+                >
+                  {visibleTopRegionItems}
+                </div>
+              ) : null,
+            "plugin-pages": hasTraditionalPluginPanels ? (
+              <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
             ) : null,
-          "plugin-pages": hasTraditionalPluginPanels ? (
-            <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
-          ) : null,
-          "thread-list": (
-            <SidebarContent>
+            "thread-list": (
               <PluginThreadList
                 replacement={threadListReplacement}
                 original={originalThreadList}
                 searchQuery=""
                 onNavigate={closeOnMobile}
               />
-            </SidebarContent>
-          ),
-        }}
-      />
+            ),
+          }}
+        />
+      </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {/* The footer holds a variable number of plugin action buttons, so a

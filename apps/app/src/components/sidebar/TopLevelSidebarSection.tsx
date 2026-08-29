@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
@@ -25,7 +26,10 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
-import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "./sidebarRowClasses";
+import {
+  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
+} from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -52,6 +56,7 @@ interface TopLevelSidebarSectionCollapseControl {
 
 export interface TopLevelSidebarSectionProps {
   label: string;
+  leadingIcon?: IconName;
   children: ReactNode;
   /** Stable identity for a persisted thread section. Built-in groups omit it. */
   sectionId?: string;
@@ -75,6 +80,7 @@ export interface TopLevelSidebarSectionProps {
  */
 export function TopLevelSidebarSection({
   label,
+  leadingIcon,
   children,
   sectionId,
   actions,
@@ -125,6 +131,26 @@ export function TopLevelSidebarSection({
   >((event) => {
     event.stopPropagation();
   }, []);
+  const showCollapsedIndicator =
+    collapseControl?.isCollapsed === true &&
+    (collapsedSplitIndicator.miniMap !== null ||
+      collapsedActivity !== undefined ||
+      pluginStatus !== null);
+  const renderCollapsedIndicator = () =>
+    collapsedSplitIndicator.miniMap ? (
+      <SplitPaneMiniMap
+        slots={collapsedSplitIndicator.miniMap}
+        label={`${label} — contains a thread open in split`}
+        isWorking={
+          collapsedActivity?.working || pluginStatus?.tone === "running"
+        }
+      />
+    ) : collapsedActivity || pluginStatus ? (
+      <CollapsedThreadStatusGlyph
+        activity={collapsedActivity ?? NO_COLLAPSED_CHILD_ACTIVITY}
+        pluginStatus={pluginStatus}
+      />
+    ) : null;
 
   return (
     <SidebarStickyGroup
@@ -144,22 +170,32 @@ export function TopLevelSidebarSection({
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
           SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-          "rounded-md pr-0 transition-colors",
+          "rounded-md pr-0 font-medium transition-colors",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
-        <span className="relative z-10 flex min-w-0 flex-1 items-center text-left">
+        <span className="relative z-10 flex min-w-0 flex-1 items-center gap-2 text-left">
+          {leadingIcon ? (
+            <span
+              className={cn(
+                SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+                "text-subtle-foreground",
+              )}
+            >
+              <Icon
+                name={leadingIcon}
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+                aria-hidden="true"
+              />
+            </span>
+          ) : null}
           <span className="min-w-0 truncate" title={label}>
             {label}
           </span>
         </span>
-        {actions ||
-        (collapseControl?.isCollapsed &&
-          (collapsedSplitIndicator.miniMap !== null ||
-            collapsedActivity ||
-            pluginStatus)) ? (
+        {actions || showCollapsedIndicator ? (
           <span
             data-sidebar-collapsible-trailing-controls=""
             className={cn(
@@ -169,55 +205,53 @@ export function TopLevelSidebarSection({
             )}
             onClick={stopActionsClick}
           >
-            {collapseControl?.isCollapsed &&
-            (collapsedSplitIndicator.miniMap !== null ||
-              collapsedActivity ||
-              pluginStatus) ? (
+            {showCollapsedIndicator ? (
               <span
                 data-sidebar-collapsed-activity-edge=""
                 data-sidebar-hover-actions-open={
                   actionsOpen ? "true" : undefined
                 }
                 className={cn(
-                  "pointer-events-none absolute inset-0 z-20 inline-flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:justify-center",
+                  "pointer-events-none absolute inset-0 z-20 inline-flex items-center justify-end text-subtle-foreground",
+                  actions
+                    ? "max-md:pointer-coarse:hidden"
+                    : "max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:justify-center",
                   actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
                 )}
               >
-                {collapsedSplitIndicator.miniMap ? (
-                  <SplitPaneMiniMap
-                    slots={collapsedSplitIndicator.miniMap}
-                    label={`${label} — contains a thread open in split`}
-                    isWorking={
-                      collapsedActivity?.working ||
-                      pluginStatus?.tone === "running"
-                    }
-                  />
-                ) : collapsedActivity || pluginStatus ? (
-                  <CollapsedThreadStatusGlyph
-                    activity={collapsedActivity ?? NO_COLLAPSED_CHILD_ACTIVITY}
-                    pluginStatus={pluginStatus}
-                  />
-                ) : null}
+                {renderCollapsedIndicator()}
               </span>
             ) : null}
             {actions ? (
-              <span
-                data-sidebar-hover-actions-open={
-                  actionsOpen ? "true" : undefined
-                }
-                data-sidebar-hover-actions-mobile={
-                  actionsMobileAlways
-                    ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-                    : undefined
-                }
-                className={cn(
-                  "inline-flex shrink-0 items-center",
-                  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-                  !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
-                )}
-              >
-                {actions}
-              </span>
+              <>
+                {collapseControl ? (
+                  <span
+                    data-sidebar-mobile-status-slot=""
+                    className="hidden h-full w-5 shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex"
+                  >
+                    {showCollapsedIndicator
+                      ? renderCollapsedIndicator()
+                      : null}
+                  </span>
+                ) : null}
+                <span
+                  data-sidebar-hover-actions-open={
+                    actionsOpen ? "true" : undefined
+                  }
+                  data-sidebar-hover-actions-mobile={
+                    actionsMobileAlways
+                      ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                      : undefined
+                  }
+                  className={cn(
+                    "inline-flex shrink-0 items-center",
+                    SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+                    !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
+                  )}
+                >
+                  {actions}
+                </span>
+              </>
             ) : null}
           </span>
         ) : null}

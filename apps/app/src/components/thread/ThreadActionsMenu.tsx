@@ -1,17 +1,24 @@
 import type { Thread } from "@bb/domain";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -23,6 +30,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { isThreadRead } from "@bb/client-core";
 import { useThreadActions } from "./ThreadActionsProvider";
+import {
+  useThreadSectionMove,
+  type ThreadSectionMoveDestination,
+} from "./ThreadSectionMoveProvider";
 
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
@@ -124,6 +135,176 @@ function ThreadActionMenuSeparator({
   );
 }
 
+function ThreadSectionDestinationItem({
+  destination,
+  isCurrent,
+  moveThread,
+  surface,
+}: {
+  destination: ThreadSectionMoveDestination;
+  isCurrent: boolean;
+  moveThread: () => void;
+  surface: ThreadActionsMenuSurface;
+}) {
+  const content = (
+    <>
+      <span className="min-w-0 flex-1 truncate">{destination.label}</span>
+      {isCurrent ? (
+        <Icon name="Check" className="ml-auto" aria-hidden="true" />
+      ) : null}
+    </>
+  );
+
+  if (surface === "context") {
+    return (
+      <ContextMenuItem
+        aria-current={isCurrent ? "true" : undefined}
+        className="flex items-center justify-between gap-3"
+        disabled={isCurrent}
+        onSelect={moveThread}
+      >
+        {content}
+      </ContextMenuItem>
+    );
+  }
+
+  return (
+    <DropdownMenuItem
+      aria-current={isCurrent ? "true" : undefined}
+      className="flex items-center justify-between gap-3"
+      disabled={isCurrent}
+      onSelect={moveThread}
+    >
+      {content}
+    </DropdownMenuItem>
+  );
+}
+
+function ThreadSectionDestinationItems({
+  destinations,
+  thread,
+  moveThread,
+  surface,
+}: {
+  destinations: readonly ThreadSectionMoveDestination[];
+  thread: Thread;
+  moveThread: (thread: Thread, sectionId: string | null) => void;
+  surface: ThreadActionsMenuSurface;
+}) {
+  return destinations.map((destination) => {
+    const isCurrent =
+      thread.pinnedAt === null && thread.sectionId === destination.sectionId;
+    return (
+      <ThreadSectionDestinationItem
+        key={destination.sectionId ?? "threads"}
+        destination={destination}
+        isCurrent={isCurrent}
+        moveThread={() => moveThread(thread, destination.sectionId)}
+        surface={surface}
+      />
+    );
+  });
+}
+
+function ThreadSectionMoveMenu({
+  drawerStep = false,
+  isDrawer,
+  onBack,
+  onOpenDrawerStep,
+  surface,
+  thread,
+}: {
+  drawerStep?: boolean;
+  isDrawer: boolean;
+  onBack?: () => void;
+  onOpenDrawerStep?: () => void;
+  surface: ThreadActionsMenuSurface;
+  thread: Thread;
+}) {
+  const sectionMove = useThreadSectionMove();
+  if (
+    !sectionMove ||
+    thread.parentThreadId !== null ||
+    thread.archivedAt !== null
+  ) {
+    return null;
+  }
+
+  const hasValidDestination = sectionMove.destinations.some(
+    (destination) =>
+      thread.pinnedAt !== null || thread.sectionId !== destination.sectionId,
+  );
+  if (!hasValidDestination) return null;
+
+  const items = (
+    <ThreadSectionDestinationItems
+      destinations={sectionMove.destinations}
+      thread={thread}
+      moveThread={sectionMove.moveThread}
+      surface={surface}
+    />
+  );
+
+  if (isDrawer) {
+    if (!drawerStep) {
+      return (
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            onOpenDrawerStep?.();
+          }}
+        >
+          <Icon name="Section" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">Move to section</span>
+          <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
+        </DropdownMenuItem>
+      );
+    }
+    return (
+      <>
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            onBack?.();
+          }}
+        >
+          <Icon name="ChevronLeft" aria-hidden="true" />
+          Back
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Move to section</DropdownMenuLabel>
+        {items}
+      </>
+    );
+  }
+
+  if (surface === "context") {
+    return (
+      <ContextMenuSub>
+        <ContextMenuSubTrigger>
+          <Icon name="Section" aria-hidden="true" />
+          Move to section
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
+          {items}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+    );
+  }
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <Icon name="Section" aria-hidden="true" />
+        Move to section
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
+        {items}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
 function ThreadActionsMenuItems({
   thread,
   onOpenInSplit,
@@ -140,10 +321,25 @@ function ThreadActionsMenuItems({
   } = useThreadActions();
   const isCompactViewport = useIsCompactViewport();
   const isDrawer = surface === "dropdown" && isCompactViewport;
+  const [compactStep, setCompactStep] = useState<"actions" | "move">(
+    "actions",
+  );
   const showSeparators = !isDrawer;
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
+
+  if (isDrawer && compactStep === "move") {
+    return (
+      <ThreadSectionMoveMenu
+        drawerStep
+        isDrawer
+        onBack={() => setCompactStep("actions")}
+        surface={surface}
+        thread={thread}
+      />
+    );
+  }
 
   return (
     <>
@@ -201,6 +397,12 @@ function ThreadActionsMenuItems({
       >
         {isPinned ? "Unpin" : "Pin"}
       </ThreadActionMenuItem>
+      <ThreadSectionMoveMenu
+        isDrawer={isDrawer}
+        onOpenDrawerStep={() => setCompactStep("move")}
+        surface={surface}
+        thread={thread}
+      />
       <ThreadActionMenuItem
         surface={surface}
         icon="Edit"

@@ -925,12 +925,37 @@ describe("ThreadRow", () => {
     ).toBe(true);
     const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
     const row = caretSlot?.parentElement;
+    const trailingControls = row?.querySelector(
+      "[data-sidebar-thread-trailing-controls]",
+    );
+    const statusSlot = trailingControls?.querySelector(
+      "[data-sidebar-thread-status-slot]",
+    );
+    const mobileActions = trailingControls?.querySelector(
+      "[data-sidebar-mobile-row-actions]",
+    );
     const titleRegion = screen
       .getByTitle("Parent thread")
       .closest(".bb-sidebar-collapsible-hover-actions-inset");
 
     expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+    expect(
+      statusSlot!.compareDocumentPosition(mobileActions!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      mobileActions?.getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBe("always");
+    expect(
+      mobileActions?.querySelector('[aria-label="Thread actions"]'),
+    ).not.toBeNull();
+    expect(
+      mobileActions
+        ?.querySelector('[aria-label="Archive thread"]')
+        ?.classList.contains("max-md:pointer-coarse:hidden"),
+    ).toBe(true);
     expect(titleRegion).not.toBeNull();
     expect(
       titleRegion?.classList.contains("bb-sidebar-hover-actions-inset"),

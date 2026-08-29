@@ -68,4 +68,27 @@ describe("ProjectActionsMenu", () => {
       expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
     });
   });
+
+  it("keeps the row's New thread quick action reachable from the overflow", async () => {
+    const onCreateThread = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <ProjectActionsMenu
+          project={makeProject()}
+          onCreateThread={onCreateThread}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "New thread" }),
+    );
+
+    expect(onCreateThread).toHaveBeenCalledTimes(1);
+  });
 });

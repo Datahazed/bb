@@ -15,10 +15,8 @@ import type {
 } from "@dnd-kit/core";
 import type { ThreadListEntry } from "@bb/domain";
 import {
+  useMoveThreadToSection,
   usePinThread,
-  useUnpinAndMoveThread,
-  useUnpinThread,
-  useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import type { NeighborReorderRequest } from "@bb/client-core";
 import {
@@ -368,10 +366,8 @@ export function useSectionThreadDnd({
     },
     [topLevelSectionIds],
   );
-  const updateThread = useUpdateThread();
+  const moveThreadToSection = useMoveThreadToSection();
   const pinThread = usePinThread();
-  const unpinThread = useUnpinThread();
-  const unpinAndMoveThread = useUnpinAndMoveThread();
   const { handleDragEnd: handlePinnedDragEnd, itemIds: pinnedItemIds } =
     useNeighborReorderSortable({
       disabled: pinnedReorderPending || pinnedThreads.length < 2,
@@ -572,25 +568,29 @@ export function useSectionThreadDnd({
         return;
       }
       switch (decision.kind) {
-        case "move":
-          updateThread.mutate({
-            id: decision.activeId,
-            sectionId: decision.sectionId,
-          });
+        case "move": {
+          const thread = lookup.threadByItemId.get(decision.activeId);
+          if (thread) {
+            moveThreadToSection({
+              thread,
+              sectionId: decision.sectionId,
+            });
+          }
           break;
+        }
         case "pin":
           pinThread.mutate({ id: decision.activeId });
           break;
-        case "unpin":
-          if (decision.move) {
-            unpinAndMoveThread.mutate({
-              id: decision.activeId,
+        case "unpin": {
+          const thread = lookup.threadByItemId.get(decision.activeId);
+          if (thread) {
+            moveThreadToSection({
+              thread,
               sectionId: decision.sectionId,
             });
-          } else {
-            unpinThread.mutate({ id: decision.activeId });
           }
           break;
+        }
         case "reorder-pinned":
           handlePinnedDragEnd(event);
           clearProjectedDrag();
@@ -611,14 +611,12 @@ export function useSectionThreadDnd({
       enabled,
       handlePinnedDragEnd,
       lookup,
+      moveThreadToSection,
       onTopLevelSectionOrderChange,
       pinThread,
       stopProjectionInputTracking,
       topLevelSectionIds,
       topLevelSectionOrder,
-      updateThread,
-      unpinAndMoveThread,
-      unpinThread,
     ],
   );
 

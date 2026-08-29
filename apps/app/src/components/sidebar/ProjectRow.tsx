@@ -32,6 +32,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { EmptyState } from "@bb/shared-ui/empty-state";
@@ -988,31 +989,36 @@ function EnvironmentThreadGroupHeader({
       >
         {showRollupGlyph ? (
           <span
+            data-sidebar-mobile-status=""
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:!opacity-100",
             )}
           >
             <CollapsedThreadStatusGlyph activity={childActivity} />
           </span>
         ) : null}
-        <div
-          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_CLASS,
-            "absolute inset-0 flex items-center justify-end",
-          )}
-        >
-          <EnvironmentThreadGroupHeaderActions
-            archiveThreadsPending={archiveThreadsPending}
-            onArchiveThreads={onArchiveThreads}
-            onCreateNewThread={onCreateNewThread}
-            onRenameEnvironment={onRenameEnvironment}
-            onOpenChange={setIsActionsOpen}
-          />
-        </div>
       </span>
+      <div
+        data-sidebar-mobile-row-actions=""
+        data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+        data-sidebar-hover-actions-mobile={
+          SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+        }
+        className={cn(
+          SIDEBAR_HOVER_ACTIONS_CLASS,
+          "absolute inset-y-0 right-6 z-10 flex items-center justify-end max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto",
+        )}
+      >
+        <EnvironmentThreadGroupHeaderActions
+          archiveThreadsPending={archiveThreadsPending}
+          onArchiveThreads={onArchiveThreads}
+          onCreateNewThread={onCreateNewThread}
+          onRenameEnvironment={onRenameEnvironment}
+          onOpenChange={setIsActionsOpen}
+        />
+      </div>
       <span
         data-sidebar-collapse-caret-slot=""
         className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
@@ -1459,7 +1465,25 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     const topLevelActionControls = (
       <>
         {externalHeaderActions?.actions}
-        {hasMenuActions ? (
+        {onCreateThreadInSection ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`New thread in ${section.name}`}
+            onClick={() => onCreateThreadInSection(section.id)}
+            className={cn(
+              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+            )}
+          >
+            <Icon
+              name="MessageSquarePlus"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
+          </Button>
+        ) : null}
+        {onCreateThreadInSection || hasMenuActions ? (
           <DropdownMenu onOpenChange={setIsTopLevelActionsOpen}>
             <DropdownMenuTrigger asChild>
               <Button
@@ -1479,6 +1503,17 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {onCreateThreadInSection ? (
+                <DropdownMenuItem
+                  onSelect={() => onCreateThreadInSection(section.id)}
+                >
+                  <Icon name="MessageSquarePlus" aria-hidden="true" />
+                  New thread
+                </DropdownMenuItem>
+              ) : null}
+              {onCreateThreadInSection && hasMenuActions ? (
+                <DropdownMenuSeparator />
+              ) : null}
               {onRenameSection ? (
                 <DropdownMenuItem onSelect={() => onRenameSection(section)}>
                   <Icon name="Edit" aria-hidden="true" />
@@ -1496,24 +1531,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
-        {onCreateThreadInSection ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`New thread in ${section.name}`}
-            onClick={() => onCreateThreadInSection(section.id)}
-            className={cn(
-              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-            )}
-          >
-            <Icon
-              name="MessageSquarePlus"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-            />
-          </Button>
         ) : null}
       </>
     );
@@ -2362,14 +2379,6 @@ function ProjectRowComponent({
             SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
           )}
         >
-          <ProjectActionsMenu
-            project={project}
-            onOpenChange={setIsDropdownActionsOpen}
-            triggerClassName={cn(
-              "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-            )}
-          />
           <Button
             type="button"
             variant="ghost"
@@ -2381,7 +2390,7 @@ function ProjectRowComponent({
               handleCreateThread();
             }}
             className={cn(
-              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
             )}
           >
@@ -2390,6 +2399,17 @@ function ProjectRowComponent({
               className={COARSE_POINTER_ICON_SIZE_CLASS}
             />
           </Button>
+          <ProjectActionsMenu
+            project={project}
+            onCreateThread={
+              onCreateProjectThread ? handleCreateThread : undefined
+            }
+            onOpenChange={setIsDropdownActionsOpen}
+            triggerClassName={cn(
+              "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+            )}
+          />
         </span>
       </span>
     </>
@@ -2406,6 +2426,7 @@ function ProjectRowComponent({
       >
         <TopLevelSidebarSection
           label={project.name}
+          leadingIcon="Folder"
           actions={projectActions}
           actionsAlwaysVisible
           actionsMobileAlways

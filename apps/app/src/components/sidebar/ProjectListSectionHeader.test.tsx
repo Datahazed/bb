@@ -144,6 +144,10 @@ describe("TopLevelSidebarSection", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
+    const mobileStatusSlot = trailingControls?.querySelector(
+      "[data-sidebar-mobile-status-slot]",
+    );
+    const action = screen.getByRole("button", { name: "Section action" });
 
     expect(icon).toBeNull();
     expect(
@@ -160,6 +164,11 @@ describe("TopLevelSidebarSection", () => {
     expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+    expect(mobileStatusSlot).not.toBeNull();
+    expect(
+      mobileStatusSlot!.compareDocumentPosition(action) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
 
   it("rolls a hidden split thread up to a collapsed top-level section", () => {

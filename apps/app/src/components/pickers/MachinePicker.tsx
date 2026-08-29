@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import {
@@ -42,6 +43,8 @@ interface MachinePickerUIProps {
   /** Selected host id; an unknown or null id falls back to the primary host. */
   selectedHostId: string | null;
   onChange: (hostId: string) => void;
+  /** Opens the Machines settings page to enroll another machine. */
+  onNewMachine?: () => void;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
   disabled?: boolean;
@@ -62,6 +65,7 @@ export function MachinePickerUI({
   primaryHostId,
   selectedHostId,
   onChange,
+  onNewMachine,
   muted,
   disabled = false,
   className,
@@ -172,6 +176,15 @@ export function MachinePickerUI({
             </DropdownMenuItem>
           );
         })}
+        {onNewMachine ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onNewMachine}>
+              <Icon name="LaptopAdd" aria-hidden="true" />
+              New Machine
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

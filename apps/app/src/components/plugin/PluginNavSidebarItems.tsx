@@ -16,6 +16,8 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { UnavailableIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
@@ -384,13 +386,21 @@ function PluginNavRowMenuItem({
 }: {
   children: ReactNode;
   disabled?: boolean;
-  icon: "ArrowDown" | "ArrowUp" | "Columns2" | "Info" | "Pause";
+  icon: "ArrowDown" | "ArrowUp" | "Columns2" | "Info" | "Unavailable";
   onSelect: () => void;
   surface: PluginNavRowMenuSurface;
 }) {
   const content = (
     <>
-      <Icon name={icon} aria-hidden="true" />
+      {icon === "Unavailable" ? (
+        <HugeiconsIcon
+          icon={UnavailableIcon}
+          data-icon="Unavailable"
+          aria-hidden="true"
+        />
+      ) : (
+        <Icon name={icon} aria-hidden="true" />
+      )}
       {children}
     </>
   );
@@ -445,23 +455,6 @@ function PluginNavRowMenuItems({
 }) {
   return (
     <>
-      <PluginNavRowMenuItem
-        surface={surface}
-        icon="ArrowUp"
-        disabled={!canMoveToTop}
-        onSelect={onMoveToTop}
-      >
-        Move to top
-      </PluginNavRowMenuItem>
-      <PluginNavRowMenuItem
-        surface={surface}
-        icon="ArrowDown"
-        disabled={!canMoveToOverflow}
-        onSelect={onMoveToOverflow}
-      >
-        Move to overflow
-      </PluginNavRowMenuItem>
-      <PluginNavRowMenuSeparator surface={surface} />
       {canOpenInSplit ? (
         <PluginNavRowMenuItem
           surface={surface}
@@ -481,7 +474,24 @@ function PluginNavRowMenuItems({
       <PluginNavRowMenuSeparator surface={surface} />
       <PluginNavRowMenuItem
         surface={surface}
-        icon="Pause"
+        icon="ArrowUp"
+        disabled={!canMoveToTop}
+        onSelect={onMoveToTop}
+      >
+        Move to top
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="ArrowDown"
+        disabled={!canMoveToOverflow}
+        onSelect={onMoveToOverflow}
+      >
+        Move to overflow
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuSeparator surface={surface} />
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="Unavailable"
         disabled={disablePending}
         onSelect={onDisable}
       >

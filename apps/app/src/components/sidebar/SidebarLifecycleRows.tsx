@@ -284,9 +284,10 @@ function SidebarDraftRow({
 }
 
 /**
- * Unlabelled, caller-ordered draft rows. The draft-slot model supplies these
- * newest first; this component deliberately preserves that order so sidebar
- * sort and organization preferences never reach the phantom rows.
+ * Caller-ordered draft rows under their quiet lifecycle heading. The
+ * draft-slot model supplies these newest first; this component deliberately
+ * preserves that order so sidebar sort and organization preferences never
+ * reach the phantom rows.
  */
 export function SidebarDraftRows({
   drafts,
@@ -299,14 +300,19 @@ export function SidebarDraftRows({
 
   return (
     <div data-sidebar-draft-cluster="">
-      {drafts.map((draft) => (
-        <SidebarDraftRow
-          key={draft.id}
-          draft={draft}
-          onOpenDraft={onOpenDraft}
-          splitEnabled={splitEnabled}
-        />
-      ))}
+      <div className="flex h-8 items-center px-3 text-xs font-medium text-subtle-foreground">
+        Drafts
+      </div>
+      <div>
+        {drafts.map((draft) => (
+          <SidebarDraftRow
+            key={draft.id}
+            draft={draft}
+            onOpenDraft={onOpenDraft}
+            splitEnabled={splitEnabled}
+          />
+        ))}
+      </div>
     </div>
   );
 }

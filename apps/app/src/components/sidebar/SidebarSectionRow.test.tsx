@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
@@ -21,6 +21,7 @@ afterEach(() => {
 
 describe("SidebarSectionRow", () => {
   it("keeps the disclosure in the fixed final slot after section actions", () => {
+    const onCreateThread = vi.fn();
     const result = render(
       <SidebarSectionRow
         name="Nested work"
@@ -30,6 +31,7 @@ describe("SidebarSectionRow", () => {
         isCollapsed={false}
         onToggleCollapsed={vi.fn()}
         onRename={vi.fn()}
+        onCreateThread={onCreateThread}
       />,
     );
 
@@ -40,8 +42,20 @@ describe("SidebarSectionRow", () => {
     const label = screen.getByText("Nested work");
     const row = label.parentElement?.parentElement as HTMLElement | null;
     const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
+    const newThread = screen.getByRole("button", {
+      name: "New thread in Nested work",
+    });
+    const more = screen.getByRole("button", {
+      name: "Nested work section actions",
+    });
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
+    );
+    const mobileStatusSlot = trailingControls?.querySelector(
+      "[data-sidebar-mobile-status-slot]",
+    );
+    const mobileActions = more.closest(
+      "[data-sidebar-hover-actions-mobile]",
     );
 
     expect(icon).toBeNull();
@@ -53,6 +67,50 @@ describe("SidebarSectionRow", () => {
     expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+    expect(mobileStatusSlot).not.toBeNull();
+    expect(
+      mobileStatusSlot!.compareDocumentPosition(mobileActions!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
+      true,
+    );
+    expect(mobileActions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(
+      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      more.compareDocumentPosition(disclosure) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
+  it("keeps New thread reachable from the section overflow on mobile", async () => {
+    const onCreateThread = vi.fn();
+    render(
+      <SidebarSectionRow
+        name="Nested work"
+        label="Nested work"
+        depth={1}
+        activity={NO_COLLAPSED_CHILD_ACTIVITY}
+        isCollapsed={false}
+        onToggleCollapsed={vi.fn()}
+        onRename={vi.fn()}
+        onCreateThread={onCreateThread}
+      />,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Nested work section actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "New thread" }),
+    );
+
+    expect(onCreateThread).toHaveBeenCalledTimes(1);
   });
 
   it("rolls hidden split threads up to the collapsed section row", () => {

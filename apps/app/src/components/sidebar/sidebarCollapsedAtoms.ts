@@ -19,6 +19,7 @@ const SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY =
 export const SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY =
   "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
+const SORT_DIRECTION_STORAGE_KEY = "bb.sidebar.sortDirection";
 const COLLAPSED_THREAD_SECTIONS_STORAGE_KEY =
   "bb.sidebar.collapsedThreadSections";
 const LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
@@ -36,6 +37,7 @@ export type SidebarOrganizationMode = "project" | "manual" | "machine";
 // sorts show newest first and alphabetical sorts A→Z. "none" is a legacy value
 // that the runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
+export type SidebarSortDirection = "asc" | "desc";
 
 const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
   "pinned",
@@ -202,6 +204,14 @@ export const sidebarChronologicalSortAtom =
     CHRONOLOGICAL_SORT_STORAGE_KEY,
     "updated",
     createJsonLocalStorage<SidebarChronologicalSort>(),
+    { getOnInit: true },
+  );
+
+export const sidebarSortDirectionAtom =
+  atomWithStorage<SidebarSortDirection | null>(
+    SORT_DIRECTION_STORAGE_KEY,
+    null,
+    createJsonLocalStorage<SidebarSortDirection | null>(),
     { getOnInit: true },
   );
 

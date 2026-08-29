@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
@@ -101,8 +102,8 @@ function SidebarSectionRowComponent({
     isCollapsed,
   );
   const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
-  const hasMenuActions = Boolean(onRename || onRemove);
-  const hasActions = Boolean(onCreateThread || hasMenuActions);
+  const hasMenuActions = Boolean(onCreateThread || onRename || onRemove);
+  const hasActions = hasMenuActions;
   // Collapsed: the header speaks for its hidden descendants through one
   // trailing indicator. Split membership takes the slot when present, matching
   // the individual thread row; otherwise activity keeps its normal priority.
@@ -202,10 +203,37 @@ function SidebarSectionRowComponent({
             )}
             onClick={stopActionsClick}
           >
-            {showRollupIndicator ? (
-              <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-                {renderRollupIndicator()}
-              </span>
+            <span
+              data-sidebar-mobile-status-slot=""
+              className="hidden h-full w-5 shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex"
+            >
+              {showRollupIndicator ? renderRollupIndicator() : null}
+            </span>
+            {onCreateThread ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`New thread in ${label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCreateThread();
+                    }}
+                    className={cn(
+                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
+                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                    )}
+                  >
+                    <Icon
+                      name="MessageSquarePlus"
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New thread</TooltipContent>
+              </Tooltip>
             ) : null}
             {hasMenuActions ? (
               <DropdownMenu onOpenChange={setIsActionsOpen}>
@@ -227,6 +255,15 @@ function SidebarSectionRowComponent({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  {onCreateThread ? (
+                    <DropdownMenuItem onSelect={onCreateThread}>
+                      <Icon name="MessageSquarePlus" aria-hidden="true" />
+                      New thread
+                    </DropdownMenuItem>
+                  ) : null}
+                  {onCreateThread && (onRename || onRemove) ? (
+                    <DropdownMenuSeparator />
+                  ) : null}
                   {onRename ? (
                     <DropdownMenuItem onSelect={onRename}>
                       <Icon name="Edit" aria-hidden="true" />
@@ -241,32 +278,6 @@ function SidebarSectionRowComponent({
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : null}
-            {onCreateThread ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`New thread in ${label}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onCreateThread();
-                    }}
-                    className={cn(
-                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                    )}
-                  >
-                    <Icon
-                      name="MessageSquarePlus"
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">New thread</TooltipContent>
-              </Tooltip>
             ) : null}
           </span>
         ) : showRollupIndicator ? (

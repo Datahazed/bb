@@ -303,34 +303,34 @@ describe("PluginNavSidebarItems", () => {
     );
     const dropdownMenu = await screen.findByRole("menu");
     const expected = [
-      ["Move to top", "ArrowUp"],
-      ["Move to overflow", "ArrowDown"],
       ["Open in split", "Columns2"],
       ["Detail page", "Info"],
-      ["Disable", "Pause"],
+      ["Move to top", "ArrowUp"],
+      ["Move to overflow", "ArrowDown"],
+      ["Disable", "Unavailable"],
     ] as const;
-    expect(
-      within(dropdownMenu)
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent?.trim()),
-    ).toEqual(expected.map(([label]) => label));
-    for (const [label, icon] of expected) {
+    const expectCompleteMenu = (menu: HTMLElement) => {
       expect(
-        within(dropdownMenu)
-          .getByRole("menuitem", { name: label })
-          .querySelector(`[data-icon="${icon}"]`),
-      ).not.toBeNull();
-    }
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent?.trim()),
+      ).toEqual(expected.map(([label]) => label));
+      expect(within(menu).getAllByRole("separator")).toHaveLength(2);
+      for (const [label, icon] of expected) {
+        expect(
+          within(menu)
+            .getByRole("menuitem", { name: label })
+            .querySelector(`[data-icon="${icon}"]`),
+        ).not.toBeNull();
+      }
+    };
+    expectCompleteMenu(dropdownMenu);
     fireEvent.keyDown(dropdownMenu, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
     const contextMenu = await screen.findByRole("menu");
-    expect(
-      within(contextMenu)
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent?.trim()),
-    ).toEqual(expected.map(([label]) => label));
+    expectCompleteMenu(contextMenu);
 
     expect(
       screen.queryByRole("menuitem", { name: /uninstall|remove/i }),
@@ -513,6 +513,34 @@ describe("PluginNavSidebarItems", () => {
     await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
     expect(toggle.textContent).toBe("Show fewer");
     expect(toggle.lastElementChild?.classList.contains("rotate-90")).toBe(true);
+  });
+
+  it("keeps every overflow row in the same order when a long list is toggled", async () => {
+    const labels = [
+      "One",
+      "Two",
+      "Three",
+      "Four",
+      "Five",
+      "Six",
+      "Seven",
+      "Eight",
+    ];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    renderSidebarItems({
+      storedOrder: labels.map((_, index) => `plugin-${index}/main`),
+    });
+
+    const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
+    expect(panelRowNames(labels)).toEqual(labels.slice(0, 5));
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(panelRowNames(labels)).toEqual(labels.slice(0, 5)),
+    );
   });
 
   it("moves a visible row to positional overflow and back to top", async () => {

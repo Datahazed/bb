@@ -70,6 +70,7 @@ import {
 } from "@bb/client-core";
 import {
   getProjectComposeRoutePath,
+  getSettingsRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
 } from "@/lib/route-paths";
@@ -1018,6 +1019,10 @@ export function NewThreadComposer({
     },
     [navigate, projectId],
   );
+  const handleNewMachine = useCallback(
+    () => navigate(getSettingsRoutePath("machines")),
+    [navigate],
+  );
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const [hasComposerFocused, setHasComposerFocused] = useState(false);
   const handleEditorFocus = useCallback(() => {
@@ -1349,6 +1354,7 @@ export function NewThreadComposer({
               reuseDisabled: reuseThreadOptions.length === 0,
               worktreeDisabledReason,
               disabled: locks.environment,
+              ...(isProjectless ? { onNewMachine: handleNewMachine } : {}),
               ...(!isProjectless && options.onRequestMachineSetup
                 ? { onRequestMachineSetup: options.onRequestMachineSetup }
                 : {}),
@@ -1474,6 +1480,7 @@ export function NewThreadComposer({
       handleCreateBranchFrom,
       handleEditorFocus,
       handleModelChange,
+      handleNewMachine,
       handlePermissionChange,
       handleProjectChange,
       handleProviderChange,
