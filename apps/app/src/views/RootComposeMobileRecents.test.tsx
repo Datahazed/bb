@@ -233,6 +233,18 @@ describe("mobile recents hierarchy interaction", () => {
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
   });
 
+  it("anchors the provider tile to the title line, not the text block", () => {
+    renderTree();
+
+    const [parentRow] = screen.getAllByRole("link");
+    const tile = parentRow?.firstElementChild;
+    if (!(tile instanceof HTMLElement)) {
+      throw new Error("Expected a leading provider tile");
+    }
+    expect(tile.className).toContain("self-start");
+    expect(tile.className).toContain("mt-1");
+  });
+
   it("gives only the parent a toggle and indents the child", () => {
     renderTree();
 
