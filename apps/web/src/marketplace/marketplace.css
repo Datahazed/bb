@@ -428,12 +428,21 @@
 
 .marketplace-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 64px;
+  grid-template-areas:
+    "content aside"
+    "sections aside";
+  grid-template-columns: minmax(0, 1fr) 340px;
+  column-gap: 56px;
   margin-top: 36px;
 }
 
 .marketplace-detail-content {
+  grid-area: content;
+  min-width: 0;
+}
+
+.marketplace-detail-sections {
+  grid-area: sections;
   min-width: 0;
 }
 
@@ -515,6 +524,7 @@
 }
 
 .marketplace-detail-aside {
+  grid-area: aside;
   min-width: 0;
 }
 
@@ -626,8 +636,15 @@
   }
 
   .marketplace-detail-layout {
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 36px;
+    grid-template-areas:
+      "content"
+      "aside"
+      "sections";
+    grid-template-columns: 1fr;
+  }
+
+  .marketplace-detail-aside {
+    margin-top: 36px;
   }
 }
 
@@ -655,14 +672,6 @@
 
   .marketplace-select select {
     min-width: 0;
-  }
-
-  .marketplace-detail-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .marketplace-detail-aside {
-    order: -1;
   }
 }
 

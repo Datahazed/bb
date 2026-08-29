@@ -587,32 +587,6 @@ export function PublicMarketplaceDetailPage({
             <p className="marketplace-detail-description">
               {entry.description}
             </p>
-
-            {entry.screenshots?.length ? (
-              <section className="marketplace-detail-section">
-                <h2>Screenshots</h2>
-                <div className="marketplace-screenshots">
-                  {entry.screenshots.map((screenshot, index) => (
-                    <img
-                      key={screenshot}
-                      src={marketplaceAssetUrl(screenshot)}
-                      alt={`${entry.displayName} screenshot ${index + 1}`}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {moreFromAuthor.length > 0 ? (
-              <section className="marketplace-detail-section">
-                <h2>More from {entry.author.name}</h2>
-                <PluginGrid
-                  entries={moreFromAuthor}
-                  stats={stats}
-                  showCategory
-                />
-              </section>
-            ) : null}
           </article>
 
           <aside className="marketplace-detail-aside">
@@ -653,6 +627,34 @@ export function PublicMarketplaceDetailPage({
               </a>
             )}
           </aside>
+
+          <div className="marketplace-detail-sections">
+            {entry.screenshots?.length ? (
+              <section className="marketplace-detail-section">
+                <h2>Screenshots</h2>
+                <div className="marketplace-screenshots">
+                  {entry.screenshots.map((screenshot, index) => (
+                    <img
+                      key={screenshot}
+                      src={marketplaceAssetUrl(screenshot)}
+                      alt={`${entry.displayName} screenshot ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {moreFromAuthor.length > 0 ? (
+              <section className="marketplace-detail-section">
+                <h2>More from {entry.author.name}</h2>
+                <PluginGrid
+                  entries={moreFromAuthor}
+                  stats={stats}
+                  showCategory
+                />
+              </section>
+            ) : null}
+          </div>
         </div>
 
         <aside className="marketplace-cross-link">

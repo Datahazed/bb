@@ -5,13 +5,13 @@
 import { Route as rootRouteImport } from "./routes/__root";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
 import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
+import { Route as DocsRouteImport } from "./routes/docs";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
 import { Route as ChangelogRouteImport } from "./routes/changelog";
 import { Route as BlogRouteImport } from "./routes/blog";
 import { Route as IndexRouteImport } from "./routes/index";
 import { Route as MarketplacePluginIdRouteImport } from "./routes/marketplace_.$pluginId";
 import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
-import { Route as DocsRouteImport } from "./routes/docs";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
@@ -32,6 +32,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const MarketplaceRoute = MarketplaceRouteImport.update({
   id: "/marketplace_",
   path: "/marketplace",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DocsRoute = DocsRouteImport.update({
+  id: "/docs",
+  path: "/docs",
   getParentRoute: () => rootRouteImport,
 } as any);
 const DashboardRoute = DashboardRouteImport.update({
@@ -62,11 +67,6 @@ const MarketplacePluginIdRoute = MarketplacePluginIdRouteImport.update({
 const DownloadMacosRoute = DownloadMacosRouteImport.update({
   id: "/download/macos",
   path: "/download/macos",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const DocsRoute = DocsRouteImport.update({
-  id: "/docs",
-  path: "/docs",
   getParentRoute: () => rootRouteImport,
 } as any);
 const BlogSlugRoute = BlogSlugRouteImport.update({
@@ -132,13 +132,13 @@ export interface FileRoutesByFullPath {
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
+  "/docs": typeof DocsRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/privacy": typeof PrivacyRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
-  "/docs": typeof DocsRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
@@ -154,13 +154,13 @@ export interface FileRoutesByTo {
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
+  "/docs": typeof DocsRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/privacy": typeof PrivacyRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
-  "/docs": typeof DocsRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
@@ -177,13 +177,13 @@ export interface FileRoutesById {
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
+  "/docs": typeof DocsRoute;
   "/marketplace_": typeof MarketplaceRouteWithChildren;
   "/privacy": typeof PrivacyRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
-  "/docs": typeof DocsRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/marketplace_/$pluginId": typeof MarketplacePluginIdRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
@@ -201,13 +201,13 @@ export interface FileRouteTypes {
     | "/blog"
     | "/changelog"
     | "/dashboard"
+    | "/docs"
     | "/marketplace"
     | "/privacy"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
     | "/blog/$slug"
-    | "/docs"
     | "/download/macos"
     | "/marketplace/$pluginId"
     | "/api/auth/$"
@@ -223,13 +223,13 @@ export interface FileRouteTypes {
     | "/blog"
     | "/changelog"
     | "/dashboard"
+    | "/docs"
     | "/marketplace"
     | "/privacy"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
     | "/blog/$slug"
-    | "/docs"
     | "/download/macos"
     | "/marketplace/$pluginId"
     | "/api/auth/$"
@@ -245,13 +245,13 @@ export interface FileRouteTypes {
     | "/blog"
     | "/changelog"
     | "/dashboard"
+    | "/docs"
     | "/marketplace_"
     | "/privacy"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
     | "/blog_/$slug"
-    | "/docs"
     | "/download/macos"
     | "/marketplace_/$pluginId"
     | "/api/auth/$"
@@ -268,13 +268,13 @@ export interface RootRouteChildren {
   BlogRoute: typeof BlogRoute;
   ChangelogRoute: typeof ChangelogRoute;
   DashboardRoute: typeof DashboardRoute;
+  DocsRoute: typeof DocsRoute;
   MarketplaceRoute: typeof MarketplaceRouteWithChildren;
   PrivacyRoute: typeof PrivacyRoute;
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute;
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
-  DocsRoute: typeof DocsRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute;
@@ -299,6 +299,13 @@ declare module "@tanstack/react-router" {
       path: "/marketplace";
       fullPath: "/marketplace";
       preLoaderRoute: typeof MarketplaceRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/docs": {
+      id: "/docs";
+      path: "/docs";
+      fullPath: "/docs";
+      preLoaderRoute: typeof DocsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/dashboard": {
@@ -341,13 +348,6 @@ declare module "@tanstack/react-router" {
       path: "/download/macos";
       fullPath: "/download/macos";
       preLoaderRoute: typeof DownloadMacosRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/docs": {
-      id: "/docs";
-      path: "/docs";
-      fullPath: "/docs";
-      preLoaderRoute: typeof DocsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/blog_/$slug": {
@@ -447,6 +447,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogRoute: BlogRoute,
   ChangelogRoute: ChangelogRoute,
   DashboardRoute: DashboardRoute,
+  DocsRoute: DocsRoute,
   MarketplaceRoute: MarketplaceRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   DotwellKnownAppleAppSiteAssociationRoute:
@@ -454,7 +455,6 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
-  DocsRoute: DocsRoute,
   DownloadMacosRoute: DownloadMacosRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,
