@@ -658,6 +658,11 @@ describe("BrowsePluginsTab", () => {
     const shelfTitle = within(memoryShelf).getByRole("button", {
       name: "Scroll Memory & Context shelf to top",
     });
+    expect(shelfTitle.classList.contains("text-foreground")).toBe(true);
+    expect(shelfTitle.classList.contains("hover:text-muted-foreground")).toBe(
+      true,
+    );
+    expect(shelfTitle.classList.contains("hover:underline")).toBe(false);
     expect(
       shelfTitle.classList.contains("focus-visible:bg-state-hover"),
     ).toBe(false);

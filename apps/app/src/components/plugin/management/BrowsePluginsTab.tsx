@@ -649,7 +649,7 @@ function BrowseShelf({
       type="button"
       data-plugin-shelf-title
       aria-label={`Scroll ${label} shelf to top`}
-      className="group inline-flex max-w-full cursor-pointer items-center gap-2 rounded-sm text-left font-semibold text-foreground underline-offset-4 outline-none hover:underline"
+      className="group inline-flex max-w-full cursor-pointer items-center gap-2 rounded-sm text-left font-semibold text-foreground outline-none transition-colors hover:text-muted-foreground"
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
