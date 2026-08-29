@@ -3,7 +3,7 @@ import { pluginCatalogCategoryAccentToken } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
-import { accentInk, accentTint, neutral } from "@bb/showcase-hero";
+import { accentTint, neutral } from "@bb/showcase-hero";
 import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -109,15 +109,13 @@ export function PluginCategoryLabel({
   const accentToken = pluginCatalogCategoryAccentToken(categoryId);
   return (
     <span
-      className="shrink-0 truncate rounded px-1.5 py-0.5 text-2xs"
-      style={
-        accentToken === undefined
-          ? { background: neutral(6), color: neutral(55) }
-          : {
-              background: accentTint(accentToken, 10),
-              color: accentInk(accentToken, 52),
-            }
-      }
+      className="shrink-0 truncate rounded px-2 py-1 text-2xs leading-none text-subtle-foreground"
+      style={{
+        background:
+          accentToken === undefined
+            ? neutral(6)
+            : accentTint(accentToken, 10),
+      }}
     >
       {label}
     </span>
