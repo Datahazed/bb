@@ -32,6 +32,7 @@ import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTa
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { MyPluginsTab } from "@/components/plugin/management/MyPluginsTab";
+import { OpenPluginGuideButton } from "@/components/plugin/management/OpenPluginGuideButton";
 import {
   PLUGIN_SOURCE_FILTER_OPTIONS,
   pluginSourceFilterId,
@@ -76,6 +77,7 @@ export function PluginsOverview({
     () => listQuery.data?.plugins ?? [],
     [listQuery.data?.plugins],
   );
+  const pluginGuide = plugins.find((plugin) => plugin.id === "plugin-api-docs");
   const activeMode = modeFromSearchParams(searchParams.get("view"));
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =
@@ -366,6 +368,16 @@ export function PluginsOverview({
       <ResourceCollectionViewport
         scrollId="my-plugins-results"
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
+        toolbar={
+          <div className="flex justify-end">
+            <OpenPluginGuideButton
+              plugin={pluginGuide}
+              pluginListLoading={
+                listQuery.data === undefined && listQuery.isFetching
+              }
+            />
+          </div>
+        }
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
           <MyPluginsTab
