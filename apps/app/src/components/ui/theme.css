@@ -336,6 +336,13 @@
     padding-right: 1.5rem;
   }
 
+  /* The caret is intentionally hidden at rest on fine pointers. Let the
+   * existing status occupy that final slot until hover/focus replaces it with
+   * the caret, while preserving the full action inset and stable row width. */
+  .bb-sidebar-collapsible-status-slot {
+    transform: translateX(calc(1.5rem + 0.5rem));
+  }
+
   .bb-sidebar-hover-actions-fade {
     opacity: 1;
     transition-property: opacity;
@@ -353,6 +360,11 @@
     .bb-sidebar-hover-actions-row .bb-sidebar-hover-actions-inset,
     .bb-sidebar-hover-actions-row .bb-sidebar-collapsible-hover-actions-inset {
       padding-right: 0;
+    }
+
+    /* Coarse mobile exposes status, overflow, and caret simultaneously. */
+    .bb-sidebar-collapsible-status-slot {
+      transform: none;
     }
 
     .bb-sidebar-hover-actions-row:hover:not(:has(:focus-visible))
