@@ -6,7 +6,8 @@ import {
 import { copyPlainText } from "../lib/copy-plain-text.js";
 
 export function pluginSurfaceReferenceText(surface: PluginSurface): string {
-  return createPluginSurfaceAgentReference(surface).clipboard.text;
+  const reference = createPluginSurfaceAgentReference(surface);
+  return `${reference.clipboard.text.trim()}\n\n${reference.context}`;
 }
 
 export function copyPluginSurfaceReferenceText(
