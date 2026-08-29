@@ -16,7 +16,6 @@ export type CtaPlacement =
   | "cli"
   | "loops"
   | "local"
-  | "plugin-guide"
   | "closer"
   | "footer";
 

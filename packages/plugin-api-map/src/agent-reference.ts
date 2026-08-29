@@ -102,7 +102,7 @@ function copyWithEditingCommand(
     position: "fixed",
     width: "1px",
   });
-  document.body.appendChild(textarea);
+  document.body.append(textarea);
   let richClipboardHandled = false;
   const onCopy = (event: ClipboardEvent) => {
     if (event.clipboardData === null) return;

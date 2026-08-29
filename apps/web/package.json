@@ -5,8 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite dev --host 0.0.0.0",
-    "build": "pnpm run check:marketplace-v2 && vite build",
-    "check:marketplace-v2": "vitest run --config vitest.config.ts src/marketplace/marketplace-v2.test.ts",
+    "build": "vite build",
     "og:card": "node scripts/generate-og-card.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
@@ -14,11 +13,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@bb/client-core": "workspace:*",
     "@bb/connect-db": "workspace:*",
-    "@bb/domain": "workspace:*",
-    "@bb/plugin-api-map": "workspace:*",
-    "@bb/showcase-hero": "workspace:*",
     "@better-auth/drizzle-adapter": "^1.6.23",
     "@fontsource-variable/inter": "^5.2.8",
     "@hugeicons/core-free-icons": "^4.1.3",
@@ -33,8 +28,7 @@
     "posthog-js": "^1.386.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.4.0",
-    "zod": "^4.3.6"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

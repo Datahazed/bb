@@ -18,7 +18,7 @@ import {
 } from "../lib/theme";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 
-type SiteNavPage = "blog" | "changelog" | "marketplace";
+type SiteNavPage = "blog" | "changelog";
 
 const THEME_OPTIONS: ReadonlyArray<{
   value: ThemePreference;
@@ -132,12 +132,6 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
       </a>
       <div className="nav-links">
         <a
-          className={current === "marketplace" ? "nav-current" : undefined}
-          href="/marketplace"
-        >
-          Marketplace
-        </a>
-        <a
           className={current === "blog" ? "nav-current" : undefined}
           href="/blog"
         >
@@ -166,8 +160,6 @@ export function SiteFooter() {
     <footer className="footer">
       <span>bb is free and open source (MIT)</span>
       <span>
-        <a href="/marketplace">Marketplace</a>
-        {" · "}
         <a href="/blog">Blog</a>
         {" · "}
         <a href="/changelog">Changelog</a>
