@@ -74,8 +74,11 @@ describe("PluginBrowseCategoryFilter", () => {
     expect(screen.getAllByRole("option")).toHaveLength(OPTIONS.length + 1);
     expect(screen.queryByText(/^\d+ categories$/u)).toBeNull();
     const security = screen.getByRole("option", { name: /Security/u });
-    expect(security.children[0]?.textContent).toBe("2");
-    expect(security.children[0]?.classList.contains("rounded-full")).toBe(true);
+    const count = security.querySelector("[data-category-option-count]");
+    expect(count?.textContent).toBe("2");
+    expect(count?.classList.contains("rounded-full")).toBe(true);
+    expect(count?.classList.contains("p-1.5")).toBe(true);
+    expect(security.children[0]?.classList.contains("w-8")).toBe(true);
     expect(security.children[1]?.textContent).toBe("Security");
     expect(
       security.querySelector("[data-category-option-checkbox]")?.getAttribute(

@@ -660,8 +660,19 @@ describe("BrowsePluginsTab", () => {
     });
     expect(
       shelfTitle.classList.contains("focus-visible:bg-state-hover"),
-    ).toBe(true);
+    ).toBe(false);
     expect(shelfTitle.classList.contains("focus-visible:ring-1")).toBe(false);
+    const focusAccent = shelfTitle.querySelector(
+      "[data-plugin-category-accent] > span",
+    );
+    expect(
+      focusAccent?.classList.contains("group-focus-visible:opacity-100"),
+    ).toBe(true);
+    expect(focusAccent).toBeInstanceOf(HTMLElement);
+    if (!(focusAccent instanceof HTMLElement)) {
+      throw new Error("Shelf focus accent missing");
+    }
+    expect(focusAccent.style.background).toBe("var(--success)");
     fireEvent.mouseDown(shelfTitle, { button: 0 });
     expect(document.activeElement).toBe(shelfTitle);
     fireEvent.click(shelfTitle);
