@@ -172,7 +172,7 @@ export function PluginBrowseCategoryFilter({
         mobileTitle="Filter plugins by category"
         className="w-72 p-1.5 md:p-0.5"
       >
-        <div className="relative">
+        <div className="relative mx-1.5 mt-1.5">
           <Icon
             name="Search"
             className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
@@ -213,7 +213,7 @@ export function PluginBrowseCategoryFilter({
             }}
           />
         </div>
-        <div className="relative isolate mt-1">
+        <div className="relative isolate mt-1.5">
           <div
             id="plugin-category-options"
             ref={attachList}
@@ -246,7 +246,7 @@ export function PluginBrowseCategoryFilter({
                     <span className="flex w-8 shrink-0 justify-center">
                       <span
                         data-category-option-count
-                        className="rounded-full bg-surface-recessed p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
+                        className="rounded-full bg-muted p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
                       >
                         {totalCount.toLocaleString()}
                       </span>
@@ -271,7 +271,7 @@ export function PluginBrowseCategoryFilter({
                       <span className="flex w-8 shrink-0 justify-center">
                         <span
                           data-category-option-count
-                          className="rounded-full bg-surface-recessed p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
+                          className="rounded-full bg-muted p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
                         >
                           {option.count.toLocaleString()}
                         </span>
