@@ -8,7 +8,6 @@ import {
   type PluginListItem,
   usePluginListings,
 } from "@/hooks/queries/plugin-settings-queries";
-import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import { MyPluginsTab, PluginListingStatusPill } from "./MyPluginsTab";
 
 vi.mock("@/hooks/queries/plugin-settings-queries", async (importOriginal) => {
@@ -17,13 +16,6 @@ vi.mock("@/hooks/queries/plugin-settings-queries", async (importOriginal) => {
       typeof import("@/hooks/queries/plugin-settings-queries")
     >();
   return { ...original, usePluginListings: vi.fn() };
-});
-vi.mock("@/hooks/queries/plugin-catalog-queries", async (importOriginal) => {
-  const original =
-    await importOriginal<
-      typeof import("@/hooks/queries/plugin-catalog-queries")
-    >();
-  return { ...original, usePluginCatalogSearch: vi.fn() };
 });
 
 function plugin(id: string, name: string): PluginListItem {
@@ -82,7 +74,7 @@ afterEach(() => {
 });
 
 describe("MyPluginsTab", () => {
-  it("groups authored records by real category and only pills exceptional rows", () => {
+  it("groups authored records by listing lifecycle without repeating row status", () => {
     vi.mocked(usePluginListings).mockReturnValue({
       data: {
         records: [
@@ -123,14 +115,6 @@ describe("MyPluginsTab", () => {
       isError: false,
       isFetching: false,
     } as never);
-    vi.mocked(usePluginCatalogSearch).mockReturnValue({
-      data: [
-        {
-          entryId: "published",
-          category: "Code & Reviews",
-        },
-      ],
-    } as never);
     const onOpenPlugin = vi.fn();
 
     render(
@@ -139,23 +123,35 @@ describe("MyPluginsTab", () => {
           plugins={[
             plugin("usage", "Usage"),
             plugin("review", "Review"),
-            plugin("published", "Published plugin"),
+            plugin("published", "Release Notes"),
           ]}
           onOpenPlugin={onOpenPlugin}
         />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Token Usage & Limits · 1")).toBeTruthy();
-    expect(screen.getByText("Notifications · 1")).toBeTruthy();
-    expect(screen.getByText("Code & Reviews · 1")).toBeTruthy();
-    expect(screen.getByText("Not published")).toBeTruthy();
-    expect(screen.getByText("In review")).toBeTruthy();
-    expect(screen.queryByText("Other")).toBeNull();
-    expect(screen.queryByText("Published")).toBeNull();
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.map((heading) => heading.textContent)).toEqual([
+      "Not published · 1",
+      "In review · 1",
+      "Published · 1",
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Usage listing details" })
+        .textContent,
+    ).not.toContain("Not published");
+    expect(
+      screen.getByRole("button", { name: "Review listing details" })
+        .textContent,
+    ).not.toContain("In review");
+    expect(
+      screen.getByRole("button", {
+        name: "Release Notes listing details",
+      }).textContent,
+    ).not.toContain("Published");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Published plugin listing details" }),
+      screen.getByRole("button", { name: "Release Notes listing details" }),
     );
     expect(onOpenPlugin).toHaveBeenCalledWith("published");
   });

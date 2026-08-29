@@ -208,6 +208,14 @@ describe("BrowseArchetypeCards", () => {
     for (const example of UTILITY_EXAMPLES) {
       expect(screen.getByText(example.label)).toBeTruthy();
     }
+    expect(
+      screen.getByRole("heading", { name: "Start from an example" }).className,
+    ).toContain("text-xs");
+    expect(
+      screen.getByRole("heading", {
+        name: "Explore plugin capabilities",
+      }).className,
+    ).toContain("text-xs");
 
     const utility = UTILITY_EXAMPLES[3]!;
     fireEvent.click(screen.getByText(utility.label));

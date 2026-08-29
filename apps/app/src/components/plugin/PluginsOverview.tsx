@@ -29,14 +29,12 @@ import {
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
-import { PluginCategoryChips } from "@/components/plugin/management/PluginCategoryChips";
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { MyPluginsTab } from "@/components/plugin/management/MyPluginsTab";
 import {
   PLUGIN_SOURCE_FILTER_OPTIONS,
   pluginSourceFilterId,
-  pluginSourceFilterLabel,
   type PluginSourceFilter,
 } from "@/components/plugin/plugin-provenance";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
@@ -48,6 +46,17 @@ import {
 } from "@/lib/route-paths";
 
 type PluginsCollectionMode = "installed" | "browse" | "my";
+type InstalledStateFilter = "all" | "enabled" | "disabled";
+
+const INSTALLED_STATE_FILTER_OPTIONS: readonly InstalledPluginFilterOption<InstalledStateFilter>[] =
+  [
+    { id: "all", label: "All states" },
+    { id: "enabled", label: "Enabled" },
+    { id: "disabled", label: "Disabled" },
+  ];
+
+const ALL_CATEGORY_FILTER = "__all_categories__";
+const UNCATEGORIZED_CATEGORY_FILTER = "__uncategorized__";
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   if (value === "installed") return value;
@@ -74,30 +83,48 @@ export function PluginsOverview({
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
+  const [stateFilter, setStateFilter] = useState<InstalledStateFilter>("all");
   const [sourceFilter, setSourceFilter] = useState<PluginSourceFilter>("all");
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] =
+    useState<string>(ALL_CATEGORY_FILTER);
   const categoryOptions = useMemo(() => {
     const byId = new Map<string, string>();
+    let hasUncategorized = false;
     for (const plugin of plugins) {
       if (plugin.categoryId != null && plugin.category != null) {
         byId.set(plugin.categoryId, plugin.category);
+      } else {
+        hasUncategorized = true;
       }
     }
-    return [...byId.entries()]
+    const declaredCategories = [...byId.entries()]
       .map(([id, label]) => ({ id, label }))
       .sort((left, right) => left.label.localeCompare(right.label));
+    return [
+      { id: ALL_CATEGORY_FILTER, label: "All categories" },
+      ...declaredCategories,
+      ...(hasUncategorized
+        ? [
+            {
+              id: UNCATEGORIZED_CATEGORY_FILTER,
+              label: "Uncategorized",
+            },
+          ]
+        : []),
+    ];
   }, [plugins]);
   const activeCategoryFilter = categoryOptions.some(
     (option) => option.id === categoryFilter,
   )
     ? categoryFilter
-    : null;
+    : ALL_CATEGORY_FILTER;
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const installedResetKey = [
     normalizedInstalledQuery,
     installedSortDirection,
+    stateFilter,
     sourceFilter,
-    activeCategoryFilter ?? "",
+    activeCategoryFilter,
   ].join("\u0000");
   const installedPageSize = useResourceViewportPageSize(installedViewport, {
     resetKey: installedResetKey,
@@ -123,13 +150,23 @@ export function PluginsOverview({
       plugins
         .filter((plugin) => {
           if (
+            stateFilter !== "all" &&
+            plugin.enabled !== (stateFilter === "enabled")
+          ) {
+            return false;
+          }
+          if (
             sourceFilter !== "all" &&
             pluginSourceFilterId(plugin) !== sourceFilter
           ) {
             return false;
           }
-          if (
-            activeCategoryFilter !== null &&
+          if (activeCategoryFilter === UNCATEGORIZED_CATEGORY_FILTER) {
+            if (plugin.categoryId != null && plugin.category != null) {
+              return false;
+            }
+          } else if (
+            activeCategoryFilter !== ALL_CATEGORY_FILTER &&
             plugin.categoryId !== activeCategoryFilter
           ) {
             return false;
@@ -170,6 +207,7 @@ export function PluginsOverview({
       normalizedInstalledQuery,
       plugins,
       sourceFilter,
+      stateFilter,
     ],
   );
   const installedList = useResourceInfiniteItems(visiblePlugins, {
@@ -250,9 +288,23 @@ export function PluginsOverview({
               action={installedActions}
               controls={
                 <>
-                  <InstalledPluginSourceFilter
+                  <InstalledPluginFilter
+                    label="State"
+                    value={stateFilter}
+                    options={INSTALLED_STATE_FILTER_OPTIONS}
+                    onChange={setStateFilter}
+                  />
+                  <InstalledPluginFilter
+                    label="Source"
                     value={sourceFilter}
+                    options={PLUGIN_SOURCE_FILTER_OPTIONS}
                     onChange={setSourceFilter}
+                  />
+                  <InstalledPluginFilter
+                    label="Category"
+                    value={activeCategoryFilter}
+                    options={categoryOptions}
+                    onChange={setCategoryFilter}
                   />
                   <ResourceSortMenu
                     value="alpha"
@@ -267,6 +319,7 @@ export function PluginsOverview({
                   />
                 </>
               }
+              controlsClassName="max-w-full flex-wrap justify-end"
             />
           ) : undefined
         }
@@ -286,22 +339,15 @@ export function PluginsOverview({
               message={
                 normalizedInstalledQuery === ""
                   ? "No plugins match these filters."
-                  : sourceFilter !== "all" || activeCategoryFilter !== null
+                  : stateFilter !== "all" ||
+                      sourceFilter !== "all" ||
+                      activeCategoryFilter !== ALL_CATEGORY_FILTER
                     ? `No plugins match "${installedQuery}" with these filters.`
                     : `No plugins match "${installedQuery}"`
               }
             />
           ) : (
             <>
-              {plugins.length > 0 ? (
-                <PluginCategoryChips
-                  options={categoryOptions}
-                  value={activeCategoryFilter}
-                  allLabel={`All · ${plugins.length}`}
-                  ariaLabel="Filter installed plugins by category"
-                  onChange={setCategoryFilter}
-                />
-              ) : null}
               <InstalledPluginsTab
                 plugins={installedList.items}
                 onOpenPlugin={(pluginId) => openPlugin(pluginId, "installed")}
@@ -356,36 +402,39 @@ export function PluginsOverview({
   );
 }
 
-function InstalledPluginSourceFilter({
+interface InstalledPluginFilterOption<Value extends string> {
+  id: Value;
+  label: string;
+}
+
+function InstalledPluginFilter<Value extends string>({
+  label,
   value,
+  options,
   onChange,
 }: {
-  value: PluginSourceFilter;
-  onChange: (value: PluginSourceFilter) => void;
+  label: string;
+  value: Value;
+  options: readonly InstalledPluginFilterOption<Value>[];
+  onChange: (value: Value) => void;
 }) {
-  const label = pluginSourceFilterLabel(value);
+  const selectedLabel =
+    options.find((option) => option.id === value)?.label ?? "All";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
           variant="outline"
-          className="h-8 min-w-36 justify-between gap-2 px-3 text-xs font-normal"
-          aria-label={`Source: ${label}`}
+          className="h-8 w-36 max-w-full justify-between gap-2 px-3 text-xs font-normal"
+          aria-label={`${label}: ${selectedLabel}`}
         >
-          <span className="flex min-w-0 items-center gap-2">
-            <Icon
-              name="SlidersHorizontal"
-              className="size-3.5 shrink-0"
-              aria-hidden
-            />
-            <span className="truncate">{label}</span>
-          </span>
+          <span className="truncate">{selectedLabel}</span>
           <Icon name="ChevronDown" className="size-3.5 shrink-0" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
-        {PLUGIN_SOURCE_FILTER_OPTIONS.map((option) => (
+        {options.map((option) => (
           <DropdownMenuItem
             key={option.id}
             onSelect={() => onChange(option.id)}

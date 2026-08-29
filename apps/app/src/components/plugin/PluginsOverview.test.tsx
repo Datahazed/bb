@@ -327,7 +327,7 @@ describe("PluginsOverview", () => {
     );
   });
 
-  it("shows category filters only in Browse", async () => {
+  it("keeps Browse's category filter in its toolbar", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -383,7 +383,7 @@ describe("PluginsOverview", () => {
     expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
-  it("uses one Installed Source filter with the shared provenance labels", async () => {
+  it("shows separate Installed State, Source, and Category filters", async () => {
     installFetch([AUTOMATIONS_PLUGIN]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -399,6 +399,12 @@ describe("PluginsOverview", () => {
     expect(await screen.findByText("Automations")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Source: All sources" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "State: All states" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Category: All categories" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
@@ -704,7 +710,7 @@ describe("PluginsOverview", () => {
     for (const row of rows) {
       expect(row.textContent).not.toContain("BB Official");
       expect(row.textContent).not.toContain("BB Community");
-      expect(row.textContent).not.toContain("Direct install");
+      expect(row.textContent).not.toContain("Local");
     }
 
     const sortTrigger = screen.getByRole("button", {
@@ -797,7 +803,7 @@ describe("PluginsOverview", () => {
       "All sources",
       "BB Official",
       "BB Community",
-      "Direct install",
+      "Local",
     ]) {
       expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
     }
@@ -807,19 +813,19 @@ describe("PluginsOverview", () => {
         .querySelector('[data-icon="Check"]')
         ?.classList.contains("opacity-100"),
     ).toBe(true);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Direct install" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Local" }));
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-direct-one"]);
     });
     sourceTrigger = screen.getByRole("button", {
-      name: "Source: Direct install",
+      name: "Source: Local",
     });
-    expect(sourceTrigger.textContent).toContain("Direct install");
+    expect(sourceTrigger.textContent).toContain("Local");
 
     fireEvent.pointerDown(sourceTrigger);
     expect(
       screen
-        .getByRole("menuitem", { name: "Direct install" })
+        .getByRole("menuitem", { name: "Local" })
         .querySelector('[data-icon="Check"]')
         ?.classList.contains("opacity-100"),
     ).toBe(true);
@@ -834,7 +840,7 @@ describe("PluginsOverview", () => {
     expect(screen.queryByText("No plugins match these filters.")).toBeNull();
   });
 
-  it("filters by declared categories while categoryless installs stay only under All", async () => {
+  it("filters by category and keeps categoryless installs reachable", async () => {
     installFetch([
       {
         ...AUTOMATIONS_PLUGIN,
@@ -884,20 +890,21 @@ describe("PluginsOverview", () => {
       "plugin-row-catalog-one",
       "plugin-row-direct-one",
     ]);
-    expect(screen.getByRole("radio", { name: "All · 3" })).toBeTruthy();
-    expect(
-      screen.getByRole("radio", { name: "Tasks & Workflows" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Security" })).toBeTruthy();
-    const categoryRow = screen.getByRole("radiogroup", {
-      name: "Filter installed plugins by category",
+    let categoryTrigger = screen.getByRole("button", {
+      name: "Category: All categories",
     });
-    expect(categoryRow.classList.contains("overflow-hidden")).toBe(true);
-    expect(categoryRow.classList.contains("overflow-x-auto")).toBe(false);
-    expect(screen.queryByText("Other")).toBeNull();
+    fireEvent.pointerDown(categoryTrigger);
+    for (const label of [
+      "All categories",
+      "Security",
+      "Tasks & Workflows",
+      "Uncategorized",
+    ]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    }
 
     fireEvent.click(
-      screen.getByRole("radio", { name: "Tasks & Workflows" }),
+      screen.getByRole("menuitem", { name: "Tasks & Workflows" }),
     );
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
@@ -907,7 +914,20 @@ describe("PluginsOverview", () => {
       screen.getByTestId("plugin-row-builtin-one").textContent,
     ).not.toContain("Tasks & Workflows");
 
-    fireEvent.click(screen.getByRole("radio", { name: "All · 3" }));
+    categoryTrigger = screen.getByRole("button", {
+      name: "Category: Tasks & Workflows",
+    });
+    fireEvent.pointerDown(categoryTrigger);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Uncategorized" }));
+    await waitFor(() => {
+      expect(rowIds()).toEqual(["plugin-row-direct-one"]);
+    });
+
+    categoryTrigger = screen.getByRole("button", {
+      name: "Category: Uncategorized",
+    });
+    fireEvent.pointerDown(categoryTrigger);
+    fireEvent.click(screen.getByRole("menuitem", { name: "All categories" }));
     await waitFor(() => {
       expect(rowIds()).toEqual([
         "plugin-row-builtin-one",
@@ -915,6 +935,134 @@ describe("PluginsOverview", () => {
         "plugin-row-direct-one",
       ]);
     });
+  });
+
+  it("AND-composes Installed filters with search and resets each facet", async () => {
+    installFetch([
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "builtin-enabled",
+        name: "Builtin Enabled",
+        categoryId: "tasks-workflows",
+        category: "Tasks & Workflows",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "catalog-disabled",
+        name: "Catalog Disabled",
+        enabled: false,
+        status: "disabled",
+        provenance: "catalog",
+        publisherKey: "bb-community",
+        publisherLabel: "BB Community",
+        catalogEntryId: "catalog-disabled",
+        categoryId: "security",
+        category: "Security",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "local-security",
+        name: "Local Security",
+        enabled: false,
+        status: "disabled",
+        provenance: "direct",
+        publisherKey: null,
+        publisherLabel: null,
+        categoryId: "security",
+        category: "Security",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "local-uncategorized",
+        name: "Local Uncategorized",
+        enabled: false,
+        status: "disabled",
+        provenance: "direct",
+        publisherKey: null,
+        publisherLabel: null,
+        categoryId: undefined,
+        category: undefined,
+      },
+    ]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Local Uncategorized");
+    const rowIds = () =>
+      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+        (row) => row.getAttribute("data-testid"),
+      );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "State: All states" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Disabled" }));
+    await waitFor(() =>
+      expect(rowIds()).toEqual([
+        "plugin-row-catalog-disabled",
+        "plugin-row-local-security",
+        "plugin-row-local-uncategorized",
+      ]),
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Source: All sources" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Local" }));
+    await waitFor(() =>
+      expect(rowIds()).toEqual([
+        "plugin-row-local-security",
+        "plugin-row-local-uncategorized",
+      ]),
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Category: All categories" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Security" }));
+    await waitFor(() =>
+      expect(rowIds()).toEqual(["plugin-row-local-security"]),
+    );
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search installed plugins" }),
+      { target: { value: "Builtin" } },
+    );
+    expect(
+      screen.getByText('No plugins match "Builtin" with these filters.'),
+    ).toBeTruthy();
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search installed plugins" }),
+      { target: { value: "" } },
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Category: Security" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "All categories" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Source: Local" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "All sources" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "State: Disabled" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "All states" }));
+
+    await waitFor(() =>
+      expect(rowIds()).toEqual([
+        "plugin-row-builtin-enabled",
+        "plugin-row-catalog-disabled",
+        "plugin-row-local-security",
+        "plugin-row-local-uncategorized",
+      ]),
+    );
   });
 
   it("keeps disabled plugins installed regardless of provenance", async () => {
