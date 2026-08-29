@@ -17,7 +17,8 @@ import {
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
 
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "min(90vw, 320px)";
+const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.76;
+const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, 320px)`;
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
 const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
@@ -72,7 +73,7 @@ function getSidebarMobilePanelWidth(): number {
     return 320;
   }
 
-  return Math.min(window.innerWidth * 0.9, 320);
+  return Math.min(window.innerWidth * SIDEBAR_MOBILE_VIEWPORT_FRACTION, 320);
 }
 
 function clampSidebarMobileSwipeProgress(value: number): number {
@@ -1297,7 +1298,7 @@ const SidebarMobilePanel = React.forwardRef<
           data-testid="sidebar-mobile-backdrop"
           data-state={open ? "open" : "closed"}
           className={cn(
-            "fixed inset-0 z-40 bg-black/40 will-change-[opacity,translate]",
+            "fixed inset-0 z-40 bg-transparent will-change-[opacity,translate]",
             "data-[state=open]:translate-x-(--sidebar-width-mobile)",
             SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS,
             "data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
