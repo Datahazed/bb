@@ -163,7 +163,7 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    await screen.findByRole("button", { name: "Open Memory details" });
+    await screen.findAllByRole("button", { name: "Open Memory details" });
     await queryClient.invalidateQueries({
       queryKey: ["plugin-catalog-search"],
     });
