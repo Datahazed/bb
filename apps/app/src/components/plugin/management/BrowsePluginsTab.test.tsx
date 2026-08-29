@@ -171,7 +171,9 @@ describe("BrowsePluginsTab", () => {
     expect(
       screen.getByText(/Showing cached catalog results/u),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open Memory details" })).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: "Open Memory details" }).length,
+    ).toBeGreaterThan(0);
 
     const before = searches;
     fireEvent.click(retry);
@@ -309,7 +311,7 @@ describe("BrowsePluginsTab", () => {
     expect(notableShelf.querySelector("[data-plugin-category-accent]")).toBeNull();
     expect(
       screen.getAllByRole("button", { name: "Open Memory details" }),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
     fireEvent.click(
       screen.getByRole("button", {
@@ -724,7 +726,7 @@ describe("BrowsePluginsTab", () => {
     expect(
       installButton.querySelector('[data-icon="Download"]'),
     ).not.toBeNull();
-    expect(installButton.textContent).toBe("1.2k");
+    expect(installButton.textContent).toBe("1.2K");
     expect(installButton.classList.contains("border-border/80")).toBe(true);
     expect(container.querySelector('[aria-label^="Updated "]')).toBeNull();
     expect(container.textContent).not.toMatch(/\bago\b/u);
@@ -1121,7 +1123,7 @@ describe("BrowsePluginsTab", () => {
       "Installed — 1,204 installs",
     );
     expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
-    expect(installed.textContent).toBe("1.2k");
+    expect(installed.textContent).toBe("1.2K");
     const installedClasses = new Set(installed.className.split(/\s+/));
     expect(installedClasses.has("text-subtle-foreground")).toBe(true);
     expect(installed.tagName).toBe("SPAN");

@@ -195,7 +195,7 @@ describe("AddPluginDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
 
     const installingButton = await screen.findByRole("button", {
-      name: /installing plugin/i,
+      name: "Installing",
     });
     expect(installingButton.textContent).toBe("Installing");
     expect(

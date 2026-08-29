@@ -58,6 +58,7 @@ Use this shape only as a guide:
 
 ## Add listing screenshots
 
+Follow the `plugin-listing-screenshots` skill for its seeding and quality gate.
 Use `bb plugin screenshot [path] --capture <dir>` to find and capture the
 plugin's registered visual surfaces. Seed realistic data first and inspect each
 image. Do not submit empty, loading, thin, or sensitive screenshots.

@@ -762,7 +762,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       store.set(sidebarLiveWidthAtom, null);
       resetSidebarResizeDocumentState();
     };
-  }, [finishSidebarResize, isSidebarResizing, store]);
+  }, [clampActiveSidebarWidth, finishSidebarResize, isSidebarResizing, store]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;

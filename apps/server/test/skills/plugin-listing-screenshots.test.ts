@@ -16,6 +16,12 @@ const submitSkillPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const submitMarketplaceEntryPath = fileURLToPath(
+  new URL(
+    "../../src/services/skills/builtin-skills/submit-a-plugin/references/marketplace-entry.md",
+    import.meta.url,
+  ),
+);
 
 describe("plugin-listing-screenshots skill", () => {
   it("keeps the capture workflow and quality gate operational", async () => {
@@ -51,12 +57,18 @@ describe("plugin-listing-screenshots skill", () => {
   });
 
   it("is explicitly part of the marketplace submission procedure", async () => {
-    const submitSkill = await readFile(submitSkillPath, "utf8");
+    const submitSkill = (
+      await Promise.all(
+        [submitSkillPath, submitMarketplaceEntryPath].map((file) =>
+          readFile(file, "utf8"),
+        ),
+      )
+    ).join("\n");
 
     expect(submitSkill).toContain(
       "`bb plugin screenshot [path] --capture <dir>`",
     );
     expect(submitSkill).toContain("`plugin-listing-screenshots` skill");
-    expect(submitSkill).toContain("Seed the plugin's data before capturing");
+    expect(submitSkill).toContain("Seed realistic data first");
   });
 });

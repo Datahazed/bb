@@ -359,7 +359,7 @@ describe("PluginsOverview", () => {
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
     fireEvent.click(categoryTrigger);
     fireEvent.click(
-      screen.getByRole("option", { name: /Memory & Context/u }),
+      screen.getByRole("option", { name: /File Viewers & Editors/u }),
     );
     expect(screen.getByText("Docs")).toBeTruthy();
     expect(screen.queryByText("GitHub")).toBeNull();

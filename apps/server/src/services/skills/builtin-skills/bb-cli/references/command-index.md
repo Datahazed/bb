@@ -200,6 +200,10 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb plugin list`
 - `bb plugin source`
 - `bb plugin install`
+- `bb plugin listing`
+- `bb plugin listing list`
+- `bb plugin listing save-draft`
+- `bb plugin listing record-submission`
 - `bb plugin outdated`
 - `bb plugin update`
 - `bb plugin new`
@@ -215,6 +219,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb plugin run`
 - `bb plugin logs`
 - `bb plugin remove`
+- `bb plugin screenshot`
 
 ## marketplace
 
