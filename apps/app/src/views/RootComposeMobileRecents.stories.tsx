@@ -171,6 +171,62 @@ const metadataThreads: ThreadListEntry[] = [
   }),
 ];
 
+const hierarchyThreads: ThreadListEntry[] = [
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_parent",
+      title: "Rework folder model",
+      titleFallback: "Rework folder model",
+      status: "active",
+      createdAt: 900,
+      latestAttentionAt: 900,
+      runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+    },
+  }),
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_child_a",
+      parentThreadId: "thr_mobile_parent",
+      title: "Audit folder query paths",
+      titleFallback: "Audit folder query paths",
+      status: "active",
+      createdAt: 880,
+      latestAttentionAt: 880,
+      runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+    },
+  }),
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_child_b",
+      parentThreadId: "thr_mobile_parent",
+      title: "Migrate folder fixtures",
+      titleFallback: "Migrate folder fixtures",
+      createdAt: 860,
+      latestAttentionAt: 860,
+    },
+  }),
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_grandchild",
+      parentThreadId: "thr_mobile_child_a",
+      title: "Backfill folder migration tests",
+      titleFallback: "Backfill folder migration tests",
+      createdAt: 850,
+      latestAttentionAt: 850,
+    },
+  }),
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_sibling",
+      projectId: PROJECT_IDS.pierre,
+      title: "Unrelated top-level thread",
+      titleFallback: "Unrelated top-level thread",
+      createdAt: 840,
+      latestAttentionAt: 840,
+    },
+  }),
+];
+
 const projectNamesById = new Map<string, string>([
   [PROJECT_IDS.bb, PROJECT_NAMES.bb],
   [PROJECT_IDS.pierre, PROJECT_NAMES.pierre],
@@ -200,6 +256,17 @@ export function Overview() {
             providersById={providersById}
             showCreatingRow
             threads={recentThreads.slice(1)}
+          />
+        </MobileStage>
+      </StoryRow>
+      <StoryRow label="parent / child">
+        <MobileStage>
+          <RootComposeMobileRecents
+            highlightedThreadId={null}
+            projectNamesById={projectNamesById}
+            providersById={providersById}
+            showCreatingRow={false}
+            threads={hierarchyThreads}
           />
         </MobileStage>
       </StoryRow>

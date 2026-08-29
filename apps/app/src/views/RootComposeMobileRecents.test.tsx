@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ThreadListEntry } from "@bb/domain";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -57,6 +57,8 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+const NONE: ReadonlySet<string> = new Set();
+
 describe("getMobileRecentThreads", () => {
   it("returns every active thread newest-first instead of a capped window", () => {
     const threads = Array.from({ length: 12 }, (_unused, index) =>
@@ -67,13 +69,13 @@ describe("getMobileRecentThreads", () => {
       }),
     );
 
-    const ordered = getMobileRecentThreads({
-      highlightedThreadId: null,
+    const rows = getMobileRecentThreads({
+      collapsedThreadIds: NONE,
       threads,
     });
 
-    expect(ordered).toHaveLength(12);
-    expect(ordered.map((thread) => thread.id)).toEqual([
+    expect(rows).toHaveLength(12);
+    expect(rows.map((row) => row.thread.id)).toEqual([
       "thr_11",
       "thr_10",
       "thr_9",
@@ -87,29 +89,160 @@ describe("getMobileRecentThreads", () => {
       "thr_1",
       "thr_0",
     ]);
+    expect(rows.every((row) => row.depth === 0)).toBe(true);
   });
 
-  it("pins the highlighted thread first without dropping the rest", () => {
-    const threads = Array.from({ length: 5 }, (_unused, index) =>
-      makeThread({
-        id: `thr_${index}`,
-        latestAttentionAt: index,
-        createdAt: index,
-      }),
-    );
+  it("nests a child under its parent instead of listing it as a peer", () => {
+    const rows = getMobileRecentThreads({
+      collapsedThreadIds: NONE,
+      threads: [
+        makeThread({ id: "thr_parent", latestAttentionAt: 10 }),
+        makeThread({
+          id: "thr_child",
+          parentThreadId: "thr_parent",
+          latestAttentionAt: 99,
+        }),
+        makeThread({ id: "thr_other", latestAttentionAt: 5 }),
+      ],
+    });
 
-    const ordered = getMobileRecentThreads({
-      highlightedThreadId: "thr_0",
+    expect(rows.map((row) => [row.thread.id, row.depth])).toEqual([
+      ["thr_parent", 0],
+      ["thr_child", 1],
+      ["thr_other", 0],
+    ]);
+    expect(rows[0]?.hasChildren).toBe(true);
+    expect(rows[1]?.hasChildren).toBe(false);
+  });
+
+  it("hides descendants of a collapsed parent but keeps the parent", () => {
+    const threads = [
+      makeThread({ id: "thr_parent", latestAttentionAt: 10 }),
+      makeThread({
+        id: "thr_child",
+        parentThreadId: "thr_parent",
+        latestAttentionAt: 9,
+      }),
+      makeThread({
+        id: "thr_grandchild",
+        parentThreadId: "thr_child",
+        latestAttentionAt: 8,
+      }),
+    ];
+
+    const rows = getMobileRecentThreads({
+      collapsedThreadIds: new Set(["thr_parent"]),
       threads,
     });
 
-    expect(ordered.map((thread) => thread.id)).toEqual([
-      "thr_0",
-      "thr_4",
-      "thr_3",
-      "thr_2",
-      "thr_1",
+    expect(rows.map((row) => row.thread.id)).toEqual(["thr_parent"]);
+    expect(rows[0]?.isCollapsed).toBe(true);
+    expect(rows[0]?.hasChildren).toBe(true);
+  });
+
+  it("promotes a child whose parent is absent to the top level", () => {
+    const rows = getMobileRecentThreads({
+      collapsedThreadIds: NONE,
+      threads: [
+        makeThread({
+          id: "thr_orphan",
+          parentThreadId: "thr_missing",
+          latestAttentionAt: 3,
+        }),
+      ],
+    });
+
+    expect(rows.map((row) => [row.thread.id, row.depth])).toEqual([
+      ["thr_orphan", 0],
     ]);
+  });
+
+  it("does not group worktree threads into environment rows", () => {
+    const rows = getMobileRecentThreads({
+      collapsedThreadIds: NONE,
+      threads: [
+        makeThread({
+          id: "thr_wt_a",
+          environmentId: "env_1",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+          latestAttentionAt: 2,
+        }),
+        makeThread({
+          id: "thr_wt_b",
+          environmentId: "env_1",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+          latestAttentionAt: 1,
+        }),
+      ],
+    });
+
+    expect(rows.map((row) => [row.thread.id, row.depth])).toEqual([
+      ["thr_wt_a", 0],
+      ["thr_wt_b", 0],
+    ]);
+  });
+});
+
+describe("mobile recents hierarchy interaction", () => {
+  function renderTree() {
+    return render(
+      <MemoryRouter>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={[
+            makeThread({
+              id: "thr_parent",
+              title: "Rework folder model",
+              titleFallback: "Rework folder model",
+              latestAttentionAt: 10,
+            }),
+            makeThread({
+              id: "thr_child",
+              title: "Audit folder query paths",
+              titleFallback: "Audit folder query paths",
+              parentThreadId: "thr_parent",
+              latestAttentionAt: 9,
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  it("collapses and expands children from the parent row chevron", () => {
+    renderTree();
+
+    expect(screen.getByText("Audit folder query paths")).not.toBeNull();
+    const collapse = screen.getByRole("button", {
+      name: "Hide threads under Rework folder model",
+    });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(collapse);
+
+    expect(screen.queryByText("Audit folder query paths")).toBeNull();
+    const expand = screen.getByRole("button", {
+      name: "Show threads under Rework folder model",
+    });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(expand);
+    expect(screen.getByText("Audit folder query paths")).not.toBeNull();
+  });
+
+  it("gives only the parent a toggle and indents the child", () => {
+    renderTree();
+
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    const [parentRow, childRow] = screen.getAllByRole("link");
+    if (!parentRow || !childRow) {
+      throw new Error("Expected a parent and a child row");
+    }
+    expect(parentRow.style.paddingLeft).toBe("8px");
+    expect(childRow.style.paddingLeft).toBe("32px");
   });
 });
 
