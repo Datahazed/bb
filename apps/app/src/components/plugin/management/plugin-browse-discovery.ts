@@ -44,7 +44,6 @@ export function hasPluginCatalogCategory(
   return entry.categoryId !== undefined && entry.category !== undefined;
 }
 
-/** Normalizes the authoritative marketplace stats field for discovery helpers. */
 export function pluginInstalls(
   entry: PluginCatalogSearchEntry,
 ): number | undefined {
@@ -66,11 +65,6 @@ const DISCOVERY_ACCESSORS = {
   AppPluginCategory
 >;
 
-/**
- * Groups categorized entries while leaving v1 fallback entries ungrouped.
- * The canonical taxonomy owns shelf copy so Browse and its category picker
- * cannot drift when a marketplace sends a stale display label.
- */
 export function categoryShelves(
   entries: readonly PluginCatalogSearchEntry[],
 ): PluginCategoryShelf[] {
@@ -85,7 +79,6 @@ export function categoryShelves(
   });
 }
 
-/** Curated official order wins; a categorized catalog falls back to newest. */
 export function newAndNotableEntries(
   entries: readonly PluginCatalogSearchEntry[],
 ): CategorizedPluginCatalogEntry[] {
@@ -98,7 +91,6 @@ export function newAndNotableEntries(
   }).filter(hasPluginCatalogCategory);
 }
 
-/** Publisher groups preserve the caller's entry order within each group. */
 export function publisherGroups(
   entries: readonly PluginCatalogSearchEntry[],
 ): PluginPublisherGroup[] {

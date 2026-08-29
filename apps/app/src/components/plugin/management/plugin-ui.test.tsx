@@ -23,8 +23,6 @@ it("renders author artwork as supplied even when catalog metadata marks it tinte
   expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
     iconUrl,
   );
-  // Masking would repaint the asset with bb's currentColor. A catalog hint
-  // cannot safely distinguish a UI glyph from a monochrome brand mark.
   expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
 });
 

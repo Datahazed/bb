@@ -18,13 +18,6 @@ type PluginCatalogInstallControlProps = {
   count?: PluginCatalogInstallCount;
 } & ({ installed: true } | { installed: false; onInstall: () => void });
 
-/**
- * Compact acquisition state for catalog cards.
- *
- * Available is an outlined action. Installed uses the same Download + count
- * shape at a muted, passive weight; uninstall remains in the installed
- * plugin's detail overflow menu rather than hiding a destructive action here.
- */
 export function PluginCatalogInstallControl(
   props: PluginCatalogInstallControlProps,
 ) {

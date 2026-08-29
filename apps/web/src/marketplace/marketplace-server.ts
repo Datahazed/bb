@@ -19,11 +19,6 @@ export interface PublicMarketplaceData {
   stats: MarketplaceStats | null;
 }
 
-/**
- * SSR and client navigation read the same public object the desktop client
- * consumes. The existing R2 proxy remains the only storage boundary; this
- * server function only makes the parsed result available to route loaders.
- */
 export const getPublicMarketplace = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicMarketplaceData> => {
     const response = await serveMarketplaceObject({
@@ -56,8 +51,6 @@ export const getPublicMarketplace = createServerFn({ method: "GET" }).handler(
         stats: parseMarketplaceStats(await statsResponse.json()),
       };
     } catch {
-      // Counts are cosmetic. A missing or malformed sidecar must not hide the
-      // otherwise-valid marketplace, matching the desktop server behavior.
       return { manifest, stats: null };
     }
   },

@@ -14,9 +14,6 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ToolsView } from "./ToolsView";
 
-// The package's Node export creates an imperative Panel handle without its
-// browser-only group registration. The resize hook has its own transition
-// contract test; this route suite exercises panel identity and rendered state.
 vi.mock("@/components/secondary-panel/useSecondaryPanelResize", async () => {
   const { createRef } = await import("react");
   return {
@@ -140,8 +137,6 @@ describe("plugin discovery detail panel", () => {
       expect(element).not.toBeNull();
       return element as HTMLElement;
     });
-    // The detail is the page's docked right panel, so nothing is mounted for
-    // it until a plugin is opened — there is no offscreen overlay parked here.
     expect(
       document.querySelector("[data-persistent-drawer-content]"),
     ).toBeNull();

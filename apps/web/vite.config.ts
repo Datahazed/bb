@@ -13,22 +13,12 @@ import { unstable_readConfig } from "wrangler";
 import { resolveCloudDevViteSettings } from "./src/server/cloud-dev-vite.js";
 import { resolveSiteOrigin } from "./src/server/site-origin.js";
 
-/**
- * Hugeicons publishes its whole free set as one ESM module. Once the lazy
- * Plugin Guide also imports that module, Rollup otherwise hoists the union of
- * the landing and Guide icons into a shared chunk and preloads it on `/`.
- * Give Guide-only workspace sources their own module identity so the map's
- * icon inventory stays behind the route boundary instead of growing the
- * performance-sensitive landing bundle.
- */
 function isolatePluginGuideIcons(): Plugin {
   const moduleName = "@hugeicons/core-free-icons";
   const suffix = "?bb-plugin-guide-icons";
   const guideSources = [
     "/packages/plugin-api-map/",
     "/packages/showcase-hero/",
-    // The portable hero consumes shared-ui's icon registry. apps/web has no
-    // other shared-ui consumer, so this arm is Guide-only in this build.
     "/packages/shared-ui/",
   ];
 
@@ -58,10 +48,6 @@ function isolatePluginGuideIcons(): Plugin {
 
 export default defineConfig(({ command }) => {
   const cloudDev = resolveCloudDevViteSettings(command, process.env);
-  // Read APP_URL back out of the wrangler env this build targets (wrangler's
-  // own reader handles the JSONC and the production env's inheritance), so the
-  // unfurl tags advertise the deployment they actually ship to. Cloud dev
-  // overrides it with the tunnel URL, same as every other var.
   const siteOrigin = resolveSiteOrigin(
     cloudDev?.vars.APP_URL ??
       unstable_readConfig({
@@ -89,8 +75,6 @@ export default defineConfig(({ command }) => {
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
     },
-    // Dev binds all interfaces so the server is reachable over the tailnet
-    // (see the dev script's --host 0.0.0.0); allow Tailscale MagicDNS names.
     server: {
       allowedHosts: [".localhost", ".ts.net"],
     },

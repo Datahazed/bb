@@ -22,9 +22,6 @@ function publicRepositoryUrl(
         }
       }
 
-      // Repository identities never need transport credentials or query data.
-      // Dropping both prevents a report seed from carrying secrets into a
-      // public issue even when a direct Git source used authenticated HTTPS.
       url.username = "";
       url.password = "";
       url.search = "";
@@ -38,8 +35,6 @@ function publicRepositoryUrl(
   const parsed = parse(value);
   if (parsed !== null) return parsed;
 
-  // A malformed selector can make the complete source fail URL parsing. Only
-  // retry without a trailing path selector; an @ in authority is userinfo.
   const selectorAt = value.lastIndexOf("@");
   const finalSlashAt = value.lastIndexOf("/");
   return options.stripGitSelector && selectorAt > finalSlashAt
@@ -47,7 +42,6 @@ function publicRepositoryUrl(
     : null;
 }
 
-/** Catalog metadata wins; a direct git install can still name its own repo. */
 export function installedPluginRepositoryUrl(args: {
   plugin: PluginListItem;
   catalogRepositoryUrl?: string | null;
@@ -58,9 +52,6 @@ export function installedPluginRepositoryUrl(args: {
     });
     if (repositoryUrl === null) return null;
     const hostname = new URL(repositoryUrl).hostname;
-    // Catalog `repositoryUrl` deliberately also represents a public npm
-    // package page. That is useful for browsing code before install, but it
-    // is not an issue tracker and cannot satisfy Report to author.
     if (hostname !== "npmjs.com" && hostname !== "www.npmjs.com") {
       return repositoryUrl;
     }
@@ -70,7 +61,6 @@ export function installedPluginRepositoryUrl(args: {
   return publicRepositoryUrl(requested, { stripGitSelector: true });
 }
 
-/** Visible composer seed for a user-reviewed repository issue workflow. */
 export function buildPluginReportToAuthorPrompt(args: {
   plugin: PluginListItem;
   repositoryUrl: string;

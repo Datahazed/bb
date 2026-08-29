@@ -4,7 +4,6 @@ import {
   type MarketplaceAuthorEntry,
 } from "./plugin-marketplace-entry.js";
 
-/** The author-prepared portion of a marketplace v2 entry. */
 export const pluginListingDraftEntrySchema = marketplaceAuthorEntrySchema;
 export type PluginListingDraftEntry = MarketplaceAuthorEntry;
 
@@ -80,7 +79,6 @@ export class PluginListingDraftConflictError extends Error {
   override readonly name = "PluginListingDraftConflictError";
 }
 
-/** Save an author entry as a draft, including published -> fresh-draft edits. */
 export function transitionPluginListingDraftSave(args: {
   current: PluginListingLifecycle | undefined;
   pluginId: string;
@@ -97,7 +95,6 @@ export function transitionPluginListingDraftSave(args: {
   });
 }
 
-/** Record the marketplace pull request for a validated draft. */
 export function transitionPluginListingSubmission(args: {
   current: PluginListingLifecycle | undefined;
   pluginId: string;
@@ -115,7 +112,6 @@ export function transitionPluginListingSubmission(args: {
   });
 }
 
-/** Publish a listing accepted into the catalog and create its one-shot notice. */
 export function transitionPluginListingPublication(args: {
   current: PluginListingLifecycle | undefined;
   pluginId: string;
@@ -141,7 +137,6 @@ export function transitionPluginListingPublication(args: {
   };
 }
 
-/** Return a closed, unmerged submission to its retained author draft. */
 export function transitionPluginListingClosedUnmerged(args: {
   current: PluginListingLifecycle | undefined;
   pluginId: string;

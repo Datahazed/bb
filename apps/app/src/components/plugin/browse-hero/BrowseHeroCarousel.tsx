@@ -14,12 +14,9 @@ const PLUGIN_HERO_COMPOSER = {
 } as const;
 
 interface BrowseHeroCarouselProps {
-  /** Stories force a slide and disable autoplay to capture a stable frame. */
   initialIndex?: number;
   autoplay?: boolean;
-  /** Stories and public hosts render without bb's thread-creating composer. */
   composerDisabled?: boolean;
-  /** External open/close request from a card or page-level create button. */
   openRequest?: {
     nonce: number;
     seed?: string;
@@ -28,14 +25,6 @@ interface BrowseHeroCarouselProps {
   onComposingChange?: (composing: boolean) => void;
 }
 
-/**
- * App-local adapter around the portable plugin Browse hero.
- *
- * The shared package owns the exact carousel, plugin copy, archetypes, scenes,
- * and motion. This adapter owns everything that only an installed bb can do:
- * saved prompt drafts, external composer requests, thread creation, and route
- * navigation after submit.
- */
 export function BrowseHeroCarousel({
   initialIndex = 0,
   autoplay = true,
@@ -45,9 +34,6 @@ export function BrowseHeroCarousel({
 }: BrowseHeroCarouselProps) {
   const navigate = useNavigate();
   const createThread = useCreateThread();
-  // The composer restores its saved draft on mount and only falls back to
-  // `initialPrompt` when that draft is empty. Explicit example seeds must win
-  // over an old draft, so those requests replace the stored text first.
   const promptDraft = useMemo(
     () =>
       getPromptDraftAccessor({
@@ -59,8 +45,6 @@ export function BrowseHeroCarousel({
   const [composerSeed, setComposerSeed] = useState<string | null>(null);
   const [composerKey, setComposerKey] = useState(0);
 
-  // Notify from the events that change the mode, not from an effect. The ref
-  // keeps the callback exactly-once under StrictMode's repeated state work.
   const composingRef = useRef(false);
   const setSeedAndNotify = useCallback(
     (seed: string | null, options?: { replaceDraft?: boolean }) => {
@@ -68,7 +52,6 @@ export function BrowseHeroCarousel({
         promptDraft.setDraft({
           text: seed,
           mentions: [],
-          // A brief replaces the text, not the user's attachments.
           attachments: promptDraft.getCurrent().attachments,
         });
       }
@@ -83,8 +66,6 @@ export function BrowseHeroCarousel({
     [onComposingChange, promptDraft],
   );
 
-  // A repeated nonce is a no-op; each distinct request opens or re-seeds even
-  // when the composer is already visible.
   const handledRequestNonce = useRef<number | null>(null);
   useEffect(() => {
     if (composerDisabled) return;
@@ -95,9 +76,6 @@ export function BrowseHeroCarousel({
       return;
     }
     handledRequestNonce.current = openRequest.nonce;
-    // This effect is the subscription callback for the external request
-    // channel. Applying it during render would update the parent through
-    // `onComposingChange` while React is still rendering this child.
     // oxlint-disable-next-line react/set-state-in-effect
     setSeedAndNotify(
       openRequest.close === true
@@ -114,8 +92,6 @@ export function BrowseHeroCarousel({
       composerSlot={
         composerSeed === null ? undefined : (
           <PluginNewThreadComposer
-            // Remounting per open re-seeds the prompt; the composer treats
-            // initialPrompt as a mount-time seed, not a controlled value.
             key={composerKey}
             initialPrompt={composerSeed}
             placeholder={PLUGIN_HERO_COMPOSER.placeholder}

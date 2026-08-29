@@ -75,10 +75,6 @@ export type MarketplaceV2Entry = MarketplaceEntryV2;
 export type MarketplaceV2Source = MarketplaceEntrySource;
 export type MarketplaceV2Manifest = z.infer<typeof marketplaceV2ManifestSchema>;
 
-/**
- * Parse the public marketplace page boundary. A document is accepted whole or
- * rejected whole so the page never renders partially validated catalog data.
- */
 export function parseMarketplaceV2Manifest(
   input: unknown,
 ): MarketplaceV2Manifest {

@@ -4,20 +4,11 @@ import { fileURLToPath } from "node:url";
 import type { PluginCatalogCategoryId } from "@bb/server-contract";
 
 export interface BundledPluginDefinition {
-  /**
-   * Directory name under `plugins/` and under the packaged builtin-plugins
-   * dir; also the `builtin:<name>` source name.
-   */
   name: string;
-  /** derivePluginId(packageName); declared statically so ids are reservable without manifest reads. */
   pluginId: string;
-  /** true = reconcile installs when missing; false = store-only, installed on demand. */
   autoInstall: boolean;
-  /** enabled value on first install (auto or store). */
   defaultEnabled: boolean;
-  /** Stable Browse category identity. */
   category: PluginCatalogCategoryId;
-  /** Detail-page screenshots, repo-relative to the plugin's own directory. */
   screenshots?: readonly string[];
 }
 
@@ -32,7 +23,6 @@ interface ResolveBuiltinPluginRootPathArgs {
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
-/** Every bundled plugin's source lives under `<repoRoot>/plugins/<name>`. */
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 const BUILTIN_PLUGIN_DEFINITIONS = [
@@ -88,12 +78,6 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     defaultEnabled: true,
     category: "files-and-viewers",
   },
-  // First-party agent provider plugins: each declares one of the providers
-  // the core catalog used to seed. With the seed deleted these declarations
-  // are the only source, so disabling one removes its provider. Their order
-  // here IS the install order — the provider picker's default order and the
-  // initial default provider come from it (bundled plugins rank first, in
-  // this order; every other plugin ranks by install time).
   {
     name: "provider-codex",
     pluginId: "provider-codex",
@@ -127,7 +111,7 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
   {
     name: "plugin-api-docs",
     pluginId: "plugin-api-docs",
-    defaultEnabled: true,
+    defaultEnabled: false,
     category: "plugin-development",
     screenshots: [
       "screenshots/plugin-guide-map.png",
@@ -168,10 +152,6 @@ export const BUILTIN_PLUGINS = BUILTIN_PLUGIN_DEFINITIONS.map(
   }),
 );
 
-/**
- * Official plugins ship bundled with the app like builtins, but are not
- * auto-installed: they appear in the plugin store and install on demand.
- */
 const OFFICIAL_PLUGIN_DEFINITIONS = [
   {
     name: "github",
@@ -221,12 +201,6 @@ export function builtinPluginSource(name: string): string {
   return `builtin:${name}`;
 }
 
-/**
- * Bundled plugin roots live in three layouts:
- * - packaged server: <server dist>/builtin-plugins/<name> (written at packaging)
- * - built-from-source server (bundle at apps/server/dist): <repoRoot>/plugins/<name>
- * - source checkout (module at apps/server/src/services/plugins): <repoRoot>/plugins/<name>
- */
 export function resolveBuiltinPluginRootPathForModuleDir(
   args: ResolveBuiltinPluginRootPathArgs,
 ): string {
@@ -237,7 +211,6 @@ export function resolveBuiltinPluginRootPathForModuleDir(
   );
   if (existsSync(packagedCandidate)) return packagedCandidate;
 
-  // apps/server/dist → repo root is three levels up.
   const builtCheckoutCandidate = path.resolve(
     args.moduleDir,
     "../../..",

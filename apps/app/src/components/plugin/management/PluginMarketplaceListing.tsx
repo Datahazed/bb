@@ -48,11 +48,6 @@ export function PluginMarketplaceMetadata({
           now: Date.now(),
         });
   const installs = pluginInstalls(entry);
-  // One metadata run, in the order a reader needs it: what kind of thing it
-  // is, who made it, how many took it, when it last moved, where it lives.
-  // ResourceMeta owns the separators — the previous hand-rolled version had to
-  // re-test every preceding field to decide whether to print a dot, which is a
-  // condition that grows with each field added.
   return (
     <ResourceMeta
       items={[
@@ -71,8 +66,6 @@ export function PluginMarketplaceMetadata({
         installs === undefined
           ? null
           : `${installs.toLocaleString()} installs`,
-        // The card no longer carries this, so the detail page is where a
-        // reader finds out how current a listing is.
         updatedRelativeTime === null ? null : `updated ${updatedRelativeTime}`,
         entry.repositoryUrl === null ? null : (
           <a
@@ -94,23 +87,7 @@ export function PluginMarketplaceMetadata({
   );
 }
 
-/**
- * The listing image contract, shared by the gallery and by the capture
- * guidance authors follow.
- *
- * Plugins do not occupy one shape. Roughly six in ten sit on a full page or
- * the whole window, but the sidebar rail is portrait and the composer, an
- * inline message row, and a footer gauge are all short and wide. Normalising
- * the ratio would letterbox four in ten listings, so the row normalises
- * *height* and lets each image keep its own width — a rail shot and a
- * full-page shot then read at the same scale, side by side.
- */
 const PLUGIN_SCREENSHOT_ROW_HEIGHT = 420;
-/**
- * Width ceiling, as a multiple of the row height. A true 4:1 composer strip
- * at full row height would be wider than the panel and could never be seen
- * whole, so anything past this scales down instead of overrunning.
- */
 const PLUGIN_SCREENSHOT_MAX_ASPECT = 2;
 
 function PluginScreenshotGallery({
@@ -136,10 +113,8 @@ function PluginScreenshotGallery({
   if (entry.screenshots.length === 0) return null;
   return (
     <ResourceDefinitionSection label="Screenshots">
-      {/* Each image sizes itself to the row height, so several narrow shots
-          share a row while one wide shot fills it. The arrows live in a
-          gutter beside the strip rather than on top of it — a control sitting
-          over the artwork hides the thing the reader came to see. */}
+      {
+}
       <Carousel
         setApi={setApi}
         opts={{ align: "start", containScroll: "trimSnaps" }}
@@ -152,9 +127,8 @@ function PluginScreenshotGallery({
         >
           {entry.screenshots.map((screenshot, index) => (
             <CarouselItem key={screenshot} className="basis-auto pl-3">
-              {/* Height and width are both ceilings, never fixed: an image
-                  fills the row unless it is wider than the clamp, in which
-                  case it gets shorter rather than growing letterbox bars. */}
+              {
+}
               <img
                 src={screenshot}
                 alt={`${entry.displayName} screenshot ${index + 1}`}
@@ -198,14 +172,6 @@ function PluginScreenshotGallery({
   );
 }
 
-/**
- * The last section on a plugin's page, wherever that page is composed.
- *
- * It points at other plugins, so anything about the one being read has to come
- * first — on an installed plugin that includes its configuration, release,
- * errors, services and schedules. Exported separately from the listing
- * sections so a page cannot accidentally sandwich it between two of its own.
- */
 export function PluginMoreFromAuthorSection({
   entry,
   catalogEntries,
@@ -268,11 +234,6 @@ export function PluginMoreFromAuthorSection({
   );
 }
 
-/**
- * What the listing says about *this* plugin: what it looks like, then what it
- * is. Deliberately excludes "More from this author", which is a way out of the
- * page rather than part of it — see {@link PluginMoreFromAuthorSection}.
- */
 export function PluginMarketplaceListingSections({
   entry,
 }: {

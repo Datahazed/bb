@@ -14,9 +14,6 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
 
-// The hero mounts bb's real new-thread composer on demand; it needs live
-// project/host/provider queries this suite doesn't provide, and the tab's own
-// contract is only that create affordances open it.
 vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
   PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
     <div data-testid="inline-composer">{initialPrompt}</div>
@@ -134,8 +131,6 @@ afterEach(() => {
 
 describe("BrowsePluginsTab", () => {
   it("offers a way back when a failed search leaves stale results on screen", async () => {
-    // The catalog answers once, then fails. Cached entries stay on screen, so
-    // the empty-state error below never renders and Retry is the only exit.
     let searches = 0;
     vi.stubGlobal(
       "fetch",
@@ -169,15 +164,10 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findByRole("button", { name: "Open Memory details" });
-    // Refetching the same key is what produces this state: React Query keeps
-    // the last good results and marks the query errored. A new query string
-    // would instead land on the empty-catalog error, which already has Retry.
     await queryClient.invalidateQueries({
       queryKey: ["plugin-catalog-search"],
     });
     const retry = await screen.findByRole("button", { name: "Retry" });
-    // The stale notice and the cached card share the screen: this is the
-    // degraded state, not the empty-catalog error.
     expect(
       screen.getByText(/Showing cached catalog results/u),
     ).toBeTruthy();
@@ -317,8 +307,6 @@ describe("BrowsePluginsTab", () => {
       notableCategory.parentElement?.classList.contains("row-start-3"),
     ).toBe(true);
     expect(notableShelf.querySelector("[data-plugin-category-accent]")).toBeNull();
-    // Landing previews are mutually exclusive: a notable entry is not
-    // repeated in its broad presentation shelf.
     expect(
       screen.getAllByRole("button", { name: "Open Memory details" }),
     ).toHaveLength(1);
@@ -372,16 +360,11 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findAllByText(MEMORY_ENTRY.displayName);
-    // Sorting flattens the shelves away.
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(screen.queryByText("New & notable")).toBeNull();
 
-    // Without this action the reader is stranded in the flat list: no other
-    // control drops the sort. (The menu stays open after a select, so it does
-    // not need reopening here.)
     fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
-    // The shelves are back, which is the whole point of the row.
     expect(await screen.findByText("New & notable")).toBeTruthy();
   });
 
@@ -443,11 +426,7 @@ describe("BrowsePluginsTab", () => {
     }
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
 
-    // The flat view contains each compatible plugin exactly once, in name order.
-    // The incompatible result remains hidden as before.
     expect(cardOrder()).toEqual(["Open Alpha details", "Open Zulu details"]);
-    // Only the applied criterion carries a visible arrow: an arrow on every row
-    // read as several sorts being active at once.
     for (const option of screen.getAllByRole("menuitemradio")) {
       const arrow = option.querySelector('[data-icon="ArrowUp"]');
       const hidden = arrow?.classList.contains("opacity-0") === true;
@@ -616,8 +595,6 @@ describe("BrowsePluginsTab", () => {
       memoryHeading.compareDocumentPosition(codeHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // Shelf headings carry no item count: the number told the reader nothing
-    // they could act on and competed with the section's own name.
     expect(screen.queryByText("· 8")).toBeNull();
     expect(screen.queryByText("· 5")).toBeNull();
 
@@ -744,15 +721,11 @@ describe("BrowsePluginsTab", () => {
     const installButton = screen.getByRole("button", {
       name: "Install Popular — 1,204 installs",
     });
-    // Download and count are one compact action, not two neighboring facts.
     expect(
       installButton.querySelector('[data-icon="Download"]'),
     ).not.toBeNull();
     expect(installButton.textContent).toBe("1.2k");
     expect(installButton.classList.contains("border-border/80")).toBe(true);
-    // No card carries an "updated" date, including this entry which has one.
-    // Recency belongs to the detail page: on a browse card it competed with
-    // the author for the same glance without helping anyone choose.
     expect(container.querySelector('[aria-label^="Updated "]')).toBeNull();
     expect(container.textContent).not.toMatch(/\bago\b/u);
     const unknownCard = screen
@@ -857,8 +830,6 @@ describe("BrowsePluginsTab", () => {
         name: "Filter plugins by category: All categories",
       }),
     );
-    // The taxonomy size is not a filter the user can act on, so the menu shows
-    // the categories themselves rather than a count of them.
     expect(screen.queryByText(/^\d+ categories$/u)).toBeNull();
     expect(screen.getAllByRole("option")).toHaveLength(16);
 
@@ -993,9 +964,6 @@ describe("BrowsePluginsTab", () => {
       "div",
     );
     expect(memoryCard).not.toBeNull();
-    // Scoped to the card on purpose: INCOMPATIBLE_ENTRY spreads MEMORY_ENTRY
-    // and inherits its Brain icon, so a document-wide lookup passes even when
-    // the Memory card renders no leading icon at all.
     expect(
       (memoryCard as HTMLElement).querySelector('[data-icon="Brain"]'),
     ).not.toBeNull();
@@ -1033,15 +1001,12 @@ describe("BrowsePluginsTab", () => {
     expect(screen.queryByText("BB Official plugins")).toBeNull();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
-    // Incompatible entries never render on Browse: an entry this BB cannot
-    // install is noise. The CLI search still reports them with reasons.
     expect(screen.queryByText("Future Memory")).toBeNull();
     expect(screen.queryByText("Requires a newer BB version")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Install Future Memory" }),
     ).toBeNull();
 
-    // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
 
     const install = screen.getAllByRole("button", {
@@ -1155,13 +1120,8 @@ describe("BrowsePluginsTab", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Installed — 1,204 installs",
     );
-    // The same glyph install uses, at a resting weight: one symbol for one
-    // idea, so an installed card reads as the settled version of the control
-    // rather than a second, unrelated mark. That it offers no install is
-    // asserted below by the absence of an Install button, not by the glyph.
     expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
     expect(installed.textContent).toBe("1.2k");
-    // Installed is passive and backgroundless; uninstall stays in detail.
     const installedClasses = new Set(installed.className.split(/\s+/));
     expect(installedClasses.has("text-subtle-foreground")).toBe(true);
     expect(installed.tagName).toBe("SPAN");
@@ -1285,7 +1245,6 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    // Default state: search + catalog, no example cards anywhere.
     expect(
       (await screen.findAllByRole("button", { name: "Open Memory details" }))
         .length,
@@ -1295,7 +1254,6 @@ describe("BrowsePluginsTab", () => {
     ).toBeTruthy();
     expect(screen.queryByText("Start from an example")).toBeNull();
 
-    // Composing: examples replace the search + catalog wholesale.
     fireEvent.click(screen.getByRole("button", { name: "Create a plugin" }));
     expect(await screen.findByText("Start from an example")).toBeTruthy();
     expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
@@ -1306,7 +1264,6 @@ describe("BrowsePluginsTab", () => {
       screen.queryByRole("button", { name: "Open Memory details" }),
     ).toBeNull();
 
-    // Create is enter-only: repeated activation keeps the creation body open.
     fireEvent.click(screen.getByRole("button", { name: "Create a plugin" }));
     expect(await screen.findByText("Start from an example")).toBeTruthy();
     expect(
@@ -1343,15 +1300,12 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    // The CTA opens the composer blank, which also reveals the example cards.
     fireEvent.click(
       await screen.findByRole("button", { name: "Create a plugin" }),
     );
     const blank = await screen.findByTestId("inline-composer");
     expect(blank.textContent).toBe("Create a new bb plugin that ");
 
-    // A use-case card re-seeds the open composer with its brief.
-    // (The hook is the unique handle; the title also appears on a hero chip.)
     fireEvent.click(
       screen.getByText(
         "Ship a board your agents move cards across while they work.",
@@ -1360,7 +1314,6 @@ describe("BrowsePluginsTab", () => {
     const seeded = await screen.findByTestId("inline-composer");
     expect(seeded.textContent).toContain("kanban board panel");
 
-    // A capability-tier card seeds its own brief the same way.
     fireEvent.click(screen.getByText("CLI command"));
     expect(
       (await screen.findByTestId("inline-composer")).textContent,

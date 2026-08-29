@@ -10,7 +10,6 @@ import {
   type PluginCaptureStep,
 } from "@bb/domain";
 
-/** Directories that never hold the plugin's own frontend source. */
 const SKIPPED = new Set(["node_modules", "dist", "types", ".git", "coverage"]);
 const SOURCE = /\.tsx?$/;
 const MAX_DEPTH = 4;
@@ -19,11 +18,6 @@ export function resolvePluginCaptureHarnessPath(moduleDir: string): string {
   return resolve(moduleDir, "../../../desktop/scripts/plugin-capture.cjs");
 }
 
-/**
- * Concatenate a plugin's frontend source. The detector only needs the text of
- * the slot registrations, so reading files beats building the plugin: a
- * submission screenshot has to work before `dist/` exists.
- */
 export async function readPluginFrontendSource(
   rootDir: string,
 ): Promise<string> {
@@ -56,18 +50,9 @@ export interface PluginCapturePlanResult {
   readonly pluginId: string;
   readonly slots: string[];
   readonly steps: PluginCaptureStep[];
-  /** Surfaces found that a shot needs the shared fixture to reach. */
   readonly needsFixture: string[];
 }
 
-/**
- * Work out what a listing for this plugin can show.
- *
- * `fixtureThreadId` is what the shared capture fixture seeds. Without it the
- * fixture-only surfaces are reported through `needsFixture` rather than
- * planned, so the caller can say what a screenshot would still need instead of
- * silently photographing an empty app.
- */
 export async function planPluginScreenshots(args: {
   rootDir: string;
   pluginId: string;
@@ -97,10 +82,6 @@ export interface CaptureRunResult {
   readonly written: ReadonlyArray<{ slot: string; url: string; file: string }>;
 }
 
-/**
- * Where the desktop package's Electron lives. In a checkout that is the
- * workspace dependency; a packaged CLI can point BB_ELECTRON at any Electron.
- */
 export function resolveElectronBinary(
   env: NodeJS.ProcessEnv,
   harnessPath: string,
@@ -109,9 +90,6 @@ export function resolveElectronBinary(
     return env["BB_ELECTRON"];
   }
   try {
-    // Resolve from beside the harness: Electron is the desktop package's
-    // dependency, not the CLI's, and requiring "electron" under plain node
-    // returns the binary path.
     const requireFromHarness = createRequire(harnessPath);
     const resolved: unknown = requireFromHarness("electron");
     return typeof resolved === "string" ? resolved : null;
@@ -120,13 +98,7 @@ export function resolveElectronBinary(
   }
 }
 
-/**
- * Drive the capture harness against the author's running bb. Which surfaces
- * the plugin registered is read from the live app in the harness itself —
- * the plan here only supplies the catalog (routes and file stems).
- */
 export async function runPluginCapture(args: {
-  /** Origin serving the app shell — the server for a packaged bb, Vite's port for a source dev instance. */
   appUrl: string;
   pluginId: string;
   outDir: string;

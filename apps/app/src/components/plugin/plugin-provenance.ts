@@ -12,7 +12,6 @@ export const PLUGIN_SOURCE_FILTER_OPTIONS: readonly {
   { id: "direct", label: "Direct install" },
 ];
 
-/** Installed Source is the server's provenance vocabulary, one-to-one. */
 export function pluginSourceFilterId(
   plugin: PluginListItem,
 ): PluginListItem["provenance"] {

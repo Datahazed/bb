@@ -15,7 +15,6 @@ export interface PluginCategoryChipOption {
   label: string;
 }
 
-/** One measured category row shared by Browse and Installed. */
 export function PluginCategoryChips({
   options,
   value,
@@ -61,7 +60,6 @@ export function PluginCategoryChips({
           overflowWidthsByHiddenCount: overflowMeasureRefs.current.map(
             (element) => element?.offsetWidth ?? 0,
           ),
-          // Must track the row's gap-1.5, or the fit math overcounts.
           gap: 6,
         }),
       );
@@ -80,9 +78,6 @@ export function PluginCategoryChips({
   if (options.length === 0) return null;
   const visibleOptions = options.slice(0, visibleCount);
   const hiddenOptions = options.slice(visibleCount);
-  // A resting fill so the row reads as a set of controls rather than floating
-  // labels, and a pressed step just above it — the old jump from transparent
-  // straight to state-active landed too dark to sit in a filter row.
   const chipClassName =
     "h-7 shrink-0 rounded-full border-transparent bg-surface-recessed px-3 font-normal hover:bg-state-hover aria-pressed:bg-state-active aria-pressed:text-foreground";
 
@@ -92,8 +87,6 @@ export function PluginCategoryChips({
         ref={containerRef}
         role="radiogroup"
         aria-label={ariaLabel}
-        // Keep the pills packed at a tight gap. Browse centers that packed
-        // group; Installed keeps it aligned with its list rows.
         className={cn(
           "flex min-w-0 items-center gap-1.5 overflow-hidden",
           centered && "justify-center",

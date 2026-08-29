@@ -21,15 +21,6 @@ function withTooltip(control: ReactNode, tooltip: ReactNode | undefined) {
   );
 }
 
-/**
- * Short scalar facts about a resource — version, install date, and the like.
- *
- * These read as a quiet metadata run rather than a table. The facts a detail
- * page actually carries are one to three short values, and a bordered grid with
- * filled label cells outweighs that content; the section heading already
- * supplies the hierarchy. A fact that needs its own tone or action is not a
- * peer of these — render it beside the list, not inside it.
- */
 export function ResourceDetailFacts({
   children,
   className,
@@ -55,8 +46,7 @@ export function ResourceDetailFact({
 }) {
   return (
     <div className="min-w-0">
-      {/* Leading stays snug rather than none: a value long enough to wrap on a
-          narrow page would otherwise collide with its own second line. */}
+      {}
       <dt className="text-xs leading-snug text-muted-foreground">{label}</dt>
       <dd
         className={cn(
@@ -70,7 +60,6 @@ export function ResourceDetailFact({
   );
 }
 
-/** Passive lifecycle status for states that are observed, not changed here. */
 export function ResourceLifecycleStatus({
   label,
   tooltip,
@@ -102,7 +91,6 @@ export function ResourceLifecycleStatus({
   return withTooltip(status, tooltip);
 }
 
-/** Canonical action for a resource that can be added from a browse surface. */
 export function ResourceInstallControl({
   accessibleLabel,
   label = "Install",
@@ -124,14 +112,6 @@ export function ResourceInstallControl({
   disabled?: boolean;
   presentation?: "label" | "icon";
   tooltip?: ReactNode;
-  /**
-   * How many installs this resource has, as already-formatted display text
-   * plus the full count spoken to assistive technology ("1.2k" / "1,214
-   * installs"). It belongs to the control rather than beside it: the number
-   * describes the action, so it is wired as the button's description and a
-   * caller cannot drift its spacing or weight away from the control it
-   * annotates.
-   */
   count?: { display: string; accessibleLabel: string };
   className?: string;
   onAction: () => void;
@@ -173,9 +153,8 @@ export function ResourceInstallControl({
   if (count === undefined) return tipped;
   return (
     <span className="flex shrink-0 items-center gap-1.5">
-      {/* Sized and toned to sit level with the control's own glyph, so the
-          pair reads as one unit rather than a number that drifted next to a
-          button. Not focusable: it describes the action, it is not another. */}
+      {
+}
       <span
         id={countId}
         aria-label={count.accessibleLabel}
@@ -188,12 +167,6 @@ export function ResourceInstallControl({
   );
 }
 
-/**
- * Canonical installed state for browse and detail surfaces.
- *
- * With an action it shows the installed or provenance treatment at rest, then
- * reveals the destructive uninstall affordance only while hovered or focused.
- */
 export function ResourceInstalledControl({
   accessibleLabel,
   label = "Installed",

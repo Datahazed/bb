@@ -59,7 +59,6 @@ export interface PluginListItem {
   source: string;
   isOrphanedBuiltin: boolean;
   catalogEntryId: string | null;
-  /** Publisher badge, or null for a plugin the user installed from a source. */
   publisherLabel: string | null;
   sourceDisplay: string;
   categoryId: InstalledPlugin["categoryId"] | null;

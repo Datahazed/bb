@@ -953,12 +953,6 @@ export function allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(): AllThreadTi
   return [THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY];
 }
 
-/**
- * The discriminating second component of a diff query key: the merge-base
- * branch for `branch_committed`/`all`, the SHA for `commit`, and `null` for
- * `uncommitted` (and for an absent target). Shared by every environment-diff
- * query family so they key off the same target identity.
- */
 export function environmentDiffTargetKey(
   target: WorkspaceDiffTarget | null | undefined,
 ): string | null {
@@ -1164,13 +1158,6 @@ export function skillFilesQueryKey(projectId: string, skillId: string) {
   return [SKILL_FILES_QUERY_KEY, projectId, skillId] as const;
 }
 
-/**
- * Plugin management keys live here, away from the modules that fetch them.
- * `realtime-cache-registry` runs on the boot path and needs only these
- * prefixes; when it read them from `plugin-*-queries` it dragged the whole
- * plugin query layer — client, catalog search, settings forms — into the
- * boot payload for a handful of strings. Keep new plugin keys here too.
- */
 export function pluginListQueryKey(enabled: boolean) {
   return [PLUGIN_LIST_QUERY_KEY, enabled] as const;
 }
@@ -1199,22 +1186,14 @@ export function pluginContributionsQueryKey() {
   return [PLUGIN_CONTRIBUTIONS_QUERY_KEY] as const;
 }
 
-/**
- * Prefix covering every contributions cache entry. The realtime
- * `plugins-changed` broadcast invalidates it so `bb plugin
- * reload/enable/disable` reaches open pages without waiting out the stale
- * time.
- */
 export function allPluginContributionsQueryKeyPrefix() {
   return [PLUGIN_CONTRIBUTIONS_QUERY_KEY] as const;
 }
 
-/** Values a plugin frontend reads through the plugin SDK's `useSettings()`. */
 export function pluginSdkSettingsQueryKey(pluginId: string) {
   return [PLUGIN_SDK_SETTINGS_QUERY_KEY, pluginId] as const;
 }
 
-/** Prefix the realtime `plugins-changed` broadcast invalidates. */
 export function allPluginSettingsQueryKeyPrefix() {
   return [PLUGIN_SDK_SETTINGS_QUERY_KEY] as const;
 }

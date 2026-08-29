@@ -24,10 +24,6 @@ const CATEGORY_ORDER = new Map<PluginCatalogCategoryId, number>(
   PLUGIN_CATALOG_CATEGORY_IDS.map((categoryId, index) => [categoryId, index]),
 );
 
-/**
- * Groups each categorized entry exactly once. Shelf size is the primary
- * order, and the canonical taxonomy order breaks ties.
- */
 export function pluginDiscoveryShelves<Entry, Category>(
   entries: readonly Entry[],
   accessors: PluginDiscoveryEntryAccessors<Entry, Category>,
@@ -95,7 +91,6 @@ export function defaultPluginDiscoverySortDirection(
   return sort === "name" ? "asc" : "desc";
 }
 
-/** Curated order wins; a categorized catalog without one falls back to newest. */
 export function pluginDiscoveryNewAndNotableEntries<Entry, Category>(
   entries: readonly Entry[],
   accessors: PluginDiscoveryEntryAccessors<Entry, Category> & {
@@ -164,10 +159,6 @@ function compareNames<Entry, Category>(
   );
 }
 
-/**
- * Returns how many category chips fit beside the always-visible All chip and
- * an exact-width overflow control. Overflow is absent when every chip fits.
- */
 export function visiblePluginCategoryChipCount(args: {
   containerWidth: number;
   allWidth: number;

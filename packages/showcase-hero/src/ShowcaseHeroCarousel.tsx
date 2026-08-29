@@ -20,14 +20,6 @@ import "./styles.css";
 
 const SLIDE_MS = 5000;
 
-/**
- * Where each archetype chip orbits the window.
- *
- * The chips live in the stage's gutters — the frame is capped narrower than the
- * stage, so `left-0`/`right-0` lands them beside the window rather than on top
- * of it at any width. They are decoration plus navigation, so they hide below
- * `lg`, where the gutters are too narrow to hold them.
- */
 const ORBIT_POSITIONS: readonly CSSProperties[] = [
   { top: "2%", left: 0 },
   { top: "38%", left: 0 },
@@ -37,21 +29,13 @@ const ORBIT_POSITIONS: readonly CSSProperties[] = [
   { top: "82%", right: 0 },
 ];
 
-/** Everything the engine says out loud. Each surface supplies its own voice. */
 export interface ShowcaseHeroCopy {
-  /** Names the carousel region for assistive tech. */
   ariaLabel: string;
-  /** Headline lead-in the archetype noun completes, e.g. "Turn bb into". */
   headlineLead: string;
-  /** The noun shown once the composer takes over, e.g. "whatever you need". */
   composingNoun: string;
-  /** Static line under the headline: what this surface is, in one sentence. */
   description: string;
-  /** Names the slide tablist for assistive tech. */
   tablistLabel: string;
-  /** Mini-window title prefix, e.g. "bb — ". */
   frameTitlePrefix: string;
-  /** Mini-window title-bar badge, e.g. "Plugin". */
   frameBadge: string;
 }
 
@@ -59,33 +43,13 @@ export interface ShowcaseHeroCarouselProps {
   archetypes: readonly ShowcaseArchetype[];
   scenes: ShowcaseScenes;
   copy: ShowcaseHeroCopy;
-  /** Static rail glyphs for the mini window; omit to render no rail. */
   rail?: readonly IconName[];
-  /** Stories force a slide and disable autoplay to capture a stable frame. */
   initialIndex?: number;
   autoplay?: boolean;
-  /**
-   * Optional host-owned composer rendered in place of the showcase. Omit this
-   * on hosts that cannot create bb threads, including the public docs site.
-   */
   composerSlot?: ReactNode;
-  /** Uses static artwork on SSR hosts; defaults to shared-ui's lazy registry. */
   renderIcon?: ShowcaseIconRenderer;
 }
 
-/**
- * The shared browse-hero engine behind both the Plugins and Skills surfaces:
- * one mini bb window that transforms through a surface's archetypes, orbited by
- * the archetypes it is cycling through.
- *
- * A browse page has two jobs — show what this thing can do, and make building
- * one feel one step away — so the headline states the outcome in plain words
- * while the window shows it.
- *
- * A host can optionally provide a composer slot. Composing is a MODE, not an
- * inset panel: the slot swaps into the showcase's grid cell, so the page below
- * never jumps. Hosts without a bb thread runtime simply omit it.
- */
 export function ShowcaseHeroCarousel({
   archetypes,
   scenes,
@@ -163,7 +127,6 @@ export function ShowcaseHeroCarousel({
       <h2 className="text-center text-2xl font-semibold tracking-tight text-foreground">
         {copy.headlineLead}{" "}
         <span
-          // Keyed so each slide's noun cross-fades in rather than swapping.
           key={composing ? "composing" : active.id}
           className={cn(
             "inline-block",
@@ -183,8 +146,7 @@ export function ShowcaseHeroCarousel({
         {copy.description}
       </p>
 
-      {/* One grid cell holds both states, so the composer cross-fades into the
-          showcase's place instead of pushing the catalog down the page. */}
+      {}
       <div className="relative mt-5 grid w-full max-w-[58rem] grid-cols-1 grid-rows-1">
         <div
           className={cn(
@@ -195,9 +157,6 @@ export function ShowcaseHeroCarousel({
               ? "pointer-events-none scale-[0.97] opacity-0 blur-[2px]"
               : "scale-100 opacity-100 blur-0",
           )}
-          // Hidden from AT while the composer owns the slot. Nothing inside is
-          // focusable — the chips are tabIndex -1 and the tablist lives in the
-          // row below — so aria-hidden here cannot strand keyboard focus.
           aria-hidden={composing}
         >
           {archetypes.map((archetype, index) => {
@@ -249,8 +208,6 @@ export function ShowcaseHeroCarousel({
             rail={rail}
             reducedMotion={reducedMotion}
             renderIcon={renderIcon}
-            // 13rem fits the densest scenes (the prototype grid and the inbox
-            // with its handoff line) without a bottom clip.
             className="mx-auto h-[13rem] w-full max-w-[38rem] lg:w-[66%]"
           />
         </div>
@@ -306,7 +263,6 @@ export function ShowcaseHeroCarousel({
                   >
                     {isActive ? (
                       <span
-                        // Keyed by slide so the fill restarts each advance.
                         key={`${archetype.id}-${activeIndex}`}
                         data-paused={paused}
                         className="bb-hero-progress-fill block h-full w-full"

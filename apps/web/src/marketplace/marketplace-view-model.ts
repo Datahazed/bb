@@ -143,11 +143,6 @@ export function marketplaceRepositoryUrl(
   return entry.source.git.url.replace(/\.git$/u, "");
 }
 
-/**
- * Keep the user-visible fallback deterministic and prove the deeplink is the
- * first attempted side effect. Callers inject the browser operations so the
- * sequencing is directly testable without launching another application.
- */
 export function attemptMarketplaceInstall(args: {
   entryId: string;
   openDeepLink: (href: string) => void;

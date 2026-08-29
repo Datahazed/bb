@@ -129,8 +129,6 @@ describe("recently added ordering", () => {
   });
 
   it("falls back to name order when no entry carries a timestamp", () => {
-    // Today's catalog is in exactly this state: nothing publishes publishedAt,
-    // so the control cannot order anything until the registry emits it.
     const ordered = sortPluginEntries(
       [entry("zulu"), entry("alpha")],
       "recently-added",

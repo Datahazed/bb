@@ -15,10 +15,6 @@ const marketplaceStatsSchema = z.object({
 
 export type MarketplaceStats = z.infer<typeof marketplaceStatsSchema>;
 
-/**
- * Parse the curated marketplace's install-count sidecar. Extra fields are
- * ignored so the public page follows the server's forward-compatible boundary.
- */
 export function parseMarketplaceStats(input: unknown): MarketplaceStats {
   const parsed = marketplaceStatsSchema.parse(input);
   return {
@@ -31,7 +27,6 @@ export function parseMarketplaceStats(input: unknown): MarketplaceStats {
   };
 }
 
-/** The authoritative count for one entry, or undefined when it is uncounted. */
 export function marketplaceEntryInstalls(
   entry: MarketplaceV2Entry,
   stats: MarketplaceStats | null,

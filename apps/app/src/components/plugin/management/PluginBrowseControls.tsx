@@ -15,17 +15,8 @@ export interface PluginBrowseCategoryOption {
 const ENGAGED_CONTROL_CLASS =
   "bg-state-active text-foreground hover:bg-state-active";
 
-/**
- * How long the category list keeps its thumb visible after the last scroll
- * event. `.transient-scrollbar` (app.css) hides the thumb at rest and paints
- * it only while `data-scrollbar-scrolling` is set, so the menu needs the same
- * idle window the thread body uses (`SCROLLBAR_IDLE_DELAY_MS` in
- * bottom-anchored-scroll-body.tsx) or the two surfaces settle at different
- * speeds.
- */
 const SCROLLBAR_IDLE_DELAY_MS = 600;
 
-/** Searchable, single-dimension category picker for the full taxonomy. */
 export function PluginBrowseCategoryFilter({
   options,
   value,
@@ -53,14 +44,6 @@ export function PluginBrowseCategoryFilter({
   const showAllOption =
     normalizedSearch === "" || "all categories".includes(normalizedSearch);
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
-  // The fade is an overflow affordance, not decoration: it may only exist
-  // while there is more list below the viewport. `measureOverflow` covers the
-  // just-opened menu, where the sentinels have not intersected yet.
-  //
-  // Binding is gated on the scroll node rather than on `open`: Radix mounts
-  // this popover's body in a later commit than the state change that opened
-  // it, so an `open`-keyed effect would run against a ref that is still null
-  // and never rebind.
   const {
     scrollRef: listRef,
     topSentinelRef,
@@ -118,14 +101,6 @@ export function PluginBrowseCategoryFilter({
     setSearch("");
   };
 
-  /**
-   * Choosing the already-active category clears the filter.
-   *
-   * This menu and the category pill row are two views of one single-select
-   * filter, so "pick what is already picked" has to mean the same thing in
-   * both — otherwise the menu is the one place in Browse where a selection is
-   * a dead end and the only way back to everything is the separate All row.
-   */
   const toggle = (optionId: string) => {
     select(optionId === value ? null : optionId);
   };
@@ -172,9 +147,8 @@ export function PluginBrowseCategoryFilter({
           <Icon name="ChevronDown" className="size-3 shrink-0" aria-hidden />
         </Button>
       </PopoverTrigger>
-      {/* `md:p-0.5` is the toolbar's compact menu padding (ResourceSortMenu,
-          ResourceMultiSelectMenu); the roomier `p-1.5` stays for the mobile
-          drawer this popover becomes on a compact viewport. */}
+      {
+}
       <PopoverContent
         align="end"
         mobileTitle="Filter plugins by category"
@@ -216,9 +190,6 @@ export function PluginBrowseCategoryFilter({
                 event.preventDefault();
                 categoryOptionElements().at(-1)?.focus();
               } else if (event.key !== "Escape" && event.key !== "Tab") {
-                // Radix menu-style typeahead must not steal characters from
-                // the input; Escape and Tab keep their normal overlay/focus
-                // behavior.
                 event.stopPropagation();
               }
             }}

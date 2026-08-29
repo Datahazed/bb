@@ -19,16 +19,12 @@ import {
 import { BROWSE_ARCHETYPES } from "./browse-archetypes";
 import { MINI_APP_SCENES } from "./MiniAppScenes";
 
-/** bb's own nav rail, which a plugin's panel joins. */
 const PLUGIN_RAIL: readonly IconName[] = [
   "MessageSquare",
   "Folder",
   "ListTodo",
 ];
 
-// The public Guide server-renders the hero. Static artwork keeps the server
-// and hydration trees identical; shared-ui's extended registry intentionally
-// begins as an empty SVG in a fresh browser and is therefore app-only here.
 const PLUGIN_HERO_ICONS: Readonly<Partial<Record<IconName, IconSvgElement>>> = {
   Beaker: TestTube01Icon,
   ChartColumn: ChartColumnIcon,
@@ -61,17 +57,11 @@ export const PLUGIN_HERO_COPY: ShowcaseHeroCopy = {
 };
 
 export interface PluginBrowseHeroCarouselProps {
-  /** Force a slide for stable screenshots or controlled presentations. */
   initialIndex?: number;
   autoplay?: boolean;
-  /**
-   * Host-owned composer content. Public hosts omit this; the bb app supplies
-   * its real new-thread composer through its local adapter.
-   */
   composerSlot?: ReactNode;
 }
 
-/** The complete portable plugin Browse hero preset. */
 export function PluginBrowseHeroCarousel({
   initialIndex = 0,
   autoplay = true,

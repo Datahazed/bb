@@ -7,8 +7,6 @@ import {
 
 describe("planPluginCapture", () => {
   it("plans nothing for a plugin with no visual surfaces", () => {
-    // An agent-tool or provider plugin has nothing to photograph; a listing
-    // must not be held up waiting for a screenshot that cannot exist.
     expect(planPluginCapture({ pluginId: "unslop", slots: [] })).toEqual([]);
   });
 
@@ -46,8 +44,6 @@ describe("planPluginCapture", () => {
   });
 
   it("drops fixture surfaces when no fixture thread is available", () => {
-    // Pointing these at a thread route without a seeded thread photographs the
-    // empty app, which is worse for a listing than having no shot at all.
     const steps = planPluginCapture({
       pluginId: "side-chat",
       slots: ["messageDirective", "threadPanelAction"],

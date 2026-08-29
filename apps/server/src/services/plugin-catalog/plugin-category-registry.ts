@@ -26,26 +26,6 @@ export {
   type PluginCatalogCategory,
 };
 
-/**
- * Reviewed taxonomy handoff for all 87 BB Community entries at
- * get-bb/marketplace commit e937f462a47180aef8725c5e71af6898da5ccfdd.
- * The marketplace repository
- * uses this map to seed its single source-entry model before projecting v1
- * and v2. Production v1 fallback never applies it: v1 remains untouched and
- * its entries retain genuine category absence. Development builds also join
- * this reviewed map onto the live v1 registry so the unreleased discovery UI
- * can exercise a realistic categorized catalog without a committed snapshot.
- */
-/**
- * Publication dates for the reviewed community entries, read from the registry
- * repository's own git history: an entry file's first commit is when the
- * plugin was published, its latest is when the listing last changed.
- *
- * V1 carries no dates, so until the registry publishes a v2
- * manifest the "Recently added" sort has nothing to order by. Joined onto the
- * live v1 registry in development only; production v1 fallback never applies
- * it, and a real v2 manifest supersedes it entirely.
- */
 export const REVIEWED_COMMUNITY_ENTRY_DATES: Readonly<
   Record<string, { publishedAt: string; updatedAt: string }>
 > = {
@@ -471,10 +451,6 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES: Readonly<
   "xcode": "code-and-reviews",
 };
 
-/**
- * Resolve discovery metadata without interpreting tags. V1 is the immutable
- * legacy contract and has no category; every parsed v2 entry carries one.
- */
 export function marketplaceEntryCategoryId(args: {
   schemaVersion: 1 | 2;
   entry: MarketplaceEntry;
@@ -492,7 +468,6 @@ export interface PluginCatalogListingMetadata {
   screenshots: string[];
 }
 
-/** Collision-free identity of an entry within one marketplace. */
 export function marketplaceEntryKey(
   marketplaceName: string,
   entryId: string,
@@ -511,11 +486,6 @@ interface StoredMarketplaceCatalogCacheEntry {
   catalog: MarketplaceManifest;
 }
 
-/**
- * Parse each stored snapshot once per database and successful refresh. The DB
- * weak key prevents one server or test connection from retaining another's
- * rows; manifest identity is an extra guard for same-timestamp replacements.
- */
 export function createStoredMarketplaceCatalogReader(
   parse: StoredMarketplaceCatalogParser = parseMarketplaceManifestJson,
 ): (db: DbQueryConnection, row: PluginMarketplaceRow) => MarketplaceManifest {
@@ -551,11 +521,6 @@ export function createStoredMarketplaceCatalogReader(
 
 const readStoredMarketplaceCatalog = createStoredMarketplaceCatalogReader();
 
-/**
- * Listing metadata projected onto installed catalog plugins. Corrupt stored
- * documents are omitted here; the catalog service reports them and Installed
- * keeps category absence explicit.
- */
 export function marketplaceListingMetadata(
   db: DbQueryConnection,
   entryKeys: ReadonlySet<string>,
@@ -601,7 +566,6 @@ export function marketplaceListingMetadata(
         });
       }
     } catch {
-      // The catalog service owns refresh errors; plugin inventory stays usable.
     }
   }
   return metadata;

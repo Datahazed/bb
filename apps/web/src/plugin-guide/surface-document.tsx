@@ -97,10 +97,6 @@ function SurfaceArticle({ surface }: { surface: PluginSurface }) {
   );
 }
 
-/**
- * The durable, server-rendered Plugin Guide document. ProductMap enhances the
- * same canonical inventory; this section remains complete without JavaScript.
- */
 export function PluginSurfaceDocument() {
   return (
     <section

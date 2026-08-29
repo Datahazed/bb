@@ -79,10 +79,6 @@ describe("PluginMarketplaceListing", () => {
     ).toBeTruthy();
     expect(screen.getByText("More from this author")).toBeTruthy();
     expect(screen.getByText("Headroom")).toBeTruthy();
-    // "More from this author" points away from this plugin, so everything
-    // about this plugin has to come first. Asserted as document order rather
-    // than presence: the sections used to be emitted as one block, and the
-    // installed page slotted its own sections in after them.
     const sectionOrder = [...document.querySelectorAll("h2, h3")]
       .map((heading) => heading.textContent?.trim())
       .filter(

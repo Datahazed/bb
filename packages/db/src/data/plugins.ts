@@ -5,7 +5,6 @@ import { installedPlugins, pluginArtifacts } from "../schema.js";
 export type PluginProvenance =
   | { kind: "builtin" }
   | { kind: "direct" }
-  /** Installed from a marketplace listing; `marketplace` names the catalog. */
   | { kind: "catalog"; marketplace: string; entryId: string };
 
 export type PluginSourceIntent =
@@ -25,18 +24,11 @@ export type PluginSourceIntent =
       selector: PluginGitSelector;
     };
 
-/**
- * What a git plugin tracks. A "ref" install follows one branch, tag, or
- * commit. A "range" install follows a semver range over `[tagPrefix]vX.Y.Z`
- * release tags and records the tag it resolved to, so a tag that later moves
- * is detectable.
- */
 export type PluginGitSelector =
   | { kind: "ref"; ref: string; refKind: "branch" | "tag" | "commit" }
   | {
       kind: "range";
       range: string;
-      /** "" for repository-wide `vX.Y.Z` tags. */
       tagPrefix: string;
       resolvedTag: string;
     };
@@ -144,7 +136,6 @@ type NormalizeLegacyPluginSourceIntent =
       kind: "git";
       url: string;
       subdirectory: string | null;
-      /** An offline backfill cannot safely guess whether a ref is a tag. */
       selector: {
         kind: "ref";
         ref: string;
@@ -160,7 +151,6 @@ export type NormalizeLegacyInstalledPluginInput = Omit<
   exactResolution: LegacyPluginExactResolution;
 };
 
-/** The five git selector columns, of which exactly one group is non-null. */
 function gitSelectorColumns(
   selector:
     | PluginGitSelector
@@ -375,7 +365,6 @@ export function upsertInstalledPlugin(
   return row;
 }
 
-/** Live installs a marketplace listed, used when that marketplace is removed. */
 export function listInstalledPluginsFromMarketplace(
   db: DbQueryConnection,
   marketplaceName: string,
@@ -393,11 +382,6 @@ export function listInstalledPluginsFromMarketplace(
     .all();
 }
 
-/**
- * Convert a catalog install into a direct one, keeping its source intent and
- * exact resolution. Removing a marketplace drops the discovery layer only: the
- * plugin keeps running and keeps checking for updates from its recorded source.
- */
 export function setInstalledPluginDirectProvenance(
   db: DbQueryConnection,
   id: string,
@@ -469,11 +453,6 @@ export function setInstalledPluginLastFailure(
   return result.changes > 0;
 }
 
-/**
- * Store the one compact runtime problem exposed by the installed inventory.
- * Callers normalize the message before this boundary so persistence never
- * acquires stack traces or multiline exception text.
- */
 export function setInstalledPluginLastProblem(
   db: DbConnection,
   id: string,
@@ -491,7 +470,6 @@ export function setInstalledPluginLastProblem(
   return result.changes > 0;
 }
 
-/** A handler failure updates the compact problem and its durable counter once. */
 export function recordInstalledPluginHandlerError(
   db: DbConnection,
   id: string,

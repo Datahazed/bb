@@ -23,20 +23,12 @@ import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHi
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
 
-// The hero mounts bb's real new-thread composer when a create affordance
-// fires; it needs live queries this suite doesn't provide, and these tests
-// assert only that it opens with the right seed.
 vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
   PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
     <div data-testid="inline-composer">{initialPrompt}</div>
   ),
 }));
 
-/**
- * Stand-in for the Extensions top nav, which lives in AppLayout: flips the
- * URL-backed view the way the real nav links do, so mode-switch state
- * preservation stays covered without the tab row that used to host it.
- */
 function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
   const [, setSearchParams] = useSearchParams();
   return (
@@ -84,8 +76,6 @@ const AUTOMATIONS_PLUGIN = {
   app: { hasApp: true, bundle: null },
 };
 
-// Preserve the pre-transfer owner in this retired remote-marketplace fixture:
-// persisted installs can still carry the historical source identity.
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
   pluginId: "github",
@@ -265,12 +255,8 @@ describe("PluginsOverview", () => {
     );
 
     expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
-    // Browse and Installed are top-nav destinations now; the only tabs left
-    // are the hero carousel's slide dots, never a mode row.
     expect(screen.queryByRole("tab", { name: "Browse" })).toBeNull();
     expect(screen.queryByRole("tab", { name: /Installed/ })).toBeNull();
-    // Creation is a split button in the hero's CTA row: primary create half
-    // plus a menu holding install-from-source.
     expect(
       screen.getByRole("button", { name: "Create a plugin" }),
     ).toBeTruthy();
@@ -328,8 +314,6 @@ describe("PluginsOverview", () => {
       screen.queryByRole("button", { name: "Close the composer" }),
     ).toBeNull();
 
-    // Create is an enter action, not a mode toggle: a repeated activation
-    // leaves the creation surface open.
     fireEvent.click(createPlugin);
     expect(screen.getByTestId("inline-composer")).toBeTruthy();
 
@@ -369,7 +353,6 @@ describe("PluginsOverview", () => {
     );
 
     expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
-    // Wait for the catalog so the Category menu has options to offer.
     const categoryTrigger = screen.getByRole("button", {
       name: "Filter plugins by category: All categories",
     });
@@ -397,8 +380,6 @@ describe("PluginsOverview", () => {
     expect(await screen.findByText("Automations")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
 
-    // Creation is a navigation to the real new-thread page, not a bounce
-    // through Browse's inline composer.
     expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
@@ -435,15 +416,11 @@ describe("PluginsOverview", () => {
     );
 
     await screen.findAllByText("GitHub");
-    // The old pill row is gone, so Browse keeps one flush content band.
     expect(
       screen.queryByRole("radiogroup", {
         name: "Filter plugins by category",
       }),
     ).toBeNull();
-    // Search, category, and sort share one toolbar row, and that row scrolls
-    // with the catalog below the hero rather than pinning above it — a first
-    // visit should meet the pitch before the filters.
     expect(
       container.querySelector(
         "[data-resource-collection-viewport] > .shrink-0",
@@ -564,7 +541,6 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    // First chunk only, with the sentinel armed for the rest.
     expect(await screen.findByText("Plugin 01")).toBeTruthy();
     expect(screen.getByText("Plugin 10")).toBeTruthy();
     expect(screen.queryByText("Plugin 11")).toBeNull();
@@ -576,12 +552,10 @@ describe("PluginsOverview", () => {
     reachSentinel();
     expect(screen.getByText("Plugin 01")).toBeTruthy();
     expect(screen.getByText("Plugin 12")).toBeTruthy();
-    // Everything is loaded: the sentinel retires.
     expect(
       document.querySelector("[data-resource-infinite-sentinel]"),
     ).toBeNull();
 
-    // A new projection restarts at one chunk.
     fireEvent.change(
       screen.getByRole("textbox", { name: "Search installed plugins" }),
       { target: { value: "Plugin 01" } },
@@ -642,7 +616,6 @@ describe("PluginsOverview", () => {
         </MemoryRouter>,
       );
 
-      // 760px / 50px rows → a 15-row first chunk; the rest waits on scroll.
       await waitFor(() => {
         expect(screen.getByText("Plugin 15")).toBeTruthy();
       });
@@ -728,7 +701,6 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-local",
       "plugin-row-inactive-official",
     ]);
-    // Source is filter state, never a repeated row badge.
     for (const row of rows) {
       expect(row.textContent).not.toContain("BB Official");
       expect(row.textContent).not.toContain("BB Community");
@@ -812,7 +784,6 @@ describe("PluginsOverview", () => {
         (row) => row.getAttribute("data-testid"),
       );
 
-    // All sources is explicit and shows every provenance.
     let sourceTrigger = screen.getByRole("button", {
       name: "Source: All sources",
     });
@@ -845,7 +816,6 @@ describe("PluginsOverview", () => {
     });
     expect(sourceTrigger.textContent).toContain("Direct install");
 
-    // All sources is the one clear action.
     fireEvent.pointerDown(sourceTrigger);
     expect(
       screen
@@ -933,7 +903,6 @@ describe("PluginsOverview", () => {
       expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
     });
     expect(screen.queryByText("Direct One")).toBeNull();
-    // Category is a collection filter only, never a row pill.
     expect(
       screen.getByTestId("plugin-row-builtin-one").textContent,
     ).not.toContain("Tasks & Workflows");

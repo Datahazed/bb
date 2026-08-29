@@ -66,7 +66,6 @@ const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
   name: "Name",
 };
 
-/** One glyph per criterion, so the menu reads without parsing three labels. */
 const PLUGIN_BROWSE_SORT_ICONS: Record<PluginBrowseSort, IconName> = {
   "recently-added": "Clock",
   "most-installed": "Download",
@@ -83,13 +82,6 @@ function browseSortDirection(
   return value === "asc" || value === "desc" ? value : null;
 }
 
-/**
- * The Browse page: hero → one CTA row (create + install-from-source) → then
- * ONE of two mutually exclusive bodies. Browsing shows the search toolbar and
- * the installable grid; composing swaps that for the example cards, since the
- * examples exist to feed the open composer. Every create-shaped affordance
- * opens the hero's inline composer in place; nothing navigates away.
- */
 export function BrowsePluginsTab({
   onInstall,
   onOpenPlugin,
@@ -97,12 +89,9 @@ export function BrowsePluginsTab({
 }: {
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string) => void;
-  /** Opens the Add-plugin dialog; rendered beside the hero CTA. */
   onInstallFromSource: () => void;
 }) {
   const [query, setQuery] = useState("");
-  // Example cards and the page button open the hero's inline composer through
-  // this request; nonces make a repeated click on the same card still land.
   const [searchParams, setSearchParams] = useSearchParams();
   const creationViewActive = searchParams.get("view") === "create";
   const [heroRequest, setHeroRequest] = useState<{
@@ -120,9 +109,6 @@ export function BrowsePluginsTab({
       nonce: nextComposerRequestNonce(),
       ...(seed === undefined ? {} : { seed }),
     });
-  // Creation is a real navigation entry so the app shell's existing sidebar
-  // Back control owns the return to Browse. POP/forward navigation then drives
-  // the inline composer without adding another page-local back affordance.
   if (requestedCreationView !== creationViewActive) {
     setRequestedCreationView(creationViewActive);
     setHeroRequest({
@@ -130,12 +116,9 @@ export function BrowsePluginsTab({
       ...(creationViewActive ? {} : { close: true }),
     });
   }
-  // The composer lives in the hero at the top; opening it from a card further
-  // down must bring it into view or the click appears to do nothing.
   useEffect(() => {
     if (heroRequest === null) return;
     const viewport = document.getElementById("plugins-browse-results");
-    // Optional call: jsdom implements elements without scrollTo.
     viewport?.scrollTo?.({
       top: 0,
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -146,9 +129,6 @@ export function BrowsePluginsTab({
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
-  // Browse offers installs, so an entry this BB cannot install is noise here.
-  // The search API still returns incompatible entries with their reasons for
-  // the CLI, where the "requires newer bb" status is the useful signal.
   const catalogEntries = (catalogQuery.data ?? []).filter(
     (entry) => entry.compatible,
   );
@@ -192,9 +172,6 @@ export function BrowsePluginsTab({
     (count, shelf) => count + shelf.entries.length,
     0,
   );
-  // The picker exposes the complete stable taxonomy, including categories
-  // with no current entries. A zero-count category is still valid metadata
-  // and must not disappear just because this catalog happens to be sparse.
   const categoryOptions: PluginBrowseCategoryOption[] =
     PLUGIN_CATALOG_CATEGORIES.map((category) => ({
       id: category.id,
@@ -202,8 +179,6 @@ export function BrowsePluginsTab({
       count: catalogCategoryCounts.get(category.id) ?? 0,
     }));
   if (selectedCategoryId !== null && selectedCategory === undefined) {
-    // Preserve a stale or future deep-link filter instead of silently showing
-    // unfiltered results; the canonical sixteen options remain alongside it.
     categoryOptions.push({
       id: selectedCategoryId,
       label: selectedCategoryLabel,
@@ -258,7 +233,6 @@ export function BrowsePluginsTab({
     setSearchParams(nextSearchParams);
   }
 
-  /** Drop the sort so the shelf view comes back. */
   function clearSort() {
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.delete("sort");
@@ -273,24 +247,15 @@ export function BrowsePluginsTab({
     setSearchParams(nextSearchParams);
   }
 
-  // Radix gives every scroll viewport a display:table content wrapper so it
-  // can measure horizontal content. Browse itself is vertical-only; its
-  // shelves own their responsive grids. Keeping that wrapper as a table lets
-  // wide card content expand the whole page at compact widths, so constrain
-  // only this viewport's generated child to the available pane.
   return (
     <ResourceCollectionViewport
       scrollId="plugins-browse-results"
       contentClassName="[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full"
     >
-      {/* One wrapper owns the page rhythm and centers the content column: the
-          scroller spans the whole pane so the wheel works from the gutters.
-          (Spacing utilities on the scroll viewport itself never fire: Radix
-          interposes a display:table div, so the sections would not be siblings
-          of each other there.) */}
+      {
+}
       <div className={cn("space-y-7", TOOLS_PAGE_BAND_CLASSES)}>
-        {/* The create control sits at the page's top right, like every other
-            collection's actions row; the hero keeps only its showcase. */}
+        {}
         <div className="flex items-center justify-end gap-3">
           <div className="flex items-stretch">
             <Button
@@ -330,9 +295,6 @@ export function BrowsePluginsTab({
         />
 
         {composing ? (
-          /* The examples exist to feed the open composer, so they appear only
-             in this state — browsing and composing are mutually exclusive
-             bodies below one stable hero. */
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
           <section>
@@ -352,10 +314,6 @@ export function BrowsePluginsTab({
                   <>
                     {sortOptions.length > 0 ? (
                       <ResourceSortMenu
-                        // Null while unsorted, so the trigger keeps reading
-                        // "Sort plugins" rather than naming a sort that is not
-                        // applied. The Featured row is the way back, not a
-                        // claim about the current state.
                         value={activeSort}
                         direction={activeDirection}
                         options={sortOptions}
@@ -382,8 +340,6 @@ export function BrowsePluginsTab({
             </div>
 
             {activeSort === null ? null : (
-              // The page band owns the shared left and right edge for the
-              // toolbar, pills, and flat cards below it.
               <div className="mt-3 w-full">
                 {hasCategoryDiscovery ? (
                   <PluginCategoryChips
@@ -399,10 +355,6 @@ export function BrowsePluginsTab({
 
             <div className="mt-7 space-y-3">
               {searchQuery.isError && entries.length > 0 ? (
-                // The empty-catalog error below offers Retry; this one is the
-                // same failure with stale results still on screen, so it needs
-                // the same way out. Without it the only escape from a stale
-                // catalog is reloading the page or editing the query.
                 <div
                   className="flex items-center gap-2 text-xs text-warning-text"
                   role="status"
@@ -476,9 +428,6 @@ export function BrowsePluginsTab({
                       entries={notableEntries}
                       showCategory
                       leading={
-                        // Filled, and geometric rather than pictorial: a set of
-                        // modules reads as "extensions" at 14px, where an
-                        // outlined toolbox or package turns to mush.
                         <Icon
                           name="GridView"
                           className="size-3.5 fill-current text-muted-foreground"
@@ -561,14 +510,6 @@ export function PluginCatalogGrid({
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
-  /**
-   * Render as a shelf preview: complete rows only, dropping the tail rather
-   * than leaving a card stranded. View all still exposes the full shelf.
-   *
-   * The column count and the cutoff both come from the shelf's own width (see
-   * `[data-plugin-shelf]` in app.css) rather than from here, because the grid
-   * is sized by the catalog pane and the pane is not the viewport.
-   */
   preview?: boolean;
   showCategory?: boolean;
   onInstall: (initial: AddPluginInitial) => void;
@@ -585,9 +526,6 @@ export function PluginCatalogGrid({
     />
   ));
   if (preview) {
-    // A plain grid, not ResourceBrowseGrid: its auto-fit columns are a utility
-    // and would win the cascade over the container rules that keep the rows
-    // complete.
     return (
       <div data-plugin-shelf>
         <div data-plugin-shelf-grid className="grid gap-2">
@@ -655,10 +593,9 @@ function BrowseShelf({
             className="group gap-1"
           >
             View all
-            {/* The arrow leans into the direction it takes you. */}
-            {/* CONTROL_HOVER_TRANSITION is colour-only and snaps on hover, so
-                it cannot carry this: the arrow needs the transform itself to
-                ease, at the same 150ms the rest of the controls use. */}
+            { }
+            {
+}
             <Icon
               name="ChevronRight"
               className="size-3 transition-transform duration-150 group-hover:translate-x-1"
@@ -755,9 +692,6 @@ export function PluginCatalogCard({
         label={entry.category}
       />
     ) : undefined;
-  // Just the number, handed to the install control as its own metadata. The
-  // download glyph it used to carry repeated the control's glyph an inch away,
-  // which read as two install affordances.
   const installCount =
     entry.installs === null
       ? undefined
@@ -765,8 +699,6 @@ export function PluginCatalogCard({
           display: formatInstallCount(entry.installs),
           accessibleLabel: `${entry.installs.toLocaleString()} installs`,
         };
-  // Source and last-updated live on detail. Author stays in the byline;
-  // category appears only where the surrounding view does not already own it.
   const installInitial: AddPluginInitial = {
     entryId: entry.entryId,
     marketplace: entry.marketplace,

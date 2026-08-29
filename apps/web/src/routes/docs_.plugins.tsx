@@ -9,8 +9,6 @@ const PAGE_TITLE = "Plugin Guide — bb";
 const PAGE_DESCRIPTION =
   "Build bb plugins with a complete, visual reference to every app surface, command, service, setting, and agent capability you can extend.";
 
-// The trailing filename underscore reserves /docs for future public guides
-// without introducing a layout route or a second navigation destination.
 export const Route = createFileRoute("/docs_/plugins")({
   validateSearch: (_search: Record<string, unknown>) => ({}),
   head: () => ({
@@ -29,9 +27,6 @@ export const Route = createFileRoute("/docs_/plugins")({
         crossOrigin: "anonymous",
       },
       { rel: "canonical", href: "https://getbb.app/docs/plugins" },
-      // The Guide stylesheet contains the shared UI theme and utilities. Keep
-      // the marketing stylesheet last so the established site chrome and CTA
-      // language continue to own the outer page.
       { rel: "stylesheet", href: pluginGuideCss },
       { rel: "stylesheet", href: landingCss },
     ],

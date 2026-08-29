@@ -10,9 +10,6 @@ describe("plugin health migration", () => {
   it("upgrades a previously persisted plugin without fabricating a problem", () => {
     const db = createConnection(":memory:");
     try {
-      // The released table already has the plugin identity. This focused
-      // upgrade fixture intentionally contains only the column the additive
-      // migration needs in order to prove its defaults and null semantics.
       db.$client.exec(`
         CREATE TABLE plugins (id text PRIMARY KEY NOT NULL);
         INSERT INTO plugins (id) VALUES ('legacy-plugin');

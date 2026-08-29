@@ -62,8 +62,6 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIsAppCommandModifierHeld: () => false,
 }));
 
-// The brand prefix comes from each provider's declared strings; the picker
-// strips it from model labels under that provider's tab.
 const providerOptions: readonly ProviderPickerOption[] = [
   { value: "codex", label: "Codex", brandPrefix: "GPT-" },
   { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
@@ -77,7 +75,6 @@ const codexModels: readonly PickerOption<string>[] = [
   { value: "gpt-5.5", label: "GPT-5.5" },
 ];
 
-// A list long enough (> MODEL_SEARCH_MIN_OPTIONS) to render the search box.
 const manyCodexModels: readonly PickerOption<string>[] = [
   { value: "gpt-5.5", label: "GPT-5.5" },
   { value: "gpt-5.2", label: "GPT-5.2" },
@@ -355,9 +352,6 @@ describe("ModelReasoningPicker", () => {
     const lockedTarget = screen.getByRole("button", {
       name: "Provider, model and reasoning",
     });
-    // Owning the chord with nowhere to rotate is the correct no-op. Returning
-    // false lets the command provider skip `preventDefault()`, and macOS would
-    // then insert the composed Option+P character into the prompt.
     expect(
       commandHandlers.get("modelPicker.cycleProvider")?.({
         target: lockedTarget,
@@ -495,11 +489,7 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
-  // A short viewport cuts the menu off below the model rows. The models and the
-  // reasoning rows must share one scroll region: when the model list is its own
-  // scroller, a wheel or touch gesture that starts over the models is captured
-  // by it, and the reasoning rows underneath stay unreachable.
-  it("scrolls the desktop models and reasoning rows as one region", () => {
+  it("caps the desktop picker and scrolls only the model list", () => {
     renderPicker({ modelOptions: manyCodexModels });
 
     fireEvent.click(
@@ -508,8 +498,9 @@ describe("ModelReasoningPicker", () => {
 
     const menu = screen.getByRole("dialog");
     expect(menu.className).toContain(
-      "max-h-[var(--radix-popover-content-available-height)]",
+      "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))]",
     );
+    expect(menu.className).toContain("overflow-hidden");
 
     const scrollers = [
       ...(menu.className.includes("overflow-y-auto") ? [menu] : []),
@@ -517,15 +508,11 @@ describe("ModelReasoningPicker", () => {
     ];
     expect(scrollers).toHaveLength(1);
 
-    const body = scrollers[0];
-    expect(body.className).toContain("overscroll-contain");
-    expect(body.contains(screen.getByRole("listbox", { name: "Models" }))).toBe(
-      true,
-    );
-    expect(body.contains(screen.getByText("High"))).toBe(true);
-
     const models = screen.getByRole("listbox", { name: "Models" });
-    expect(models.className).not.toContain("max-h-");
+    expect(scrollers[0]).toBe(models);
+    expect(models.className).toContain("overscroll-contain");
+    expect(models.className).toContain("max-h-64");
+    expect(models.contains(screen.getByText("High"))).toBe(false);
   });
 
   it("leaves compact drawer height and scrolling to the responsive shell", async () => {
@@ -535,9 +522,7 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
 
-    expect(screen.getByRole("dialog").className).not.toContain(
-      "max-h-[var(--radix-popover-content-available-height)]",
-    );
+    expect(screen.getByRole("dialog").className).not.toContain("100dvh");
     expect(
       (await screen.findByRole("listbox", { name: "Models" })).className,
     ).not.toContain("max-h-");
@@ -624,7 +609,6 @@ describe("ModelReasoningPicker", () => {
     const search = screen.getByPlaceholderText("Search models");
     fireEvent.change(search, { target: { value: "o4" } });
 
-    // Only the fuzzy match survives; unrelated models are filtered out.
     expect(screen.getByText("o4-mini")).not.toBeNull();
     expect(screen.queryByText("Sonnet")).toBeNull();
 
@@ -679,8 +663,6 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
 
-    // On desktop the extra models normally hide in a hover submenu; searching
-    // flattens them inline so the keyboard can reach them.
     const search = screen.getByPlaceholderText("Search models");
     fireEvent.change(search, { target: { value: "legacy" } });
 
@@ -797,7 +779,6 @@ describe("buildFuzzyRegex", () => {
 
   it("escapes regex metacharacters so they match literally", () => {
     expect(buildFuzzyRegex("5.2").test("5.2")).toBe(true);
-    // The dot is literal, so it must not match an arbitrary character.
     expect(buildFuzzyRegex("5.2").test("512")).toBe(false);
   });
 });

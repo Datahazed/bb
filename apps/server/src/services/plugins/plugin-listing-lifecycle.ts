@@ -20,7 +20,6 @@ export interface GithubPullRequestIdentity {
 
 type PluginListingEntrySource = PluginListingDraftEntry["source"];
 
-/** Stable identity for every install-affecting field in a listing source. */
 function pluginListingSourceIdentity(
   source: PluginListingEntrySource,
 ): string {
@@ -46,7 +45,6 @@ function pluginListingSourceIdentity(
   ]);
 }
 
-/** Accept only canonical, credential-free github.com pull request URLs. */
 export function parseGithubPullRequestUrl(
   raw: string,
 ): GithubPullRequestIdentity | null {
@@ -129,7 +127,6 @@ export async function reconcilePluginListingLifecycles(args: {
         returnPluginListingToDraft(args.db, record.pluginId, args.now());
         changed = true;
       }
-      // A merged PR deliberately stays in review until the catalog carries it.
     } catch (error) {
       args.warn?.(
         `listing PR check failed for ${record.pluginId}: ${error instanceof Error ? error.message : String(error)}`,

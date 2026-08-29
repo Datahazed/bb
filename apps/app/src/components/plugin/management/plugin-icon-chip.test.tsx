@@ -15,7 +15,6 @@ const BASE = {
   categoryId: "memory-and-context",
 };
 
-/** jsdom has no layout, so assert the classes that decide the geometry. */
 function glyphOf(container: HTMLElement): Element {
   const glyph = container.querySelector("svg, img, [data-plugin-icon-asset]");
   if (glyph === null) throw new Error("no glyph rendered");
@@ -24,8 +23,6 @@ function glyphOf(container: HTMLElement): Element {
 
 describe("catalog entry icon chip", () => {
   it("sizes every icon variant to the frame's glyph size", () => {
-    // Raster artwork, custom SVG artwork, and a placeholder glyph sit in the
-    // same chip beside each other, so they have to resolve to one footprint.
     const variants = [
       { label: "placeholder", entry: BASE },
       {
@@ -56,10 +53,6 @@ describe("catalog entry icon chip", () => {
   });
 
   it("keeps the placeholder glyph inside the footprint it is handed", () => {
-    // The regression: the placeholder hardcoded a 20px mark, so in the 14px
-    // box a 24px chip centres it overflowed — and an overflowing grid item
-    // resolves to the start edge, which put it 3px right and 3px low of the
-    // artwork it stands in for. It must fill its box, never exceed it.
     const { container } = render(
       <CatalogEntryIcon entry={BASE} className="size-3.5" />,
     );

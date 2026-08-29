@@ -1,34 +1,10 @@
-/**
- * The plugin surfaces a submission screenshot can cover, and how each one is
- * reached.
- *
- * A listing screenshot has to show the plugin's own UI, so the capture visits
- * the surface the plugin registered rather than the app around it. Surfaces
- * split into two kinds:
- *
- * - `route`: the surface renders on a URL, either because it owns one
- *   (`navPanel`) or because it lives in chrome every route paints
- *   (`sidebarFooterAction`). Navigating is enough.
- * - `fixture`: the surface only exists once a thread, composer, or file is in
- *   a particular state. Capture seeds one shared fixture workspace and drives
- *   to that state; the same fixture is used for every plugin so listings stay
- *   comparable and no author has to author one.
- */
 export type PluginCaptureKind = "route" | "fixture";
 
 export interface PluginCaptureSurface {
-  /** Slot name as registered through the plugin SDK. */
   readonly slot: string;
-  /** How the capture reaches it. */
   readonly kind: PluginCaptureKind;
-  /**
-   * Route to load, relative to the app origin. `:pluginId` and `:panelPath`
-   * are substituted from the plugin's own registration.
-   */
   readonly route: string;
-  /** What the fixture must arrange before the shot is worth taking. */
   readonly requires?: string;
-  /** Suggested file stem, so a listing's shots sort predictably. */
   readonly stem: string;
 }
 
@@ -112,7 +88,6 @@ export function pluginCaptureSurface(
   return SURFACES_BY_SLOT.get(slot);
 }
 
-/** One planned screenshot: where to go, and what to write. */
 export interface PluginCaptureStep {
   readonly slot: string;
   readonly kind: PluginCaptureKind;
@@ -123,22 +98,11 @@ export interface PluginCaptureStep {
 
 export interface PluginCapturePlanArgs {
   readonly pluginId: string;
-  /** Slots the plugin actually registered, as reported by the running app. */
   readonly slots: readonly string[];
-  /** First path segment of each nav panel the plugin registered. */
   readonly panelPaths?: readonly string[];
-  /** Fixture thread the capture drives, when any fixture surface is planned. */
   readonly fixtureThreadId?: string;
 }
 
-/**
- * Turn the slots a plugin registered into an ordered capture plan.
- *
- * Unregistered slots produce no step: a plugin that only adds agent tools has
- * nothing to photograph, and a listing should not be blocked on a screenshot
- * that cannot exist. Fixture surfaces are dropped when no fixture thread is
- * available rather than pointing at a route that would render the empty app.
- */
 export function planPluginCapture(
   args: PluginCapturePlanArgs,
 ): PluginCaptureStep[] {
@@ -150,8 +114,6 @@ export function planPluginCapture(
       continue;
 
     if (surface.route.includes(":panelPath")) {
-      // One shot per panel: a plugin contributing several panels is several
-      // different screens, and a listing that shows one of them undersells it.
       panelPaths.forEach((panelPath, index) => {
         steps.push({
           slot: surface.slot,

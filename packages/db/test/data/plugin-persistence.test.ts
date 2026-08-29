@@ -135,7 +135,6 @@ describe("normalized plugin persistence", () => {
       lastProblemAt: 200,
     });
 
-    // A reinstall/update refreshes source facts without erasing health.
     upsertInstalledPlugin(db, { ...plugin, version: "1.0.1" });
     expect(getInstalledPlugin(db, "health")).toMatchObject({
       version: "1.0.1",
@@ -215,8 +214,6 @@ describe("normalized plugin persistence", () => {
       sourceGitRefKind: null,
     });
 
-    // Reinstalling the same id against a ref must clear the range trio, or a
-    // later resolution would still range over tags.
     upsertInstalledPlugin(db, {
       ...common,
       id: "ranged",

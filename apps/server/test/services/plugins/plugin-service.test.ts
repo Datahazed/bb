@@ -66,11 +66,6 @@ async function writePlugin(
   return rootDir;
 }
 
-/**
- * A fixture shaped like a real published plugin: `"type": "module"` plus a
- * plain `.js` entry, which jiti hands to native `import()`. The TypeScript
- * fixture above never reaches that path because jiti always transpiles TS.
- */
 async function writeEsmPlugin(rootDir: string, id: string): Promise<void> {
   await mkdir(rootDir, { recursive: true });
   await writeFile(
@@ -89,7 +84,6 @@ async function writeEsmPlugin(rootDir: string, id: string): Promise<void> {
   );
 }
 
-/** Rewrite an ESM fixture's entry and its submodule with fresh markers. */
 async function writeEsmSources(
   rootDir: string,
   globalName: string,
@@ -286,8 +280,6 @@ describe("plugin service", () => {
 
   it("summarizes user-facing capabilities and drops the live ones when disabled", async () => {
     const rootDir = join(workDir, "bb-plugin-capabilities");
-    // Two real skills plus a stray directory without a SKILL.md, so the
-    // summary is proven to name the skills rather than their containing folder.
     await mkdir(join(rootDir, "skills", "review"), { recursive: true });
     await mkdir(join(rootDir, "skills", "triage"), { recursive: true });
     await mkdir(join(rootDir, "skills", "not-a-skill"), { recursive: true });
@@ -362,8 +354,6 @@ describe("plugin service", () => {
 
     await service.setEnabled("capabilities", false);
 
-    // A disabled plugin has no runtime, so only its manifest-declared
-    // capabilities survive — the detail page says the rest need enabling.
     expect(
       service
         .list()
@@ -412,19 +402,12 @@ describe("plugin service", () => {
     await service.reload("cycler");
     const globals = globalThis as Record<string, unknown>;
     expect(globals.__cyclerVersion).toBe("v2");
-    // LIFO: the second-registered hook runs first.
     expect(globals.__cyclerDisposals).toEqual(["second", "first"]);
     expect(service.list().find((p) => p.id === "cycler")?.status).toBe(
       "running",
     );
   });
 
-  // The fixture above writes TypeScript, which jiti always transpiles, so it
-  // never exercises the path real plugins take: every published plugin ships
-  // `"type": "module"` with plain `.js`, which jiti hands to native import().
-  // Node's ESM registry then keys the module by URL forever, so reload used to
-  // re-run the first-evaluated factory. Submodules regressed separately from
-  // the entry, so both are asserted.
   it("reload re-reads an ESM plugin's entry and its submodules", async () => {
     const rootDir = join(workDir, "bb-plugin-esm-reloader");
     await writeEsmPlugin(rootDir, "esm-reloader");
@@ -443,9 +426,6 @@ describe("plugin service", () => {
     expect(globals.esmReloader).toBe("entry2:sub2");
   });
 
-  // The URL marker re-keys ESM modules only. Node caches a CommonJS child by
-  // resolved filename and ignores the query, so both a static `.cjs` import
-  // and a `createRequire()` call must be invalidated another way.
   it("reload re-reads a plugin's CommonJS children", async () => {
     const rootDir = join(workDir, "bb-plugin-cjs-child");
     await writeEsmPlugin(rootDir, "cjs-child");
@@ -479,9 +459,6 @@ describe("plugin service", () => {
     expect(globals.cjsChild).toBe("cjs-after:cjs-after");
   });
 
-  // The marker carries the root id as well as the epoch. Without the id, an
-  // import that crosses into another plugin's tree would carry the importer's
-  // epoch and pin the imported plugin to a stale module.
   it("reload of an imported plugin is visible to a plugin that imports it", async () => {
     const importerDir = join(workDir, "bb-plugin-importer");
     const importedDir = join(workDir, "bb-plugin-imported");
@@ -505,7 +482,6 @@ describe("plugin service", () => {
     const readShared = globals.importerReadShared as () => Promise<string>;
     expect(await readShared()).toBe("shared1");
 
-    // Reload only the imported plugin; the importer keeps running.
     await writeFile(
       join(importedDir, "shared.js"),
       `export const SHARED = "shared2";\n`,
@@ -513,13 +489,9 @@ describe("plugin service", () => {
     await writeEsmSources(importedDir, "imported", "entry2", "sub2");
     await service.reload("imported");
     expect(globals.imported).toBe("entry2:sub2");
-    // The importer's next cross-root import must see the reloaded plugin.
     expect(await readShared()).toBe("shared2");
   });
 
-  // A candidate that never commits must stay private. Cross-root importers do
-  // not inherit the retained plugin's epoch (they resolve against the imported
-  // root), so without a rollback they would read the rejected files.
   it("hides a failed reload's sources from a plugin that imports it", async () => {
     const importerDir = join(workDir, "bb-plugin-fail-importer");
     const importedDir = join(workDir, "bb-plugin-fail-imported");
@@ -554,7 +526,6 @@ describe("plugin service", () => {
     const read = globals.failImporterRead as () => Promise<string>;
     expect(await read()).toBe("shared1:cjs1");
 
-    // Edit every file, then break the entry so the reload cannot commit.
     await writeFile(
       join(importedDir, "shared.js"),
       `export const SHARED = "shared-rejected";\n`,
@@ -569,12 +540,9 @@ describe("plugin service", () => {
       "running",
     );
 
-    // The retained plugin's files must still be the committed ones.
     expect(await read()).toBe("shared1:cjs1");
   });
 
-  // Node canonicalizes ESM files through symbolic links, so a root tracked as
-  // the un-canonicalized install path never matches the module URL.
   it("reload re-reads an ESM plugin installed through a symbolic link", async () => {
     const realDir = join(workDir, "real-symlinked");
     const linkDir = join(workDir, "link-symlinked");
@@ -591,9 +559,6 @@ describe("plugin service", () => {
     expect(globals.symlinked).toBe("entry2:sub2");
   });
 
-  // An outer plugin's root is a prefix of the nested plugin's root, so a
-  // first-match lookup would stamp the outer generation onto the inner files
-  // and reload the nested plugin to cached code.
   it("reload of a plugin nested inside another plugin's tree re-reads sources", async () => {
     const outerDir = join(workDir, "outer-host");
     const nestedDir = join(outerDir, "vendor", "nested-guest");
@@ -612,10 +577,6 @@ describe("plugin service", () => {
     expect(globals.nestedGuest).toBe("entry2:sub2");
   });
 
-  // A plugin's lazy imports must resolve against the generation it was loaded
-  // under, not whatever generation the root has reached since. Otherwise a
-  // surviving plugin mixes its own modules with those of a newer — or failed —
-  // load.
   it("keeps a live plugin's lazy imports coherent after a failed reload", async () => {
     const rootDir = join(workDir, "bb-plugin-rollback");
     await writeEsmPlugin(rootDir, "rollbacker");
@@ -638,14 +599,12 @@ describe("plugin service", () => {
     const loadLazy = globals.rollbackerLoadLazy as () => Promise<string>;
     expect(await loadLazy()).toBe("lazy1");
 
-    // Break the entry so the candidate load fails and the old plugin survives.
     await writeFile(join(rootDir, "server.js"), `export default 42;\n`);
     await writeFile(join(rootDir, "lazy.js"), `export const LAZY = "lazy2";\n`);
     await service.reload("rollbacker");
     expect(service.list().find((p) => p.id === "rollbacker")?.status).toBe(
       "running",
     );
-    // The surviving plugin still sees its own generation, not the failed one.
     expect(await loadLazy()).toBe("lazy1");
   });
 
@@ -725,9 +684,6 @@ describe("plugin service", () => {
       serverSource: `export default function plugin() {}`,
     });
 
-    // Persist the registration left behind by bb 0.38.5. Loading plugin source
-    // belongs to install-path coverage; this regression is specifically about
-    // compatibility being re-evaluated when the host version changes.
     upsertInstalledPlugin(db, {
       id: "notify",
       source: `path:${rootDir}`,
@@ -746,7 +702,6 @@ describe("plugin service", () => {
       enabled: true,
     });
 
-    // bb 0.39.0 starts against the same database (= the user upgraded bb).
     const after = makeService("0.39.0");
     await after.start();
     const entry = after.list().find((p) => p.id === "notify");
@@ -761,11 +716,6 @@ describe("plugin service", () => {
   });
 
   it("keeps a persisted 0.4.8 scaffold plugin running after an SDK upgrade", async () => {
-    // This package.json is frozen from `bb plugin new sdk-upgrade-fixture`
-    // shipped by bb 0.39.0 with @get-bb/plugin-sdk 0.4.8. Copy it into a
-    // user-owned path, then persist the registration before starting the
-    // current host so this exercises a real upgrade rather than a fresh
-    // current-version install.
     const fixtureDir = new URL(
       "../../fixtures/plugins/bb-plugin-sdk-0.4.8-scaffold/",
       import.meta.url,
@@ -780,9 +730,6 @@ describe("plugin service", () => {
     };
     expect(manifest.engines.bbPluginSdk).toBe(">=0.4.8");
     expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.8");
-    // The current SDK must be newer than the frozen fixture — the point is
-    // the upgrade, not any particular release, so don't pin the exact
-    // version here.
     expect(semver.gt(PLUGIN_SDK_VERSION, "0.4.8")).toBe(true);
 
     upsertInstalledPlugin(db, {
@@ -859,14 +806,12 @@ describe("plugin service", () => {
   it("reports one anonymous plugin_installed event per user install", async () => {
     const captured: TelemetryEvent[] = [];
     const tracked = createTelemetryTrackedService(captured);
-    // Keep unrelated bundled plugins out of this telemetry-focused lifecycle.
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-tracked",
       serverSource: "export default function plugin() {}",
     });
     const installed = await tracked.installPath(rootDir);
     expect(installed.status).toBe("running");
-    // A direct install may point at private code, so it reports no id.
     expect(captured).toEqual([
       {
         name: "plugin_installed",
@@ -878,7 +823,6 @@ describe("plugin service", () => {
         },
       },
     ]);
-    // Reload and enablement are not installs.
     await tracked.reload("tracked");
     expect(tracked.list().find((entry) => entry.id === "tracked")?.status).toBe(
       "running",
@@ -912,8 +856,6 @@ describe("plugin service", () => {
   });
 
   it("hides names of plugins from third-party catalogs in the install event", () => {
-    // A local or private marketplace can name internal code, so only the
-    // curated bb-community catalog and bundled builtins report names.
     const properties = pluginInstalledTelemetryEvent(
       "internal-tool",
       {
@@ -1041,8 +983,6 @@ describe("plugin service", () => {
       bundledPlugins: [],
       loadTimeoutMs: 2000,
       onSettingsChanged: (pluginId) => {
-        // The plugin's listeners ran first: a server cache that re-reads the
-        // plugin on invalidation sees the new values.
         changed.push(
           `${pluginId}:${String((globalThis as Record<string, unknown>).__observedFloor)}`,
         );
@@ -1052,7 +992,6 @@ describe("plugin service", () => {
       await observing.installPath(rootDir);
       await observing.updateSettings("observed", { floor: "1" });
       expect(changed).toEqual(["observed:1"]);
-      // Writing the same effective values fires nothing.
       await observing.updateSettings("observed", { floor: "1" });
       expect(changed).toEqual(["observed:1"]);
       await observing.updateSettings("observed", { floor: null });
@@ -1118,7 +1057,6 @@ describe("plugin service", () => {
   }, 15_000);
 
   it("re-points a path plugin at a new checkout and keeps its settings, secrets, and schedules", async () => {
-    // Two checkouts of the same plugin (same package name, so same id).
     const serverSource = (marker: string) => `
       export default function plugin(bb) {
         bb.settings.define({
@@ -1144,8 +1082,6 @@ describe("plugin service", () => {
         .all("moved"),
     ).toEqual([{ name: "sweep" }]);
 
-    // The same id from a different local directory replaces the registration
-    // in place instead of demanding a remove (which would delete settings).
     const moved = await service.installPath(checkoutB);
 
     expect(moved).toMatchObject({
@@ -1170,7 +1106,6 @@ describe("plugin service", () => {
         .all("moved"),
     ).toEqual([{ name: "sweep" }]);
 
-    // A broken new checkout is refused before the live install is touched.
     const checkoutC = join(workDir, "c", "bb-plugin-moved");
     await mkdir(checkoutC, { recursive: true });
     await writeFile(join(checkoutC, "package.json"), "{ not json");
@@ -1222,7 +1157,6 @@ describe("plugin service", () => {
     ).toBeUndefined();
     expect(service.getApi("dormant")).toBeUndefined();
 
-    // Re-enabling runs the new checkout.
     expect(await service.setEnabled("dormant", true)).toMatchObject({
       status: "running",
     });
@@ -1243,7 +1177,6 @@ describe("plugin service", () => {
           globalThis.__brittleCheckout = "a";
         }`,
     });
-    // A valid package whose factory throws: validation passes, loading fails.
     const checkoutB = await writePlugin(join(workDir, "b"), {
       name: "bb-plugin-brittle",
       version: "0.3.0",
@@ -1260,7 +1193,6 @@ describe("plugin service", () => {
       /failed to start from path:.*boom at startup.*was kept/,
     );
 
-    // The old registration and instance are back, with their configuration.
     expect(getInstalledPlugin(db, "brittle")).toMatchObject({
       sourcePath: checkoutA,
       rootDir: checkoutA,
@@ -1281,7 +1213,6 @@ describe("plugin service", () => {
 
   it("warns when a path plugin is installed from inside a managed workspace", async () => {
     const warnSpy = vi.spyOn(logger, "warn");
-    // dataDir is <workDir>/data; install from <dataDir>/personal-workspaces/env_X/...
     const managedRoot = join(
       workDir,
       "data",
@@ -1293,8 +1224,6 @@ describe("plugin service", () => {
       name: "bb-plugin-managed",
       serverSource: `export default function plugin() {}`,
     });
-    // Move the written plugin into the managed workspace path so the install
-    // source resolves under <dataDir>/personal-workspaces/.
     await mkdir(dirname(managedRoot), { recursive: true });
     await rename(written, managedRoot);
 

@@ -12,9 +12,6 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
-// Route views render icons outside the shell's core set. Importing the
-// extended registry here ships it as a static dependency of this route chunk,
-// so those icons never flash blank waiting for an on-demand load.
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
 import { useWindowSize } from "usehooks-ts";
@@ -152,9 +149,6 @@ function schedulePluginBrowseFocusRestore(fallbackTarget?: {
       restore();
     });
   });
-  // Browse can replace its cards once the detail-route query settles. Watch
-  // that collection briefly so a disconnected target is replaced without
-  // overriding a focus choice the user made in the meantime.
   window.setTimeout(() => {
     observer.disconnect();
     if (document.activeElement === document.body) restore();
@@ -190,10 +184,6 @@ function ToolsScrollPage({
     belowOverflow,
   } = useScrollOverflowState<HTMLDivElement>({ measureOverflow: true });
   if (fillViewport) {
-    // The child owns the only scrollable region (a ResourceCollectionViewport),
-    // so this page must NOT constrain its width: the scroller has to span the
-    // whole pane for the wheel to work from the gutters, and each band inside
-    // it centers itself with TOOLS_PAGE_BAND_CLASSES instead.
     return (
       <div className="box-border h-full w-full pb-4 pt-3 md:pt-4">
         {children}
@@ -284,8 +274,6 @@ function decodedRouteParam(value: string | undefined): string | undefined {
   try {
     return decodeURIComponent(value);
   } catch {
-    // A malformed deep link stays addressable and resolves to the ordinary
-    // not-found state instead of crashing the Extensions route.
     return value;
   }
 }
@@ -489,9 +477,6 @@ function PluginDetailToolView({
   }
 
   return (
-    // The priority notice sits outside the scroll page so runtime conditions
-    // and acquisition blockers share the pane-wide alignment and stay with the
-    // controls that resolve them.
     <div className="flex h-full min-h-0 flex-col">
       {selectedPlugin !== null ? (
         <PluginDetailBanners plugin={selectedPlugin} />
@@ -549,7 +534,6 @@ function PluginDetailToolView({
   );
 }
 
-/** Renders a plugin detail directly when a split workspace owns the pane. */
 export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
   return (
@@ -602,8 +586,6 @@ export function ToolsView({
       current.includes(pluginId) ? current : [...current, pluginId],
     );
   }, [pluginId]);
-  // Memoized because three hooks below depend on it; an inline array would be a
-  // new identity every render and defeat their dependency checks.
   const visiblePluginIds = useMemo(() => {
     const visiblePluginId = pluginId ?? retainedPluginDetailId;
     return visiblePluginId === undefined ||
@@ -764,11 +746,6 @@ export function ToolsView({
       </Suspense>
     </div>
   );
-  // The detail opens as the page's right panel — resizable, docked, and a
-  // drawer on compact widths — rather than a floating overlay: it belongs to
-  // Extensions, and the reader keeps the catalog beside it.
-  // The catalog must stay the widest pane, so the detail pane is capped below
-  // half the group and floored above the nav — see marketplacePaneSizing.
   const { width: viewportWidth } = useWindowSize();
   const detailWidthPolicy = useMemo(
     () => ({

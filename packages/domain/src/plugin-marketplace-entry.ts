@@ -27,7 +27,6 @@ const SEMVER_VERSION = String.raw`v?${SEMVER_NUMBER}(?:\.${SEMVER_NUMBER}(?:\.${
 const SEMVER_COMPARATOR = String.raw`(?:[<>]=?|=|~>?|\^)?\s*${SEMVER_VERSION}`;
 const SEMVER_SET = String.raw`(?:\*|${SEMVER_VERSION}\s+-\s+${SEMVER_VERSION}|${SEMVER_COMPARATOR}(?:\s+${SEMVER_COMPARATOR})*|)`;
 
-/** Public-schema-compatible semver range grammar used by v1 and v2 entries. */
 export const MARKETPLACE_SEMVER_RANGE_PATTERN = new RegExp(
   String.raw`^\s*${SEMVER_SET}(?:\s*\|\|\s*${SEMVER_SET})*\s*$`,
   "u",
@@ -137,7 +136,6 @@ const marketplaceEntryMetadataShape = {
   source: z.union([marketplaceNpmSourceSchema, marketplaceGitSourceSchema]),
 };
 
-/** Exact immutable entry accepted by marketplace/v1. Never add fields. */
 export const marketplaceEntryV1Schema = z
   .object({
     ...marketplaceEntryIdentityShape,
@@ -145,7 +143,6 @@ export const marketplaceEntryV1Schema = z
   })
   .strict();
 
-/** Discovery entry accepted by marketplace/v2. */
 export const marketplaceEntryV2Schema = z
   .object({
     ...marketplaceEntryIdentityShape,
@@ -197,7 +194,6 @@ const marketplaceAuthorEntryProjectionSchema = marketplaceEntryV2Schema
       try {
         if (new URL(url.value).protocol === "https:") continue;
       } catch {
-        // Report the same boundary failure below.
       }
       ctx.addIssue({
         code: "custom",
@@ -219,11 +215,6 @@ function copiedRecord(input: unknown): Record<string, unknown> | null {
   return parsed.success ? { ...parsed.data } : null;
 }
 
-/**
- * The listing request historically normalized author-entered copy before the
- * full marketplace validation ran. Keep that request-boundary behavior while
- * deriving every accepted field and constraint from the canonical v2 entry.
- */
 function normalizeMarketplaceAuthorEntry(input: unknown): unknown {
   const entry = copiedRecord(input);
   if (entry === null) return input;
@@ -277,11 +268,6 @@ function normalizeMarketplaceAuthorEntry(input: unknown): unknown {
   return entry;
 }
 
-/**
- * Author-owned projection of a v2 entry. Registry metrics are excluded and
- * screenshots are required because the draft wire contract stores a complete
- * preview, including an explicit empty screenshot list.
- */
 export const marketplaceAuthorEntrySchema = z.preprocess(
   normalizeMarketplaceAuthorEntry,
   marketplaceAuthorEntryProjectionSchema,

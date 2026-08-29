@@ -477,16 +477,11 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    // Only builtin plugins wear the BB Official pill: a catalog install can
-    // come from any marketplace, so this catalog-provenance plugin shows no
-    // provenance label — and no uninstall-on-hover control either.
     expect(screen.queryByText("BB Official")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    // About remains prose only. Release uses the same connected label/value
-    // table treatment as the other structured plugin detail sections.
     expect(screen.getByText("About")).toBeTruthy();
     expect(screen.getByText("Release")).toBeTruthy();
     expect(
@@ -512,8 +507,6 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
 
-    // Uninstall is irreversible, so it sits with the other ownership actions
-    // rather than beside the reversible enable toggle.
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "GitHub actions" }),
     );
@@ -824,7 +817,6 @@ describe("BB Official plugin detail routing", () => {
 
 describe("plugin removal confirmation", () => {
   it("warns that removing a local plugin deletes its settings, secrets, and schedules and names the move path", async () => {
-    // The wire shape of GET /api/v1/plugins (server-contract InstalledPlugin).
     const localPlugin = {
       id: "github",
       source: "path:/Users/you/src/bb-plugin-github",
@@ -892,9 +884,6 @@ describe("plugin removal confirmation", () => {
     expect(
       await screen.findByRole("heading", { name: "Remove plugin from bb?" }),
     ).toBeTruthy();
-    // The server's remove() deletes settings, secrets, and schedules for every
-    // source kind; only the files of a local plugin stay. Re-pointing the id at
-    // another directory is an install, not a remove, and keeps that state.
     const description = screen.getByText(/Remove "github" from bb/);
     expect(description.textContent).toContain(
       "delete its settings, secrets, and schedules",
@@ -1020,8 +1009,6 @@ describe("PluginDetail runtime health", () => {
       statusDetail: "The runtime reported a problem.",
       ...overrides,
     };
-    // Banner and page are siblings in production too (ToolsView.tsx:236): the
-    // banner renders outside the scroll page so it can span the pane.
     const result = render(
       <MemoryRouter>
         <QueryClientWrapper>
@@ -1052,9 +1039,6 @@ describe("PluginDetail runtime health", () => {
     expect(alert.textContent).toContain("Reload the plugin.");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
 
-    // The banner spans the pane rather than sitting inset in the detail
-    // column, and it precedes every section: a broken runtime is a condition
-    // on the page, not a block of its content.
     const about = container.querySelector(
       '[data-resource-detail-section="overview"]',
     ) as HTMLElement;
@@ -1364,8 +1348,6 @@ describe("PluginDetail capability inventory", () => {
     fireEvent.pointerMove(commandGlyph);
     expect((await screen.findByRole("tooltip")).textContent).toBe("Command");
 
-    // Services and schedules are two objects with two status vocabularies, so
-    // they remain separately named rather than grouped under "Health".
     const [services, schedules] = Array.from(
       container.querySelectorAll('[data-resource-detail-section="activity"]'),
     ) as HTMLElement[];
@@ -1405,8 +1387,6 @@ describe("PluginDetail capability inventory", () => {
 
     for (const [label, icon] of [
       ["Scheduled", "Clock"],
-      // A running job shimmers its own clock. The app never swaps a row's icon
-      // for a spinner to say "working" (ThreadRow.tsx:144).
       ["Running", "Clock"],
       ["Succeeded", "CircleCheck"],
       ["Failed", "CircleX"],

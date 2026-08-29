@@ -20,7 +20,6 @@ const PAGE_TITLE = "Plugin marketplace — bb";
 const PAGE_DESCRIPTION =
   "Discover community plugins for bb, from agent tools and themes to automation, code review, and task tracking.";
 
-// The trailing filename underscore keeps the v1/v2 object routes root-owned.
 
 export const Route = createFileRoute("/marketplace_")({
   validateSearch: (search: Record<string, unknown>): MarketplaceIndexState => ({

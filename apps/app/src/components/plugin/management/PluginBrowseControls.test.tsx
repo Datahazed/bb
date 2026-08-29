@@ -50,10 +50,6 @@ function categoryList(): HTMLElement {
   return screen.getByRole("listbox", { name: "Plugin categories" });
 }
 
-/**
- * jsdom reports every box as 0×0, so overflow has to be described explicitly
- * before the fade can be observed at all.
- */
 function setScrollMetrics(
   element: HTMLElement,
   metrics: { clientHeight: number; scrollHeight: number; scrollTop: number },
@@ -158,7 +154,6 @@ describe("PluginBrowseCategoryFilter", () => {
     const list = categoryList();
     const fade = () => document.querySelector("[data-category-list-fade]");
 
-    // A list that fits has nothing hidden below it, so no affordance.
     setScrollMetrics(list, {
       clientHeight: 400,
       scrollHeight: 400,
@@ -178,7 +173,6 @@ describe("PluginBrowseCategoryFilter", () => {
     await waitFor(() => {
       expect(fade()).not.toBeNull();
     });
-    // Themed surface token, never a hardcoded white.
     expect(fade()?.className).toContain("from-popover/90");
 
     list.scrollTop = 300;

@@ -55,12 +55,6 @@ function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   return "browse";
 }
 
-/**
- * The canonical Plugins collection: installed resources, discoverable
- * resources from BB's official catalog.
- * Modes are URL-backed projections of one collection, not separate settings
- * pages; plugin configuration and lifecycle depth remain on the detail route.
- */
 export function PluginsOverview({
   onOpenPlugin,
 }: {
@@ -99,8 +93,6 @@ export function PluginsOverview({
     ? categoryFilter
     : null;
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
-  // One projection identity resets both the accumulated rows and their
-  // viewport measurement when search, filters, or sorting changes.
   const installedResetKey = [
     normalizedInstalledQuery,
     installedSortDirection,
@@ -158,9 +150,6 @@ export function PluginsOverview({
           const enabledResult = Number(!left.enabled) - Number(!right.enabled);
           if (enabledResult !== 0) return enabledResult;
           if (left.enabled) {
-            // Published plugins first, then the user's own; publishers
-            // themselves stay in one alphabetical run so the sort direction
-            // still controls the whole list.
             const leftPublisher = left.publisherLabel;
             const rightPublisher = right.publisherLabel;
             const publisherResult =
@@ -183,16 +172,11 @@ export function PluginsOverview({
       sourceFilter,
     ],
   );
-  // Pages load as the sentinel scrolls into view; the page machinery stays
-  // (viewport-fit chunk size, projection reset keys) but rows accumulate.
   const installedList = useResourceInfiniteItems(visiblePlugins, {
     pageSize: installedPageSize,
     resetKey: installedResetKey,
   });
 
-  // Installed's New plugin goes to the real new-thread page: the inline hero
-  // composer is Browse's own affordance, and bouncing Installed users through
-  // Browse read as a mis-navigation rather than a shortcut.
   const startCreatePlugin = (prompt?: string) => {
     navigate(getRootComposeRoutePath(), {
       state: {
@@ -215,9 +199,6 @@ export function PluginsOverview({
     );
   }
 
-  // Installed represents objects that exist, not an onboarding destination.
-  // Once the list resolves empty, remove the stale/deep-linked projection and
-  // let Browse become the canonical Extensions landing page again.
   if (
     activeMode === "installed" &&
     listQuery.isSuccess &&
@@ -226,9 +207,6 @@ export function PluginsOverview({
     return <Navigate to={getPluginsRoutePath()} replace />;
   }
 
-  // Browse renders no page shell at all — its actions live in the hero's CTA
-  // row. Installed keeps the New plugin button, which starts a thread, plus
-  // an on-demand update check beside it (the server also sweeps every 6h).
   const installedActions = (
     <>
       {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
@@ -262,9 +240,6 @@ export function PluginsOverview({
         scrollId="plugins-installed-results"
         viewportRef={setInstalledViewport}
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
-        // Like Browse, Installed is vertical-only. Radix's generated
-        // display:table wrapper otherwise takes the rows' desktop max-content
-        // width on compact screens and clips their persistent switches.
         contentClassName="[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full"
         toolbar={
           plugins.length > 0 ? (
@@ -356,9 +331,6 @@ export function PluginsOverview({
     );
   }
 
-  // Browse and My plugins are content-led pages, so neither spends a header
-  // band on description copy. Installed keeps the collection shell because
-  // its management context still benefits from that description.
   return (
     <>
       {activeMode === "installed" ? (

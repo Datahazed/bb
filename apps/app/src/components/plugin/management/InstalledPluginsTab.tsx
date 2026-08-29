@@ -21,14 +21,6 @@ import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo } from "./plugin-ui";
 
-/**
- * Every row keeps the same logo, name, description, and switch shape. Runtime
- * trouble replaces the description with one compact problem line; fatal
- * states tint the row and running handler failures use the attention pill.
- * Source and category belong to the list filters, never repeated row badges.
- * An available update remains the row's one action pill and opens the existing
- * confirmation directly.
- */
 export function InstalledPluginsTab({
   plugins,
   onOpenPlugin,
@@ -73,7 +65,6 @@ export function InstalledPluginsTab({
   );
 }
 
-/** Exported for tests (pill states + enable/disable round-trip). */
 export function InstalledPluginRow({
   plugin,
   onUpdateClick,
@@ -98,13 +89,9 @@ export function InstalledPluginRow({
     },
     onSettled: () => invalidatePluginList({ queryClient }),
   });
-  // Reflect the in-flight target immediately; the invalidated list settles it.
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const signal = pluginRowSignal(plugin);
   const statusSignal = signal?.kind === "status" ? signal : null;
-  // Update health and an available candidate are independent facts. A failed
-  // attempt can roll back successfully while the same candidate remains
-  // available, so the badge and action must be allowed to coexist.
   const updateSignal =
     plugin.updateState.availableVersion === null
       ? null

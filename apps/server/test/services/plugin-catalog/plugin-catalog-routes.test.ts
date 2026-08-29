@@ -81,8 +81,6 @@ describe("plugin catalog routes", () => {
       ]),
     });
 
-    // Refreshes are server-owned (startup plus a six-hour interval); no route
-    // lets a caller drive them.
     const refresh = await app.request("/plugin-catalog/refresh", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -187,9 +185,6 @@ describe("plugin catalog routes", () => {
     );
     expect(stale.headers.get("cache-control")).toBe("no-store");
 
-    // An index past the declarations, a non-index, another marketplace, an
-    // unknown entry, and an entry id shaped like a traversal all resolve to
-    // nothing rather than to a file.
     for (const path of [
       "/plugin-catalog/screenshots/bb-community/plugin-api-docs/9",
       "/plugin-catalog/screenshots/bb-community/plugin-api-docs/-1",
@@ -362,8 +357,6 @@ describe("plugin catalog routes", () => {
           unresolvedReason: "no registry in this test",
         },
       });
-      // The route reached the marketplace entry; the install then refused
-      // because a range with no resolved version identifies no exact code.
       expect(install.status).toBe(422);
       await expect(install.json()).resolves.toMatchObject({
         error: expect.stringContaining("the npm source could not be resolved"),

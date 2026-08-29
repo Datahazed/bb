@@ -58,8 +58,6 @@ describe("ToolsSidebar", () => {
   it("groups every Extensions page by noun and keeps the back target", () => {
     renderAt("/extensions/plugins", "/projects/proj_one");
 
-    // Extensions holds two nouns, so the sidebar has two groups. Each row's
-    // page lives under exactly one of them.
     expect(screen.getByText("Plugins")).toBeTruthy();
     expect(screen.getByText("Skills")).toBeTruthy();
     expect(row("Browse plugins").getAttribute("href")).toBe(
@@ -80,7 +78,6 @@ describe("ToolsSidebar", () => {
     expect(row("My skills").getAttribute("href")).toBe(
       "/extensions/skills?view=my",
     );
-    // The back row must point at the remembered app route, not merely exist.
     expect(row("Back to app").getAttribute("href")).toBe("/projects/proj_one");
   });
 
@@ -97,12 +94,10 @@ describe("ToolsSidebar", () => {
     ["/extensions/skills?view=library", "Installed skills"],
     ["/extensions/skills/library/my-skill", "Installed skills"],
     ["/extensions/skills/library/my-skill?view=my", "My skills"],
-    // The pre-Library detail path still resolves during its redirect window.
     ["/extensions/skills/installed/my-skill", "Installed skills"],
     ["/extensions/skills/registry/owner%2Frepo%2Fskill", "Browse skills"],
   ])("marks exactly one active page for %s", (path, expected) => {
     renderAt(path);
-    // Exclusivity: two lit rows must fail, not just a missing expected row.
     const activeRows = PAGE_ROWS.filter(
       (name) => row(name).getAttribute("aria-current") === "page",
     );

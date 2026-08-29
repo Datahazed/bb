@@ -9,13 +9,6 @@ import {
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { resolveToolsActivePage, TOOLS_PAGES } from "./tools-navigation";
 
-/**
- * Extensions has exactly two things in it, so the sidebar says so: one group
- * per noun, each carrying that noun's icon. The rows below a group are its
- * three views, and they stay plain text — an icon per row competed with the
- * group mark and gave the eye four things to read where the group heading
- * already answers "which of the two is this".
- */
 const TOOLS_SIDEBAR_GROUPS = [
   {
     id: "plugins",
@@ -31,15 +24,6 @@ const TOOLS_SIDEBAR_GROUPS = [
   },
 ] as const;
 
-/**
- * The Extensions navigation, in the settings-sidebar treatment: each section
- * is a label and each of its pages is a row, so the sidebar is the one place
- * that lists every page — the pages themselves carry no tab layer.
- *
- * Rows and active-state come from `tools-navigation`'s canonical tables, so
- * the highlight always agrees with the ownership the breadcrumb resolver and
- * detail-route origin encode.
- */
 export function ToolsSidebar({
   appRoutePath,
   isResizing,
@@ -49,7 +33,6 @@ export function ToolsSidebar({
 }: {
   appRoutePath: string;
   isResizing: boolean;
-  /** Render the body only, inside a compact drawer panel owned by the caller. */
   mobileHosted?: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   showTopReserve: boolean;
@@ -57,8 +40,6 @@ export function ToolsSidebar({
   const location = useLocation();
   const activePage = resolveToolsActivePage(location.pathname, location.search);
   const pluginList = usePluginList({ enabled: true });
-  // Installed is absent until the shared query proves there is something to
-  // manage, so an empty account never sees the row flash and disappear.
   const showInstalledPlugins = (pluginList.data?.plugins.length ?? 0) > 0;
 
   return (

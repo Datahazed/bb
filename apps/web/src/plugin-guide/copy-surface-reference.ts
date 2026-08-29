@@ -3,7 +3,6 @@ import {
   type PluginSurface,
 } from "@bb/plugin-api-map";
 
-/** The exact plain-text reference intended for editors and terminal agents. */
 export function pluginSurfaceReferenceText(surface: PluginSurface): string {
   return createPluginSurfaceAgentReference(surface).clipboard.text;
 }
@@ -40,7 +39,6 @@ function copyWithEditingCommand(text: string): boolean {
   }
 }
 
-/** Copy arbitrary text without placing an HTML representation on the clipboard. */
 export async function copyPlainText(text: string): Promise<boolean> {
   if (
     typeof navigator !== "undefined" &&
@@ -50,18 +48,12 @@ export async function copyPlainText(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // The selected-text fallback also works when the Clipboard API is
-      // unavailable on an otherwise functional page.
     }
   }
 
   return copyWithEditingCommand(text);
 }
 
-/**
- * Copy a Guide reference as text only. The docs site deliberately never uses
- * the bb composer pill's ClipboardItem/text-html path.
- */
 export function copyPluginSurfaceReferenceText(
   surface: PluginSurface,
 ): Promise<boolean> {

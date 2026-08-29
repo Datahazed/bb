@@ -111,7 +111,6 @@ describe("InstalledPluginRow", () => {
       resourceRow?.classList.contains("border-surface-destructive-border"),
     ).toBe(true);
     expect(resourceRow?.classList.contains("text-destructive-text")).toBe(true);
-    // The switch stays "on" (the user enabled it) but says so honestly.
     expect(
       screen
         .getByRole("switch", {

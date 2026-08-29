@@ -1,12 +1,5 @@
 import type { ShowcaseArchetype } from "../showcase-archetype";
 
-/**
- * Outcome-shaped plugin examples for the portable Browse hero.
- *
- * `capability` names the real SDK surface behind each scene so the examples
- * stay checkable. Prompt construction remains host-owned: the public site has
- * no composer, while the bb app combines each brief with its canonical prompt.
- */
 const ARCHETYPE_SOURCE: readonly Omit<ShowcaseArchetype, "id">[] = [
   {
     noun: "a kanban board",
@@ -70,7 +63,6 @@ const ARCHETYPE_SOURCE: readonly Omit<ShowcaseArchetype, "id">[] = [
   },
 ];
 
-/** Stable ids derived from titles keep stories and tests readable. */
 export const BROWSE_ARCHETYPES: readonly ShowcaseArchetype[] =
   ARCHETYPE_SOURCE.map((archetype) => ({
     ...archetype,

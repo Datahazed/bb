@@ -10,15 +10,8 @@ import { PluginCatalogGrid } from "./BrowsePluginsTab";
 
 afterEach(cleanup);
 
-// Vitest runs from the app package root.
 const APP_CSS = readFileSync("src/app.css", "utf8");
 
-/**
- * The shelf's column counts and its visible-card cutoff both live in CSS
- * container queries, which jsdom does not evaluate. Read them back out of the
- * stylesheet so the invariant is asserted against the source of truth rather
- * than a copy of it that could drift.
- */
 function shelfBreakpoints() {
   const columns = [...APP_CSS.matchAll(
     /@container plugin-shelf \(min-width: ([\d.]+)rem\)\s*\{\s*\[data-plugin-shelf-grid\]\s*\{\s*grid-template-columns: repeat\((\d+),/gu,
@@ -68,13 +61,10 @@ describe("browse shelf rows", () => {
   it("pairs every column count with a card count that fills its rows", () => {
     const { columns, cutoff } = shelfBreakpoints();
     expect(cutoff).not.toBeNull();
-    // `:nth-child(n + 5)` hides the fifth card onward, so four remain.
     const narrowCount = Number(cutoff?.[2]) - 1;
     const cutoffRem = Number(cutoff?.[1]);
     const wideCount = SHELF_ENTRIES.length;
 
-    // Below the cutoff the shelf shows `narrowCount`; at or above it, all six.
-    // Each column count must divide whichever count applies at its width.
     const cases = [
       { cols: 1, count: narrowCount },
       ...columns.map(({ rem, cols }) => ({
@@ -86,16 +76,12 @@ describe("browse shelf rows", () => {
       expect({ cols, count, remainder: count % cols }).toMatchObject({
         remainder: 0,
       });
-      // A shelf that is more than one column wide reads as pairs.
       if (cols >= 2) expect({ cols, count, even: count % 2 === 0 }).toMatchObject({ even: true });
     }
     expect(cases.length).toBeGreaterThanOrEqual(3);
   });
 
   it("keeps the widest column count reachable before the cards appear", () => {
-    // The bug: three columns arrived at a narrower width than the fifth and
-    // sixth cards did, so the shelf drew 3 + 1. The cutoff must not sit above
-    // the width where the last column count starts.
     const { columns, cutoff } = shelfBreakpoints();
     const widest = Math.max(...columns.map((c) => c.rem));
     expect(Number(cutoff?.[1])).toBeLessThan(widest + 1);
@@ -114,8 +100,6 @@ describe("browse shelf rows", () => {
       </MemoryRouter>,
       { wrapper },
     );
-    // Hiding is presentational: all six stay in the DOM in order, so "View
-    // all" and assistive technology still see the whole shelf.
     const names = screen
       .getAllByRole("button", { name: /^Open Plugin \d details$/u })
       .map((button) => button.getAttribute("aria-label"));
@@ -132,8 +116,6 @@ describe("browse shelf rows", () => {
   });
 
   it("leaves a full grid alone, where a short last row is the honest result", () => {
-    // Search results and author pages show everything they have; only the
-    // shelf preview drops a tail to keep its rows square.
     const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>

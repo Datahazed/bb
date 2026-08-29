@@ -4,10 +4,6 @@ import {
 } from "./marketplace-v2.js";
 import type { MarketplaceStats } from "./marketplace-stats.js";
 
-/**
- * Representative page-boundary input: both source and icon forms, curated
- * order, screenshots, and publication dates.
- */
 export const MARKETPLACE_V2_FIXTURE: MarketplaceV2Manifest = {
   $schema: MARKETPLACE_V2_SCHEMA_URL,
   schemaVersion: 2,

@@ -54,8 +54,6 @@ describe("detectPluginSurfaces", () => {
   });
 
   it("ignores slots that are only named in a comment", () => {
-    // A plugin that documents what it does not do must not be photographed
-    // against a surface it never paints.
     const source = `
       // app.slots.homepageSection is deliberately not used here.
       /* app.slots.navPanel({ path: "old" }) — removed in 2.0 */

@@ -1,3 +1,4 @@
+import { unlink } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -115,8 +116,6 @@ async function bootAutomationsPlugin(
       },
     },
   });
-  // The in-repo testing subpath and bundled plugin SDK entry currently expose
-  // equivalent runtime APIs through distinct type declarations.
   await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
   return host;
 }
@@ -418,6 +417,48 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("keeps a valid script row canonical when its stored file is missing", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const createdResult = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Missing script file",
+      "--in",
+      "1h",
+      "--script",
+      "echo ok",
+      "--json",
+    ]);
+    const created = automationResponseSchema.parse(
+      JSON.parse(createdResult.stdout ?? ""),
+    );
+    if (
+      created.execution.mode !== "script" ||
+      created.execution.storedScriptPath === undefined
+    ) {
+      throw new Error("Expected a stored script fixture");
+    }
+    await unlink(created.execution.storedScriptPath);
+
+    const listed = automationListResponseSchema.parse(
+      await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+    );
+    expect(listed).toContainEqual(
+      expect.objectContaining({ id: created.id, name: "Missing script file" }),
+    );
+    expect(listed[0]).not.toHaveProperty("problem");
+    await expect(
+      harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    ).rejects.toThrow("Script file was not found");
+
+    await harness.dispose();
+  });
+
   it.each([
     {
       supported: ["accept-edits", "auto", "full"] as const,
@@ -594,9 +635,6 @@ describe("automations server plugin harness", () => {
   });
 
   it("accepts a long prompt and keeps the automation readable afterwards", async () => {
-    // Regression for #2166: an 8,000-character cap once rejected the update
-    // after the row was written, and the same cap on the response schema
-    // then failed every list/get/update of that project.
     const { harness } = await bootAutomationsPlugin();
     const created = await createAgentAutomation(harness);
     const longPrompt = "review every open pull request carefully. ".repeat(250);
@@ -620,7 +658,9 @@ describe("automations server plugin harness", () => {
       await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
     );
     expect(listed).toHaveLength(1);
-    expect(listed[0]?.execution).toMatchObject({ prompt: longPrompt });
+    expect(automationResponseSchema.parse(listed[0]).execution).toMatchObject({
+      prompt: longPrompt,
+    });
 
     const shown = await harness.runCli([
       "show",
@@ -675,40 +715,171 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
-  it("repairs a desktop v0.40.0 empty-prompt row through the public update path", async () => {
+  it("lists degraded rows and repairs a desktop v0.40.0 failed create", async () => {
     const host = await bootAutomationsPlugin();
     const { harness } = host;
-    const created = await createAgentAutomation(harness);
-    if (created.execution.mode !== "agent") {
-      throw new Error("Expected an agent automation");
-    }
-    host.bb.storage
-      .database()
-      .prepare("UPDATE automations SET execution = ? WHERE id = ?")
-      .run(JSON.stringify({ ...created.execution, prompt: "" }), created.id);
+    await createAgentAutomation(harness, { name: "Hidden legacy row" });
+    await createAgentAutomation(harness, { name: "Invalid stored row" });
+    const healthy = await createAgentAutomation(harness, { name: "Healthy" });
+    const database = host.bb.storage.database();
+    database
+      .prepare("UPDATE automations SET execution = ? WHERE name = ?")
+      .run(
+        JSON.stringify({ ...agentExecution(), prompt: "" }),
+        "Hidden legacy row",
+      );
+    database
+      .prepare("UPDATE automations SET execution = ? WHERE name = ?")
+      .run("not json", "Invalid stored row");
 
-    await expect(
-      harness.callRpc("automations_list", { projectId: PROJECT_ID }),
-    ).rejects.toThrow("Too small");
-
-    const repaired = automationResponseSchema.parse(
-      await harness.callRpc("automations_update", {
-        projectId: PROJECT_ID,
-        automationId: created.id,
-        agent: { prompt: "repaired prompt" },
-      }),
+    const listed = automationListResponseSchema.parse(
+      await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
     );
-    expect(repaired.execution).toMatchObject({ prompt: "repaired prompt" });
+    const repairTarget = listed.find(
+      (item) => "problem" in item && item.problem === "missing-agent-prompt",
+    );
+    const invalidTarget = listed.find(
+      (item) => "problem" in item && item.problem === "invalid-stored-data",
+    );
+    expect(repairTarget).toMatchObject({
+      name: "Hidden legacy row",
+      projectId: PROJECT_ID,
+      execution: expect.objectContaining({
+        mode: "agent",
+        prompt: "",
+        providerId: "codex",
+        model: "gpt-5",
+      }),
+    });
+    expect(invalidTarget).toMatchObject({ name: "Invalid stored row" });
+    expect(listed).toContainEqual(expect.objectContaining({ id: healthy.id }));
+    expect(
+      automationsOverviewResponseSchema.parse(
+        await harness.callRpc("automations_overview"),
+      ).automations,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ automation: repairTarget }),
+        expect.objectContaining({ automation: invalidTarget }),
+      ]),
+    );
+
+    const cliList = await harness.runCli(["list", "--project", PROJECT_ID]);
+    expect(cliList).toMatchObject({ exitCode: 0 });
+    expect(cliList.stdout).toContain("Prompt required");
+    expect(cliList.stdout).toContain("Invalid data");
+    const repairRow = cliList.stdout
+      ?.split("\n")
+      .find((line) => line.includes("Hidden legacy row"));
+    expect(repairRow).toContain("yes");
+    expect(repairRow).toContain("once at");
+    expect(repairRow).toContain("human");
+
+    if (
+      repairTarget === undefined ||
+      !("execution" in repairTarget) ||
+      invalidTarget === undefined ||
+      "execution" in invalidTarget
+    ) {
+      throw new Error("Expected degraded automation descriptors");
+    }
+    expect(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: repairTarget.id,
+      }),
+    ).toEqual(repairTarget);
+    expect(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: invalidTarget.id,
+      }),
+    ).toEqual(invalidTarget);
+    const cliShow = await harness.runCli([
+      "show",
+      repairTarget.id,
+      "--project",
+      PROJECT_ID,
+    ]);
+    expect(cliShow).toMatchObject({ exitCode: 0 });
+    expect(cliShow.stdout).toContain("Status:    Prompt required");
+    expect(cliShow.stdout).toContain("Enabled:   yes");
+    expect(cliShow.stdout).toContain("Schedule:  once at");
+    expect(cliShow.stdout?.endsWith("\n\n")).toBe(true);
+    const rejectedLifecycleWrites = [
+      ["automations_run", repairTarget.id, "it can run"],
+      ["automations_pause", repairTarget.id, "it can be paused"],
+      ["automations_resume", repairTarget.id, "it can be resumed"],
+    ] as const;
+    for (const [method, automationId, operation] of rejectedLifecycleWrites) {
+      await expect(
+        harness.callRpc(method, { projectId: PROJECT_ID, automationId }),
+      ).rejects.toThrow(
+        `Automation "Hidden legacy row" requires a prompt before ${operation}. Edit it and add a prompt first.`,
+      );
+    }
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: repairTarget.id,
+        name: "Must not be persisted",
+      }),
+    ).rejects.toThrow(
+      'Automation "Hidden legacy row" requires a prompt before other fields can be updated. Edit it and add a prompt first.',
+    );
+    await expect(
+      harness.callRpc("automations_pause", {
+        projectId: PROJECT_ID,
+        automationId: invalidTarget.id,
+      }),
+    ).rejects.toThrow(
+      'Automation "Invalid stored row" has invalid stored data and cannot be paused. Delete it and recreate it.',
+    );
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: invalidTarget.id,
+        name: "Must not be persisted either",
+      }),
+    ).rejects.toThrow(
+      'Automation "Invalid stored row" has invalid stored data and cannot be updated. Delete it and recreate it.',
+    );
+    expect(
+      database
+        .prepare("SELECT name, enabled FROM automations WHERE id = ?")
+        .get(repairTarget.id),
+    ).toEqual({ name: "Hidden legacy row", enabled: 1 });
+
+    const update = await harness.runCli([
+      "update",
+      repairTarget.id,
+      "--project",
+      PROJECT_ID,
+      "--prompt",
+      "repaired prompt",
+    ]);
+    expect(update.exitCode).toBe(0);
     expect(
       automationListResponseSchema.parse(
         await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
       ),
-    ).toEqual([
-      expect.objectContaining({
-        id: created.id,
-        execution: expect.objectContaining({ prompt: "repaired prompt" }),
-      }),
-    ]);
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: repairTarget.id,
+          execution: expect.objectContaining({ prompt: "repaired prompt" }),
+        }),
+        invalidTarget,
+        expect.objectContaining({ id: healthy.id }),
+      ]),
+    );
+    expect(
+      automationListResponseSchema.parse(
+        await harness.callRpc("automations_list", {
+          projectId: MISSING_PROJECT_ID,
+        }),
+      ),
+    ).toEqual([]);
 
     await harness.dispose();
   });
@@ -970,10 +1141,6 @@ describe("automations server plugin harness", () => {
     );
     expect(started.run.status).toBe("running");
 
-    // The process that owned the run goes away with its settlement events;
-    // the replacement loads against the same database. Its sweep service
-    // asks the server about the thread (the fake reports it idle) and
-    // settles the row before sweeping, so single-flight releases.
     const reloaded = await harness.reload(
       plugin as unknown as Parameters<typeof harness.reload>[0],
     );
@@ -992,7 +1159,6 @@ describe("automations server plugin harness", () => {
     });
     service.controller.abort();
     await service.done;
-    // A new manual run is possible again.
     const next = automationRunRpcResponseSchema.parse(
       await reloaded.harness.callRpc("automations_run", {
         projectId: PROJECT_ID,
@@ -1017,8 +1183,6 @@ describe("automations server plugin harness", () => {
 
     vi.setSystemTime(new Date("2026-01-01T00:01:05.000Z"));
     const service = harness.runService("automation-sweep");
-    // The service settles ghost runs from a previous process before its
-    // first sweep; let that (empty) pass and the first tick run, then stop.
     await vi.waitFor(() =>
       expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
     );

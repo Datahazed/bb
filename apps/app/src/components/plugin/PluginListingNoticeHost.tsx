@@ -6,12 +6,6 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 
-/**
- * Global consumer for persisted authored-listing transitions. `appToast` is
- * bb's existing native in-app notification primitive. The server clears each
- * notice only after this host has surfaced it, so reconnects and refetches do
- * not replay an already consumed transition.
- */
 export function PluginListingNoticeHost() {
   const listings = usePluginListings({ enabled: true });
   const consume = useConsumePluginListingNotice();

@@ -18,15 +18,6 @@ interface CuratedMarketplaceSource {
   plugins: MarketplaceEntryV2[];
 }
 
-/**
- * Seed snapshot of the official marketplace, bundled with the app. It is the
- * first-run catalog and the offline fallback when a refresh has never
- * succeeded. Entry ids are plugin ids: an install aborts when the fetched
- * manifest declares another id.
- *
- * github.com/brsbl/bb-plugins is the source of truth for these plugins; the
- * published manifest replaces this snapshot on the first successful refresh.
- */
 export const BUNDLED_CURATED_MARKETPLACE_SOURCE: CuratedMarketplaceSource = {
   name: CURATED_MARKETPLACE_NAME,
   displayName: "BB Community",
@@ -47,7 +38,6 @@ export const BUNDLED_CURATED_MARKETPLACE_SOURCE: CuratedMarketplaceSource = {
       source: {
         git: {
           url: "https://github.com/brsbl/bb-plugins.git",
-          // Pinned to a reviewed commit of bb-plugins plugin/thread-hover-cards.
           ref: "30f91fd977ba1ce60532af27a68534464fb62516",
         },
       },
@@ -65,7 +55,6 @@ export const BUNDLED_CURATED_MARKETPLACE_SOURCE: CuratedMarketplaceSource = {
       source: {
         git: {
           url: "https://github.com/brsbl/bb-plugins.git",
-          // Pinned to a reviewed commit of bb-plugins plugin/improve-prompt.
           ref: "1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
         },
       },
@@ -84,7 +73,6 @@ function marketplaceEntryV1(entry: MarketplaceEntryV2): MarketplaceEntryV1 {
   return v1Entry;
 }
 
-/** Immutable compatibility projection consumed by released v1 clients. */
 export function projectCuratedMarketplaceV1(
   source: CuratedMarketplaceSource,
 ): MarketplaceManifestV1 {
@@ -98,7 +86,6 @@ export function projectCuratedMarketplaceV1(
   };
 }
 
-/** Discovery projection consumed by current clients. */
 export function projectCuratedMarketplaceV2(
   source: CuratedMarketplaceSource,
 ): MarketplaceManifestV2 {
@@ -120,5 +107,4 @@ export const BUNDLED_CURATED_MARKETPLACE_V2 = projectCuratedMarketplaceV2(
   BUNDLED_CURATED_MARKETPLACE_SOURCE,
 );
 
-/** New clients seed from v2; v1 remains available only as a compatibility projection. */
 export const BUNDLED_CURATED_MARKETPLACE = BUNDLED_CURATED_MARKETPLACE_V2;

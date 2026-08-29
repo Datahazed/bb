@@ -16,7 +16,6 @@ import {
 } from "./helpers/command-output-harness.js";
 import { registerPluginCommands } from "../commands/plugin.js";
 
-/** The plugins bb ships, which are the closest thing to real submissions. */
 const PLUGINS_DIR = new URL("../../../../plugins", import.meta.url).pathname;
 const plan = (name: string, pluginId: string, fixtureThreadId?: string) =>
   planPluginScreenshots({
@@ -51,8 +50,6 @@ describe("planPluginScreenshots", () => {
   });
 
   it("plans nothing for a plugin that paints nothing, and does not fail", async () => {
-    // provider-retry continues turns after a limit resets. A listing for it
-    // should never be held up waiting for a screenshot that cannot exist.
     const result = await plan("provider-retry", "provider-retry");
     expect(result.steps.filter((step) => step.kind === "route")).toEqual([]);
   });
@@ -76,15 +73,11 @@ describe("planPluginScreenshots", () => {
   });
 
   it("uses the plugin's real id in the panel URL, not its directory name", async () => {
-    // The docs plugin installs as `simple-notes`; a URL built from the folder
-    // would 404 for every listing screenshot it takes.
     const result = await plan("docs", "simple-notes");
     expect(result.steps[0]?.url).toBe("/plugins/simple-notes/docs");
   });
 
   it("ignores a plugin's vendored SDK declarations", async () => {
-    // Every plugin vendors types/ that mention every slot in the SDK. Reading
-    // those would plan a screenshot of every surface for every plugin.
     const result = await plan("provider-codex", "provider-codex");
     expect(result.slots).not.toContain("navPanel");
     expect(result.slots).not.toContain("homepageSection");

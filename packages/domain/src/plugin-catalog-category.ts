@@ -1,9 +1,5 @@
 import { z } from "zod";
 
-/**
- * Stable discovery taxonomy for plugin marketplace entries. IDs are persisted
- * in manifests; display copy may change without re-filing an entry.
- */
 export const PLUGIN_CATALOG_CATEGORIES = [
   {
     id: "themes-and-appearance",
@@ -118,7 +114,6 @@ const pluginCatalogCategoryById = new Map<string, PluginCatalogCategory>(
   PLUGIN_CATALOG_CATEGORIES.map((category) => [category.id, category]),
 );
 
-/** The semantic accent carried by a category pill, never author artwork. */
 export function pluginCatalogCategoryAccentToken(
   categoryId: string | undefined,
 ): string | undefined {

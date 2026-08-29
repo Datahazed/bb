@@ -1,11 +1,3 @@
-/**
- * Vendored compatibility parser from the released desktop-v0.39.0 tag.
- * Source commit: b33abbff098ac4c857578e7350d492dcaa65d489
- * Source URL: https://github.com/get-bb/bb/blob/b33abbff098ac4c857578e7350d492dcaa65d489/apps/server/src/services/plugin-catalog/marketplace-manifest.ts
- *
- * Keep this copy frozen. It proves the generated v1 projection remains
- * readable by the strict parser that shipped before marketplace v2 existed.
- */
 import { join } from "node:path";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
@@ -23,44 +15,21 @@ import {
   parsePluginSource,
 } from "../../src/services/plugins/install-sources.js";
 
-/** Published contract, consumed by the registry repository's CI. */
 const MARKETPLACE_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
 
-/** Reserved name of the marketplace BB itself curates. */
 export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
 
-/**
- * Publisher shown for plugins that ship inside the app. They come from the
- * build, not from a marketplace refresh, so they keep their own label even
- * though the store groups them under the official marketplace.
- */
 export const BUILTIN_PUBLISHER_LABEL = "BB Official";
 
-/**
- * Grouping identity of those plugins. It is not a marketplace name, and a
- * marketplace cannot be called this: names are lowercase kebab-case.
- */
 export const BUILTIN_PUBLISHER_KEY = "builtin";
 
-/**
- * Entries one manifest may list. The 1 MiB document limit alone still allows
- * thousands of entries, and each entry costs an icon request and an icon row.
- */
 export const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
-/**
- * A marketplace's own name is the handle every route and command addresses it
- * by, so the manifest must accept exactly what those contracts accept. A name
- * bb stored but could not refresh or remove by name would be unmanageable.
- */
 const manifestNameSchema = pluginMarketplaceNameSchema;
-/** Lowercase kebab-case, the store's grouping vocabulary. */
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-/** A GitHub login or organization, as GitHub itself accepts them. */
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
-/** A host icon name such as `ZoomIn`; never a path or a URL. */
 const ICON_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
 const ICON_EXTENSIONS = [".svg", ".png", ".webp"] as const;
 
@@ -92,13 +61,6 @@ function iconExtensionProblem(pathname: string): string | null {
     : `must point at a ${ICON_EXTENSIONS.join(", ")} file`;
 }
 
-/**
- * An icon URL is absolute `https:` or relative to the manifest's own URL, so a
- * git-hosted marketplace can keep icons beside its manifest. Plain `http:` is
- * rejected; the relative form is only checkable once a base URL is known, so
- * the schema enforces shape here and {@link resolveEntryIcon} enforces the
- * resolved protocol.
- */
 const iconUrlSchema = z
   .string()
   .min(1)
@@ -157,7 +119,6 @@ const npmSourceSchema = z
             }
           }),
         range: semverRange.optional(),
-        /** An npm dist-tag such as `beta`; mutually exclusive with `range`. */
         tag: z
           .string()
           .min(1)
@@ -186,10 +147,6 @@ const gitSubdirSchema = z
     }
   });
 
-/**
- * A ref must survive BB's `git:<url>@<ref>` syntax unchanged, so a listing
- * cannot smuggle a range, a `semver:` selector, or a second `@` past it.
- */
 const gitRefSchema = z
   .string()
   .min(1)
@@ -227,7 +184,6 @@ const gitTagPrefixSchema = z
     }
   });
 
-/** `ref` and `range` are mutually exclusive; strict objects enforce the XOR. */
 const gitSourceSchema = z.union([
   z
     .object({
@@ -247,7 +203,6 @@ const gitSourceSchema = z.union([
           url: httpsUrl,
           subdir: gitSubdirSchema.optional(),
           range: semverRange,
-          /** Monorepo tagging: `notes/` matches `notes/vX.Y.Z` tags. */
           tagPrefix: gitTagPrefixSchema.optional(),
         })
         .strict(),
@@ -255,14 +210,6 @@ const gitSourceSchema = z.union([
     .strict(),
 ]);
 
-/**
- * A listing describes a plugin and where to get it; it does not declare
- * compatibility. A listing's copy of an `engines` range is a second source of
- * truth that goes stale the moment the plugin publishes a new version, and it
- * hid a compatible plugin behind an out-of-date manifest. BB reads
- * `engines.bb` and `engines.bbPluginSdk` from the fetched plugin's own
- * package.json and refuses the install there instead.
- */
 const entrySchema = z
   .object({
     id: z.string().regex(NAME_PATTERN),
@@ -316,10 +263,6 @@ function formatIssues(error: z.ZodError): string {
     .join("; ");
 }
 
-/**
- * Parse a marketplace manifest. The document is rejected whole: consumers see
- * either a fully validated catalog or the previous last-known-good one.
- */
 export function parseMarketplaceManifest(
   input: unknown,
   location: string,
@@ -356,16 +299,10 @@ export function parseMarketplaceManifestJson(
   return parseMarketplaceManifest(json, location);
 }
 
-/** The entry's declared host icon name, or null when it ships an image. */
 export function entryIconName(entry: MarketplaceEntry): string | null {
   return typeof entry.icon === "string" ? entry.icon : null;
 }
 
-/**
- * Where an entry's icon is read from. A marketplace bb fetched over HTTPS
- * resolves relative icons against the manifest URL; one bb read from a git
- * checkout or a directory resolves them beside the manifest on disk.
- */
 export type MarketplaceIconBase =
   | { kind: "url"; manifestUrl: string }
   | { kind: "dir"; root: string };
@@ -374,11 +311,6 @@ export type MarketplaceIconLocation =
   | { kind: "remote"; url: string }
   | { kind: "local"; path: string; relativePath: string };
 
-/**
- * Where an entry's image icon lives, or null when the entry names a host icon
- * instead. Absolute URLs are always https and always remote; relative URLs
- * follow the manifest's own base.
- */
 export function resolveEntryIcon(
   entry: MarketplaceEntry,
   base: MarketplaceIconBase,
@@ -398,10 +330,6 @@ export function resolveEntryIcon(
     }
     return { kind: "remote", url: resolved.toString() };
   }
-  // A local base reads the icon beside the manifest, which sits at the
-  // checkout root. Resolving through URL drops any query or fragment and
-  // collapses "." and ".." against that root, so the result names a path
-  // inside the checkout; realPathInside enforces the same bound at read time.
   const resolved = new URL(declared, "https://marketplace.invalid/");
   const relativePath = normalizePluginSubdirectory(
     decodeURIComponent(resolved.pathname).replace(/^\/+/u, ""),
@@ -413,12 +341,9 @@ export function resolveEntryIcon(
   };
 }
 
-/** Human-readable source of an entry, shown before anything is installed. */
 export function entrySourceDisplay(entry: MarketplaceEntry): string {
   if ("npm" in entry.source) {
     const spec = entry.source.npm.range ?? entry.source.npm.tag ?? "";
-    // A listing that pins its own registry replaces the host's npm
-    // configuration, so the confirmation must name that registry.
     const registry =
       entry.source.npm.registry === undefined
         ? ""
@@ -433,15 +358,11 @@ export function entrySourceDisplay(entry: MarketplaceEntry): string {
 }
 
 interface ResolvedEntrySource {
-  /** Install-pipeline source spec. */
   source: string;
-  /** Which plugin of the source the entry lists. */
   selection: PluginSourceSelection;
-  /** Registry override for npm entries that name one. */
   npmRegistry?: string;
 }
 
-/** Translate an entry's source into install-pipeline inputs. */
 export function resolvedEntrySource(
   entry: MarketplaceEntry,
 ): ResolvedEntrySource {
@@ -457,8 +378,6 @@ export function resolvedEntrySource(
   }
   const git = entry.source.git;
   return {
-    // A range entry always uses the explicit `semver:` spec: the listing said
-    // range, so a repository that also has a ref of that name must not win.
     source:
       "ref" in git
         ? `git:${git.url}@${git.ref}`

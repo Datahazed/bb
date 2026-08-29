@@ -73,9 +73,6 @@ function categoryForRecord(
   if (lifecycle.status === "published") {
     return catalogCategories.get(lifecycle.entryId) ?? "Published listing";
   }
-  // An untouched path plugin has no listing entry yet and therefore no
-  // category to fabricate. This is a lifecycle bucket, never an `Other`
-  // marketplace category.
   return "Listing not started";
 }
 

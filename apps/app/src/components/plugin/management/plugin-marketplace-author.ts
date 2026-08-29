@@ -32,23 +32,9 @@ function marketplaceScopedAuthorId(
   marketplace: string,
   authorIdentity: string,
 ): string {
-  // Length-prefixing makes the key unambiguous even when a user-named
-  // marketplace contains the same separators as an author identity.
   return `${marketplace.length}:${marketplace}:${authorIdentity}`;
 }
 
-/**
- * Canonical author identity available from the shipped catalog contract.
- *
- * Marketplace `author.github` is projected by the server as its GitHub profile
- * URL, so it remains the strongest identity even though the app DTO carries
- * only `name` and `url`. An explicit author URL is next. The manifest permits
- * neither field, so the deterministic last resort is marketplace + normalized
- * display name; scoping prevents two marketplaces from merging unrelated
- * name-only people. Two different name-only people with the same display name
- * inside one marketplace remain indistinguishable because the source contract
- * provides no stronger key.
- */
 export function pluginMarketplaceAuthorId(
   entry: Pick<PluginCatalogSearchEntry, "author" | "marketplace">,
 ): string | null {
