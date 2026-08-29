@@ -45,7 +45,7 @@ export interface ProviderRegistration {
   deriveProviderOptions: (
     context: Omit<PluginProviderOptionsContext, "settings">,
   ) => Readonly<Record<string, JsonValue>>;
-  icon?: { bytes: Uint8Array; contentType: string };
+  icon?: { bytes: Uint8Array; contentType: string; hash: string };
   iconNames: ReadonlySet<string>;
 }
 
