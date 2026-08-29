@@ -33,6 +33,7 @@ interface ProjectActionsMenuBaseProps {
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
   triggerClassName?: string;
+  onCreateThread?: () => void;
   onOpenChange?: (open: boolean) => void;
 }
 

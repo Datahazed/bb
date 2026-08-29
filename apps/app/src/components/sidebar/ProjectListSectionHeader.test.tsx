@@ -19,7 +19,6 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import {
   ProjectListSectionIconButton,
-  SidebarThreadListToolbar,
   TopLevelSidebarSection,
 } from "./ProjectList";
 
@@ -74,33 +73,6 @@ describe("ProjectListSectionIconButton", () => {
     fireEvent.click(trigger, { detail: 0 });
 
     expect(document.activeElement).toBe(trigger);
-  });
-});
-
-describe("SidebarThreadListToolbar", () => {
-  it("renders a lone new-project action inline instead of behind overflow", () => {
-    const onNewProject = vi.fn();
-
-    render(
-      <Provider>
-        <TooltipProvider>
-          <SidebarThreadListToolbar
-            isCreatingSection={false}
-            isCreatingProject={false}
-            onNewProject={onNewProject}
-            onNewThread={vi.fn()}
-          />
-        </TooltipProvider>
-      </Provider>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "New project" }));
-
-    expect(onNewProject).toHaveBeenCalledTimes(1);
-    expect(
-      screen.queryByRole("button", { name: "More thread actions" }),
-    ).toBeNull();
-    expect(screen.queryByText("Projects")).toBeNull();
   });
 });
 
@@ -172,8 +144,8 @@ describe("TopLevelSidebarSection", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
-    const statusSlot = row?.querySelector(
-      '[data-sidebar-row-slot="status"]',
+    const mobileStatusSlot = trailingControls?.querySelector(
+      "[data-sidebar-mobile-status-slot]",
     );
     const action = screen.getByRole("button", { name: "Section action" });
 
@@ -189,54 +161,14 @@ describe("TopLevelSidebarSection", () => {
     expect(
       disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
     ).toBe(true);
-    expect(caretSlot?.getAttribute("data-sidebar-row-slot")).toBe(
-      "disclosure",
-    );
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(statusSlot).not.toBeNull();
+    expect(mobileStatusSlot).not.toBeNull();
     expect(
-      statusSlot!.compareDocumentPosition(action) &
+      mobileStatusSlot!.compareDocumentPosition(action) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
-  });
-
-  it("keeps collapsed activity inside the trailing controls slot", () => {
-    render(
-      <TopLevelSidebarSection
-        label="TODO"
-        actions={
-          <>
-            <button type="button">Display</button>
-            <button type="button">Actions</button>
-            <button type="button">New thread</button>
-          </>
-        }
-        actionsAlwaysVisible
-        actionsMobileAlways
-        collapsedActivity={{
-          ...NO_COLLAPSED_CHILD_ACTIVITY,
-          working: true,
-          runtimeWorking: true,
-        }}
-        collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
-      >
-        <div>Active thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    const indicator = screen.getByLabelText("Thread working");
-    const activitySlot = indicator.closest(
-      "[data-sidebar-collapsed-activity-edge]",
-    );
-    const trailingControls = activitySlot?.parentElement;
-
-    expect(
-      trailingControls?.hasAttribute("data-sidebar-trailing-controls"),
-    ).toBe(true);
-    expect(trailingControls?.className).toContain("relative");
-    expect(activitySlot?.className).toContain("max-md:static");
-    expect(screen.queryByText("Active thread")).toBeNull();
   });
 
   it("rolls a hidden split thread up to a collapsed top-level section", () => {

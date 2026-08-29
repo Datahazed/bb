@@ -171,17 +171,7 @@ function usePrototypeSelection(initialGrouping: Grouping = "project") {
 
 type PrototypeSelection = ReturnType<typeof usePrototypeSelection>;
 
-function IconTrigger({
-  fillIcon = false,
-  icon,
-  label,
-  pressed,
-}: {
-  fillIcon?: boolean;
-  icon: IconName;
-  label: string;
-  pressed?: boolean;
-}) {
+function IconTrigger({ icon, label }: { icon: IconName; label: string }) {
   return (
     <DropdownMenuTrigger asChild>
       <Button
@@ -189,20 +179,13 @@ function IconTrigger({
         variant="ghost"
         size="icon"
         aria-label={label}
-        aria-pressed={pressed}
         className={cn(
           "rounded-md p-0 data-[state=open]:bg-sidebar-accent",
           PROTOTYPE_ACTION_TONE_CLASS,
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
-        <Icon
-          name={icon}
-          className={cn(
-            COARSE_POINTER_ICON_SIZE_CLASS,
-            fillIcon && "[&_path]:fill-current",
-          )}
-        />
+        <Icon name={icon} className={COARSE_POINTER_ICON_SIZE_CLASS} />
       </Button>
     </DropdownMenuTrigger>
   );
@@ -692,7 +675,7 @@ function CustomizeSidebarMenu({
       >
         <DropdownMenuLabel
           className={cn(
-            "text-sm font-medium leading-5 text-popover-foreground",
+            CHROME_SECTION_LABEL_CLASS,
             PROTOTYPE_COMPACT_MENU_LABEL_CLASS,
           )}
         >
@@ -707,7 +690,7 @@ function CustomizeSidebarMenu({
           }
         >
           <SortableContext
-            items={[...topItemOrder]}
+            items={topItemOrder}
             strategy={verticalListSortingStrategy}
           >
             {topItemOrder.map((id) => (
@@ -726,7 +709,7 @@ function CustomizeSidebarMenu({
         <DropdownMenuSeparator />
         <DropdownMenuLabel
           className={cn(
-            CHROME_SECTION_LABEL_CLASS,
+            "text-xs font-medium text-muted-foreground",
             PROTOTYPE_COMPACT_MENU_LABEL_CLASS,
           )}
         >
@@ -741,7 +724,7 @@ function CustomizeSidebarMenu({
           }
         >
           <SortableContext
-            items={[...mainSectionOrder]}
+            items={mainSectionOrder}
             strategy={verticalListSortingStrategy}
           >
             {mainSectionOrder.map((id) => (
@@ -833,6 +816,7 @@ function SidebarNavRow({
             size="icon"
             variant="ghost"
             aria-label="Split"
+            title="Split"
             className={cn(
               "rounded-md p-0",
               PROTOTYPE_ACTION_TONE_CLASS,
@@ -931,7 +915,7 @@ function PluginSidebarRow({
             </DropdownMenuItem>
             <DropdownMenuItem>
               <Icon name="Info" aria-hidden="true" />
-              View details
+              Detail page
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={index === 0}>
@@ -971,11 +955,7 @@ function PluginsSection() {
   );
 }
 
-function ThreadToolbarAdditionalActions({ grouping }: { grouping: Grouping }) {
-  if (grouping !== "manual") {
-    return <RowActionIcon icon="FolderPlus" label="New project" />;
-  }
-
+function ThreadToolbarOverflow({ grouping }: { grouping: Grouping }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -1000,11 +980,15 @@ function ThreadToolbarAdditionalActions({ grouping }: { grouping: Grouping }) {
         align="end"
         className={PROTOTYPE_COMPACT_MENU_CONTENT_CLASS}
       >
-        <DropdownMenuItem>
-          <Icon name="SectionAdd" aria-hidden="true" />
-          New section
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        {grouping === "manual" ? (
+          <>
+            <DropdownMenuItem>
+              <Icon name="SectionAdd" aria-hidden="true" />
+              New section
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <DropdownMenuItem>
           <Icon name="FolderPlus" aria-hidden="true" />
           New project
@@ -1419,7 +1403,7 @@ function ThreadListSection({
             </DropdownMenuContent>
           </DropdownMenu>
           <RowActionIcon icon="MessageSquarePlus" label="New thread" />
-          <ThreadToolbarAdditionalActions grouping={state.grouping} />
+          <ThreadToolbarOverflow grouping={state.grouping} />
         </span>
         {stickyToolbar ? (
           <OverflowFade placement="below" tone="sidebar" size="sm" />
@@ -1735,6 +1719,8 @@ function PrototypeCard({
   );
 }
 
+// Live readout of the atoms the menu drives, so the effect of each click is
+// visible even after the menu closes.
 function StateReadout() {
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const sort = useAtomValue(sidebarChronologicalSortAtom);
@@ -1748,6 +1734,9 @@ function StateReadout() {
   );
 }
 
+// The menu writes to global (atomWithStorage) atoms. A story-local Jotai store
+// keeps each mount self-contained and seeded with the same defaults the app
+// ships, instead of inheriting whatever the last Ladle session left behind.
 function InteractiveMenu() {
   const store = useMemo(() => {
     const next = createStore();

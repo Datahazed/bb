@@ -242,6 +242,11 @@ export function useUnpinAndMoveThread() {
   });
 }
 
+/**
+ * Moves a thread into a Manual sidebar section using the same pinned-thread
+ * sequencing as drag-and-drop. A pinned thread must be unpinned before its
+ * stored section membership changes; an ordinary thread updates in one call.
+ */
 export function useMoveThreadToSection() {
   const updateThread = useUpdateThread();
   const unpinThread = useUnpinThread();
