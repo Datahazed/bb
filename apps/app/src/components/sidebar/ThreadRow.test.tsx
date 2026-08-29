@@ -52,12 +52,8 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-  ThreadActionsMenu: ({ triggerClassName }: { triggerClassName?: string }) => (
-    <button aria-label="Thread actions" className={triggerClassName} />
-  ),
-  ThreadArchiveQuickAction: ({ className }: { className?: string }) => (
-    <button aria-label="Archive thread" className={className} />
-  ),
+  ThreadActionsMenu: () => null,
+  ThreadArchiveQuickAction: () => null,
 }));
 
 function createThread(
@@ -96,7 +92,6 @@ function createThread(
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
-    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "idle",
@@ -252,6 +247,7 @@ afterEach(() => {
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
+  // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
@@ -357,7 +353,7 @@ describe("ThreadRow", () => {
       const splitMap = screen.getByRole("img", { name: /open in split/ });
       expect(Array.from(splitMap.classList)).toContain("animate-shine-icon");
       expect(
-        splitMap.closest("[data-sidebar-item-status-slot]"),
+        splitMap.closest("[data-sidebar-thread-trailing-indicator]"),
       ).not.toBeNull();
       expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
     },
@@ -423,13 +419,13 @@ describe("ThreadRow", () => {
     },
   );
 
-  it("puts the draft icon in the fixed status rail", () => {
+  it("puts the draft icon in the trailing status slot", () => {
     const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
     expect(
-      draftIcon?.closest('[data-sidebar-row-slot="status"]'),
+      draftIcon?.closest("[data-sidebar-thread-trailing-indicator]"),
     ).not.toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
@@ -457,7 +453,7 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
-  it("shows a desktop keyboard shortcut while preserving mobile plugin status", () => {
+  it("shows a keyboard shortcut in place of a plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
@@ -466,14 +462,14 @@ describe("ThreadRow", () => {
     renderThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
   });
 
-  it("shows a desktop keyboard shortcut while preserving the mobile split mini-map", () => {
+  it("shows a keyboard shortcut in place of a split mini-map", () => {
     renderSplitThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.getByRole("img", { name: /open in split/ })).not.toBeNull();
+    expect(screen.queryByRole("img", { name: /open in split/ })).toBeNull();
   });
 
   it("renders a plugin status with the semantic success tone", () => {
@@ -554,7 +550,7 @@ describe("ThreadRow", () => {
     expect(Array.from(runningIcon.classList)).toContain("animate-spin");
     expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
     expect(
-      container.querySelector('[data-sidebar-item-status="runtime"]'),
+      container.querySelector("[data-sidebar-thread-trailing-indicator]"),
     ).not.toBeNull();
   });
 
@@ -776,8 +772,9 @@ describe("ThreadRow", () => {
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
     expect(marker?.classList.contains("text-muted-foreground/75")).toBe(true);
     expect(marker?.classList.contains("text-muted-foreground")).toBe(false);
+    // The marker hugs the title; it never sits in the trailing status slot.
     expect(
-      marker?.closest('[data-sidebar-row-slot="status"]'),
+      marker?.closest("[data-sidebar-thread-trailing-indicator]"),
     ).toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Thread" }).getAttribute("href"),
@@ -887,54 +884,6 @@ describe("ThreadRow", () => {
     ).toBe("CircleQuestion");
   });
 
-  it("clocks a thread with queued work, and drops the clock once it runs", () => {
-    const { rerenderThreadRow } = renderThreadRow({
-      thread: createThread({ queuedWork: "waiting" }),
-    });
-
-    expect(
-      screen
-        .getByLabelText("Thread has a message waiting to send")
-        .getAttribute("data-icon"),
-    ).toBe("Clock");
-
-    rerenderThreadRow(
-      createThread({
-        queuedWork: "waiting",
-        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
-      }),
-    );
-    expect(
-      screen.queryByLabelText("Thread has a message waiting to send"),
-    ).toBeNull();
-    expect(
-      screen.getByLabelText("Thread working").getAttribute("data-icon"),
-    ).toBe("Loading");
-  });
-
-  it("gives a failed queued row the same glyph a failed thread gets", () => {
-    renderThreadRow({ thread: createThread({ queuedWork: "failed" }) });
-    const queueFailure = screen.getByLabelText("Queued message failed to send");
-
-    cleanup();
-    renderThreadRow({
-      thread: createThread({
-        status: "error",
-        lastReadAt: 0,
-        latestAttentionAt: 10,
-      }),
-    });
-    const threadFailure = screen.getByLabelText("Unread thread failed");
-
-    expect(queueFailure.getAttribute("data-icon")).toBe("CircleX");
-    expect(threadFailure.getAttribute("data-icon")).toBe(
-      queueFailure.getAttribute("data-icon"),
-    );
-    expect(queueFailure.getAttribute("class")).toBe(
-      threadFailure.getAttribute("class"),
-    );
-  });
-
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),
@@ -964,12 +913,8 @@ describe("ThreadRow", () => {
     const disclosure = screen.getByRole("button", {
       name: "Collapse Parent thread threads",
     });
-    expect(
-      disclosure.getAttribute("data-sidebar-hover-actions-mobile"),
-    ).toBeNull();
-    expect(disclosure.classList.contains("pointer-events-auto")).toBe(true);
-    expect(disclosure.classList.contains("bb-sidebar-hover-actions")).toBe(
-      false,
+    expect(disclosure.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
     );
     expect(disclosure.classList.contains("text-subtle-foreground/75")).toBe(
       true,
@@ -980,20 +925,24 @@ describe("ThreadRow", () => {
     ).toBe(true);
     const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
     const row = caretSlot?.parentElement;
-    const statusSlot = row?.querySelector('[data-sidebar-row-slot="status"]');
-    const mobileActions = row?.querySelector(
+    const trailingControls = row?.querySelector(
+      "[data-sidebar-thread-trailing-controls]",
+    );
+    const statusSlot = trailingControls?.querySelector(
+      "[data-sidebar-thread-status-slot]",
+    );
+    const mobileActions = trailingControls?.querySelector(
       "[data-sidebar-mobile-row-actions]",
     );
     const titleRegion = screen
       .getByTitle("Parent thread")
-      .closest('[data-sidebar-row-slot="content"]');
+      .closest(".bb-sidebar-collapsible-hover-actions-inset");
 
-    expect(caretSlot?.getAttribute("data-sidebar-row-slot")).toBe(
-      "disclosure",
-    );
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
     expect(
-      statusSlot!.compareDocumentPosition(caretSlot!) &
+      statusSlot!.compareDocumentPosition(mobileActions!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
@@ -1003,17 +952,17 @@ describe("ThreadRow", () => {
       mobileActions?.querySelector('[aria-label="Thread actions"]'),
     ).not.toBeNull();
     expect(
-      statusSlot
-        ?.querySelector("[data-sidebar-item-status-hover-action]")
+      mobileActions
+        ?.querySelector('[aria-label="Archive thread"]')
         ?.classList.contains("max-md:pointer-coarse:hidden"),
     ).toBe(true);
     expect(titleRegion).not.toBeNull();
-    expect(titleRegion?.getAttribute("data-sidebar-row-slot")).toBe(
-      "content",
-    );
+    expect(
+      titleRegion?.classList.contains("bb-sidebar-hover-actions-inset"),
+    ).toBe(false);
   });
 
-  it("shows its desktop Command shortcut while preserving the mobile active indicator", () => {
+  it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({
       shortcutKey: "3",
       thread: createThread({
@@ -1029,7 +978,7 @@ describe("ThreadRow", () => {
     expect(shortcut.className).toContain("px-1.5");
     expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
@@ -1038,6 +987,8 @@ describe("ThreadRow", () => {
   });
 
   it("shows the pending-input glyph while the runtime is still active", () => {
+    // A thread blocked on AskUserQuestion keeps an active runtime for as long as
+    // the question is open, so the spinner must not win this row.
     renderThreadRow({
       thread: createThread({
         hasPendingInteraction: true,
@@ -1136,6 +1087,8 @@ describe("ThreadRow", () => {
   ] as const)(
     "shows concurrent %s activity before runtime work",
     (activityKey, modeLabel) => {
+      // Plan and goal describe how the running turn behaves, and their glyphs
+      // shimmer, so they stay legible instead of collapsing into the spinner.
       renderThreadRow({
         thread: createThread({
           status: "active",

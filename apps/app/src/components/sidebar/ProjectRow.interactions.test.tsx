@@ -123,7 +123,6 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
-    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
@@ -136,7 +135,6 @@ function renderProjectRow(
   isActive = false,
   collapsedEnvironmentIds: Set<string> = new Set(),
   isCollapsed = false,
-  onCreateProjectThread?: (projectId: string) => void,
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
@@ -151,7 +149,6 @@ function renderProjectRow(
           collapsedThreadIds={new Set()}
           collapsedEnvironmentIds={collapsedEnvironmentIds}
           isLocalPathInvalid={false}
-          onCreateProjectThread={onCreateProjectThread}
           onToggleProjectCollapsed={onToggleProjectCollapsed}
           onToggleThreadCollapsed={vi.fn()}
           onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -166,7 +163,7 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
   const edgeSlot = screen
     .getAllByLabelText(label)
     .map((indicator) =>
-      indicator.closest('[data-sidebar-row-slot="status"]'),
+      indicator.closest("[data-sidebar-collapsed-activity-edge]"),
     )
     .find((slot) => slot !== null);
 
@@ -180,30 +177,10 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it("uses one depth step for each project and worktree boundary", () => {
+  it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",
-      threads: [
-        makeThread(),
-        makeThread({
-          id: "thr_worktree",
-          title: "Worktree child",
-          titleFallback: "Worktree child",
-          environmentId: "env_test",
-          environmentName: "Feature workspace",
-          environmentBranchName: "feat/sidebar-depth",
-          environmentWorkspaceDisplayKind: "managed-worktree",
-        }),
-        makeThread({
-          id: "thr_worktree_sibling",
-          title: "Worktree sibling",
-          titleFallback: "Worktree sibling",
-          environmentId: "env_test",
-          environmentName: "Feature workspace",
-          environmentBranchName: "feat/sidebar-depth",
-          environmentWorkspaceDisplayKind: "managed-worktree",
-        }),
-      ],
+      threads: [makeThread()],
     });
 
     const disclosure = screen.getByRole("button", {
@@ -213,19 +190,10 @@ describe("ProjectRow interactions", () => {
     const threadLink = result.container.querySelector(
       '[data-sidebar-thread-id="thr_test"]',
     );
-    const worktreeRow = screen
-      .getByText("Feature workspace")
-      .closest("[data-sidebar-row]");
-    const worktreeThreadRow = result.container
-      .querySelector('[data-sidebar-thread-id="thr_worktree"]')
-      ?.closest("[data-sidebar-row]");
     const projectGroup = result.container.querySelector(
       "[data-sidebar-sticky-project-item]",
     );
     const projectIcon = projectGroup?.querySelector('[data-icon="Folder"]');
-    const projectStatusSlot = projectGroup?.querySelector(
-      "[data-sidebar-group-status-slot]",
-    );
     const newThread = screen.getByRole("button", {
       name: "New thread in Test project",
     });
@@ -238,34 +206,15 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
-      label
-        .closest("[data-sidebar-row]")
-        ?.getAttribute("data-sidebar-row-depth"),
-    ).toBe("0");
-    expect(
-      threadLink
-        ?.closest("[data-sidebar-row]")
-        ?.getAttribute("data-sidebar-row-depth"),
-    ).toBe("1");
-    expect(worktreeRow?.getAttribute("data-sidebar-row-depth")).toBe("1");
-    expect(worktreeThreadRow?.getAttribute("data-sidebar-row-depth")).toBe(
-      "2",
-    );
+      (threadLink?.parentElement as HTMLElement | null)?.style.paddingLeft,
+    ).toBe("8px");
     expect(projectGroup?.getAttribute("data-sidebar-project-id")).toBe(
       "proj_test",
     );
     expect(projectIcon).not.toBeNull();
-    expect(projectStatusSlot).not.toBeNull();
-    expect(projectStatusSlot?.getAttribute("data-sidebar-row-slot")).toBe(
-      "status",
-    );
-    expect(
-      projectIcon?.closest('[data-sidebar-row-slot="identity"]'),
-    ).not.toBeNull();
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
     expect(
-      newThread.compareDocumentPosition(more) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
       true,
@@ -281,31 +230,6 @@ describe("ProjectRow interactions", () => {
     ).not.toBe(0);
   });
 
-  it("keeps project creation reachable from the row context menu", async () => {
-    const onCreateProjectThread = vi.fn();
-    const result = renderProjectRow(
-      vi.fn(),
-      { status: "ready", threads: [] },
-      false,
-      new Set(),
-      false,
-      onCreateProjectThread,
-    );
-    const projectRow = result.container.querySelector(
-      "[data-sidebar-sticky-project-item]",
-    );
-    if (!(projectRow instanceof HTMLElement)) {
-      throw new Error("Expected the project row to render");
-    }
-
-    fireEvent.contextMenu(projectRow);
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "New thread" }),
-    );
-
-    expect(onCreateProjectThread).toHaveBeenCalledWith("proj_test");
-  });
-
   it("shows generic runtime activity before a named workflow rollup", () => {
     const result = renderProjectRow(
       vi.fn(),
@@ -318,7 +242,6 @@ describe("ProjectRow interactions", () => {
             environmentId: "env_test",
             environmentName: "Feature workspace",
             environmentBranchName: "feat/menu-close",
-            queuedWork: "none",
             environmentWorkspaceDisplayKind: "managed-worktree",
             activity: {
               activeWorkflowCount: 1,
@@ -337,7 +260,6 @@ describe("ProjectRow interactions", () => {
             environmentId: "env_test",
             environmentName: "Feature workspace",
             environmentBranchName: "feat/menu-close",
-            queuedWork: "none",
             environmentWorkspaceDisplayKind: "managed-worktree",
           }),
         ],
@@ -382,7 +304,6 @@ describe("ProjectRow interactions", () => {
             id: "thr_worktree_plan",
             environmentId: "env_draft",
             environmentName: "Draft workspace",
-            queuedWork: "none",
             environmentWorkspaceDisplayKind: "managed-worktree",
             activity: {
               activeWorkflowCount: 0,
@@ -396,7 +317,6 @@ describe("ProjectRow interactions", () => {
             id: "thr_worktree_draft",
             environmentId: "env_draft",
             environmentName: "Draft workspace",
-            queuedWork: "none",
             environmentWorkspaceDisplayKind: "managed-worktree",
           }),
         ],
@@ -432,7 +352,7 @@ describe("ProjectRow interactions", () => {
       },
     });
 
-    const result = render(
+    render(
       <TooltipProvider>
         <Provider store={store}>
           <QueryClientProvider client={queryClient}>
@@ -471,19 +391,8 @@ describe("ProjectRow interactions", () => {
     const disclosure = screen.getByRole("button", {
       name: "Collapse Active work section",
     });
-    const sectionRow = screen
-      .getByTitle("Active work")
-      .closest("[data-sidebar-row]");
-    const sectionThreadRow = result.container
-      .querySelector('[data-sidebar-thread-id="thr_section_active"]')
-      ?.closest("[data-sidebar-row]");
-    expect(sectionRow?.getAttribute("data-sidebar-row-depth")).toBe("0");
-    expect(sectionThreadRow?.getAttribute("data-sidebar-row-depth")).toBe(
-      "1",
-    );
     expect(
-      newThread.compareDocumentPosition(more) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
       true,
@@ -498,7 +407,9 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
 
-    fireEvent.click(disclosure);
+    fireEvent.click(
+      disclosure,
+    );
 
     expect(
       screen
@@ -658,7 +569,6 @@ describe("ProjectRow interactions", () => {
           environmentId: "env_test",
           environmentName: "Feature workspace",
           environmentBranchName: "feat/menu-close",
-          queuedWork: "none",
           environmentWorkspaceDisplayKind: "managed-worktree",
         }),
         makeThread({
@@ -666,7 +576,6 @@ describe("ProjectRow interactions", () => {
           environmentId: "env_test",
           environmentName: "Feature workspace",
           environmentBranchName: "feat/menu-close",
-          queuedWork: "none",
           environmentWorkspaceDisplayKind: "managed-worktree",
         }),
       ],
@@ -680,15 +589,14 @@ describe("ProjectRow interactions", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
-    const mobileActions = trailingControls?.querySelector(
+    const mobileActions = row?.querySelector(
       "[data-sidebar-mobile-row-actions]",
     );
 
-    expect(caretSlot?.getAttribute("data-sidebar-row-slot")).toBe(
-      "disclosure",
-    );
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
-    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(mobileActions);
+    expect(mobileActions?.nextElementSibling).toBe(caretSlot);
     expect(
       mobileActions?.getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
@@ -697,18 +605,13 @@ describe("ProjectRow interactions", () => {
       screen.getByRole("button", { name: "Worktree actions" }),
       { button: 0 },
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Rename worktree" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
     expect(
-      await screen.findByRole("dialog", { name: "Rename worktree" }),
+      await screen.findByRole("dialog", { name: "Rename environment" }),
     ).not.toBeNull();
-    expect(screen.getByText("feat/menu-close")).not.toBeNull();
     await waitFor(() => {
-      expect(
-        screen.queryByRole("menuitem", { name: "Rename worktree" }),
-      ).toBeNull();
+      expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
     });
   });
 });

@@ -30,7 +30,12 @@ export type {
   SidebarSectionId,
 } from "@bb/client-core";
 
-export type SidebarOrganizationMode = "project" | "chronological" | "machine";
+// "project" keeps per-project groups, "manual" shows the user's named
+// sections plus the loose Threads bucket, and "machine" groups by host.
+export type SidebarOrganizationMode = "project" | "manual" | "machine";
+// Controls thread ordering in both grouped and ungrouped sidebar views. Time
+// sorts show newest first and alphabetical sorts A→Z. "none" is a legacy value
+// that the runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
 export type SidebarSortDirection = "asc" | "desc";
 
@@ -153,11 +158,44 @@ export const sidebarMachineSectionOrderAtom = atomWithStorage<string[]>(
   { getOnInit: true },
 );
 
+function normalizeSidebarOrganizationMode(
+  value: unknown,
+): SidebarOrganizationMode {
+  if (value === "manual" || value === "chronological") return "manual";
+  if (value === "machine") return "machine";
+  return "project";
+}
+
+const organizationModeJsonStorage = createJsonLocalStorage<unknown>();
+const sidebarOrganizationModeStorage: SyncStorage<SidebarOrganizationMode> = {
+  getItem(key, initialValue) {
+    const stored = organizationModeJsonStorage.getItem(key, initialValue);
+    const normalized = normalizeSidebarOrganizationMode(stored);
+    if (stored !== normalized) {
+      organizationModeJsonStorage.setItem(key, normalized);
+    }
+    return normalized;
+  },
+  setItem(key, value) {
+    organizationModeJsonStorage.setItem(
+      key,
+      normalizeSidebarOrganizationMode(value),
+    );
+  },
+  removeItem: organizationModeJsonStorage.removeItem,
+  subscribe: (key, callback, initialValue) =>
+    organizationModeJsonStorage.subscribe?.(
+      key,
+      (value) => callback(normalizeSidebarOrganizationMode(value)),
+      initialValue,
+    ),
+};
+
 export const sidebarOrganizationModeAtom =
   atomWithStorage<SidebarOrganizationMode>(
     SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
     "project",
-    createJsonLocalStorage<SidebarOrganizationMode>(),
+    sidebarOrganizationModeStorage,
     { getOnInit: true },
   );
 
@@ -177,6 +215,8 @@ export const sidebarSortDirectionAtom =
     { getOnInit: true },
   );
 
+// Collapsed section keys (see buildSectionKey in sectionKeys.ts). A plain string[],
+// matching collapsedThreadIds / collapsedProjectIds.
 export const sidebarCollapsedThreadSectionsAtom = atomWithStorage<string[]>(
   COLLAPSED_THREAD_SECTIONS_STORAGE_KEY,
   [],
@@ -184,6 +224,8 @@ export const sidebarCollapsedThreadSectionsAtom = atomWithStorage<string[]>(
   { getOnInit: true },
 );
 
+// Collapsed machine-mode group keys (host ids plus the no-machine sentinel;
+// see machineThreadGroups.ts).
 export const sidebarCollapsedMachinesAtom = atomWithStorage<string[]>(
   COLLAPSED_MACHINES_STORAGE_KEY,
   [],

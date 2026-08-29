@@ -146,7 +146,7 @@ describe("built-in sidebar section renderer", () => {
     expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
   });
 
-  it("renders loose threads without a label, divider, or collapse control", () => {
+  it("renders loose Threads after a stable divider without a collapse caret", () => {
     const { container } = render(
       renderBuiltInSidebarSection({
         collapsedSectionIds: new Set(),
@@ -157,8 +157,8 @@ describe("built-in sidebar section renderer", () => {
           ...SECTIONS,
           threads: {
             ...SECTIONS.threads,
-            actions: <button type="button">Loose threads action</button>,
             presentation: "loose",
+            showLooseHeading: true,
           },
         },
         showPinnedSection: false,
@@ -168,13 +168,7 @@ describe("built-in sidebar section renderer", () => {
     expect(
       container.querySelector("[data-sidebar-loose-thread-group]"),
     ).not.toBeNull();
-    expect(screen.queryByText("Threads")).toBeNull();
-    expect(
-      container.querySelector("[data-sidebar-loose-thread-divider]"),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Loose threads action" }),
-    ).toBeNull();
+    expect(screen.getByText("Threads")).not.toBeNull();
     expect(container.querySelector("[data-sidebar-collapse-caret]")).toBeNull();
   });
 });

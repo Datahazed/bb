@@ -1,5 +1,5 @@
 import type { Thread } from "@bb/domain";
-import { useCallback, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -29,8 +29,6 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { isThreadRead } from "@bb/client-core";
-import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadActions } from "./ThreadActionsProvider";
 import {
   useThreadSectionMove,
@@ -39,6 +37,11 @@ import {
 
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
+  /**
+   * When provided, adds a leading "Open in split" entry (the split feature's
+   * second entry point, alongside cmd-click). Omitted where splits don't apply
+   * (e.g. compact viewports), so the item only appears when meaningful.
+   */
   onOpenInSplit?: () => void;
 }
 
@@ -51,6 +54,10 @@ export interface ThreadActionsMenuResponsiveAction {
 interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
   onOpenChange?: (open: boolean) => void;
   triggerClassName?: string;
+  /**
+   * Contextual toolbar actions that move into this menu when a split header is
+   * too narrow to show them inline.
+   */
   responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
 }
 
@@ -60,11 +67,8 @@ interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
 }
 
 type ThreadActionsMenuSurface = "context" | "dropdown";
-type ThreadActionsCompactStep = "actions" | "move";
 
 interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
-  compactStep?: ThreadActionsCompactStep;
-  onCompactStepChange?: (step: ThreadActionsCompactStep) => void;
   responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
   surface: ThreadActionsMenuSurface;
 }
@@ -304,8 +308,6 @@ function ThreadSectionMoveMenu({
 function ThreadActionsMenuItems({
   thread,
   onOpenInSplit,
-  compactStep = "actions",
-  onCompactStepChange,
   responsiveActions = [],
   surface,
 }: ThreadActionsMenuItemsProps) {
@@ -319,21 +321,20 @@ function ThreadActionsMenuItems({
   } = useThreadActions();
   const isCompactViewport = useIsCompactViewport();
   const isDrawer = surface === "dropdown" && isCompactViewport;
+  const [compactStep, setCompactStep] = useState<"actions" | "move">(
+    "actions",
+  );
   const showSeparators = !isDrawer;
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
-  const threadUrl = new URL(
-    getThreadRoutePath({ projectId: thread.projectId, threadId: thread.id }),
-    window.location.origin,
-  ).toString();
 
   if (isDrawer && compactStep === "move") {
     return (
       <ThreadSectionMoveMenu
         drawerStep
         isDrawer
-        onBack={() => onCompactStepChange?.("actions")}
+        onBack={() => setCompactStep("actions")}
         surface={surface}
         thread={thread}
       />
@@ -377,18 +378,7 @@ function ThreadActionsMenuItems({
           ) : null}
         </>
       ) : null}
-      <ThreadActionMenuItem
-        surface={surface}
-        icon="Copy"
-        onSelect={() => {
-          void copyToClipboardWithToast(threadUrl, {
-            successMessage: "Thread link copied",
-            errorMessage: "Failed to copy thread link",
-          });
-        }}
-      >
-        Copy thread link
-      </ThreadActionMenuItem>
+      {/* Quick status toggles. */}
       <ThreadActionMenuItem
         surface={surface}
         icon={isRead ? "Mail" : "MailOpen"}
@@ -409,7 +399,7 @@ function ThreadActionsMenuItems({
       </ThreadActionMenuItem>
       <ThreadSectionMoveMenu
         isDrawer={isDrawer}
-        onOpenDrawerStep={() => onCompactStepChange?.("move")}
+        onOpenDrawerStep={() => setCompactStep("move")}
         surface={surface}
         thread={thread}
       />
@@ -454,25 +444,11 @@ function ThreadActionsMenuItems({
   );
 }
 
-function useThreadActionsMenuLifecycle(
-  onOpenChange?: (open: boolean) => void,
-) {
-  const [compactStep, setCompactStep] = useState<ThreadActionsCompactStep>(
-    "actions",
-  );
-  const handleOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        setCompactStep("actions");
-      }
-      onOpenChange?.(open);
-    },
-    [onOpenChange],
-  );
-
-  return { compactStep, setCompactStep, handleOpenChange };
-}
-
+/**
+ * One-click archive (or unarchive) button for hover-revealed row actions. It
+ * runs the same lifecycle as the menu's Archive entry, so undo, navigation,
+ * and child cascade behave identically.
+ */
 export function ThreadArchiveQuickAction({
   thread,
   className,
@@ -526,11 +502,8 @@ export function ThreadActionsMenu({
   onOpenChange,
   triggerClassName,
 }: ThreadActionsMenuProps) {
-  const { compactStep, setCompactStep, handleOpenChange } =
-    useThreadActionsMenuLifecycle(onOpenChange);
-
   return (
-    <DropdownMenu onOpenChange={handleOpenChange}>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -556,8 +529,6 @@ export function ThreadActionsMenu({
         <ThreadActionsMenuItems
           thread={thread}
           onOpenInSplit={onOpenInSplit}
-          compactStep={compactStep}
-          onCompactStepChange={setCompactStep}
           responsiveActions={responsiveActions}
           surface="dropdown"
         />
@@ -566,6 +537,13 @@ export function ThreadActionsMenu({
   );
 }
 
+/**
+ * Row-level actions menu: a right-click context menu on wide viewports, and on
+ * compact viewports a touch long-press (or right-click) that opens the same
+ * items in the persistent responsive drawer. The compact path deliberately
+ * avoids the modal Radix `ContextMenu` (aria-hidden on the app root, scroll
+ * lock, document-wide pointer-events flip) on phones.
+ */
 export function ThreadActionsContextMenu(props: ThreadActionsContextMenuProps) {
   const isCompactViewport = useIsCompactViewport();
   if (isCompactViewport) {
@@ -580,19 +558,14 @@ function ThreadActionsCompactLongPressMenu({
   onOpenInSplit,
   onOpenChange,
 }: ThreadActionsContextMenuProps) {
-  const { compactStep, setCompactStep, handleOpenChange } =
-    useThreadActionsMenuLifecycle(onOpenChange);
-
   return (
     <CompactLongPressMenu
       label="Thread actions"
-      onOpenChange={handleOpenChange}
+      onOpenChange={onOpenChange}
       items={
         <ThreadActionsMenuItems
           thread={thread}
           onOpenInSplit={onOpenInSplit}
-          compactStep={compactStep}
-          onCompactStepChange={setCompactStep}
           surface="dropdown"
         />
       }

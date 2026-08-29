@@ -12,7 +12,6 @@ import {
 import { ThreadSectionMoveProvider } from "./ThreadSectionMoveProvider";
 
 const moveThreadToSection = vi.hoisted(() => vi.fn());
-const copyToClipboardWithToast = vi.hoisted(() => vi.fn());
 const threadActions = vi.hoisted(() => ({
   archiveThreadAndChildren: vi.fn(),
   requestDelete: vi.fn(),
@@ -20,10 +19,6 @@ const threadActions = vi.hoisted(() => ({
   togglePin: vi.fn(),
   toggleRead: vi.fn(),
   unarchiveThread: vi.fn(),
-}));
-
-vi.mock("@/lib/clipboard", () => ({
-  copyToClipboardWithToast,
 }));
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
@@ -85,30 +80,9 @@ async function openMoveSubmenu() {
 afterEach(() => {
   cleanup();
   moveThreadToSection.mockReset();
-  copyToClipboardWithToast.mockReset();
   for (const action of Object.values(threadActions)) {
     action.mockReset();
   }
-});
-
-describe("ThreadActionsMenu", () => {
-  it("copies the canonical thread URL from every menu instance", () => {
-    renderWide(<ThreadActionsMenu thread={thread} />);
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Thread actions" }),
-      { button: 0 },
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy thread link" }));
-
-    expect(copyToClipboardWithToast).toHaveBeenCalledWith(
-      `${window.location.origin}/projects/${thread.projectId}/threads/${thread.id}`,
-      {
-        successMessage: "Thread link copied",
-        errorMessage: "Failed to copy thread link",
-      },
-    );
-  });
 });
 
 describe("ThreadActionsMenu section moves", () => {
@@ -184,7 +158,10 @@ describe("ThreadActionsMenu section moves", () => {
   it("uses a reversible destination step in the compact actions drawer", async () => {
     renderCompact(<ThreadActionsMenu thread={thread} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Move to section" }),
     );
@@ -193,47 +170,5 @@ describe("ThreadActionsMenu section moves", () => {
     expect(screen.getByRole("menuitem", { name: "Building" })).not.toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
     expect(await screen.findByRole("menuitem", { name: "Rename" })).not.toBeNull();
-  });
-
-  it("reopens the compact overflow menu at the root after moving a thread", async () => {
-    renderCompact(<ThreadActionsMenu thread={thread} />);
-
-    const trigger = screen.getByRole("button", { name: "Thread actions" });
-    fireEvent.click(trigger);
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Building" }),
-    );
-
-    fireEvent.click(trigger);
-    expect(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-    ).not.toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
-  });
-
-  it("reopens the compact long-press menu at the root after moving a thread", async () => {
-    renderCompact(
-      <ThreadActionsContextMenu thread={thread}>
-        <div data-testid="thread-row">Move me</div>
-      </ThreadActionsContextMenu>,
-    );
-
-    const row = screen.getByTestId("thread-row");
-    fireEvent.contextMenu(row);
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Building" }),
-    );
-
-    fireEvent.contextMenu(row);
-    expect(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-    ).not.toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
   });
 });
