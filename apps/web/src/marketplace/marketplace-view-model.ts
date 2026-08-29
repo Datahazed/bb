@@ -1,0 +1,157 @@
+import {
+  PLUGIN_CATALOG_CATEGORIES,
+  pluginDiscoveryNewAndNotableEntries,
+  pluginDiscoveryShelves,
+  sortPluginDiscoveryEntries,
+  type PluginDiscoveryEntryAccessors,
+  type PluginDiscoverySort,
+} from "@bb/domain";
+import type {
+  MarketplaceCategoryId,
+  MarketplaceV2Entry,
+  MarketplaceV2Manifest,
+} from "./marketplace-v2.js";
+import {
+  marketplaceEntryInstalls,
+  type MarketplaceStats,
+} from "./marketplace-stats.js";
+
+export type MarketplaceSort = PluginDiscoverySort;
+
+export const MARKETPLACE_CATEGORIES: ReadonlyArray<{
+  id: MarketplaceCategoryId;
+  label: string;
+  description: string;
+}> = PLUGIN_CATALOG_CATEGORIES.map((category) => ({
+  id: category.id,
+  label: category.displayName,
+  description: category.description,
+}));
+
+const CATEGORY_BY_ID = new Map(
+  MARKETPLACE_CATEGORIES.map((category) => [category.id, category]),
+);
+
+type MarketplaceCategory = (typeof MARKETPLACE_CATEGORIES)[number];
+
+export interface MarketplaceShelf {
+  category: MarketplaceCategory;
+  entries: MarketplaceV2Entry[];
+}
+
+export function marketplaceCategory(
+  id: MarketplaceCategoryId,
+): MarketplaceCategory {
+  const category = CATEGORY_BY_ID.get(id);
+  if (category === undefined) {
+    throw new Error(`unknown marketplace category ${JSON.stringify(id)}`);
+  }
+  return category;
+}
+
+function discoveryAccessors(stats: MarketplaceStats | null) {
+  return {
+    entryId: (entry: MarketplaceV2Entry) => entry.id,
+    displayName: (entry: MarketplaceV2Entry) => entry.displayName,
+    category: (entry: MarketplaceV2Entry) =>
+      marketplaceCategory(entry.category),
+    categoryId: (category: MarketplaceCategory) => category.id,
+    installs: (entry: MarketplaceV2Entry) =>
+      marketplaceEntryInstalls(entry, stats),
+    publishedAt: (entry: MarketplaceV2Entry) => entry.publishedAt,
+  } satisfies PluginDiscoveryEntryAccessors<
+    MarketplaceV2Entry,
+    MarketplaceCategory
+  >;
+}
+
+export function marketplaceShelves(
+  entries: readonly MarketplaceV2Entry[],
+): MarketplaceShelf[] {
+  return pluginDiscoveryShelves(entries, discoveryAccessors(null));
+}
+
+export function newAndNotableEntries(
+  manifest: MarketplaceV2Manifest,
+): MarketplaceV2Entry[] {
+  const curatedOrder = new Map(
+    manifest.newAndNotable.map((entryId, index) => [entryId, index]),
+  );
+  return pluginDiscoveryNewAndNotableEntries(manifest.plugins, {
+    ...discoveryAccessors(null),
+    newAndNotableRank: (entry) => curatedOrder.get(entry.id),
+  });
+}
+
+export function filterMarketplaceEntries(
+  entries: readonly MarketplaceV2Entry[],
+  query: string,
+): MarketplaceV2Entry[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (normalized.length === 0) return [...entries];
+  return entries.filter((entry) => {
+    const category = marketplaceCategory(entry.category);
+    return [
+      entry.displayName,
+      entry.description,
+      entry.id,
+      entry.category,
+      entry.author.name,
+      entry.author.github,
+      category.label,
+      ...(entry.tags ?? []),
+    ]
+      .filter((value) => value !== undefined)
+      .some((value) => value.toLocaleLowerCase().includes(normalized));
+  });
+}
+
+export function sortMarketplaceEntries(
+  entries: readonly MarketplaceV2Entry[],
+  sort: MarketplaceSort,
+  stats: MarketplaceStats | null,
+): MarketplaceV2Entry[] {
+  return sortPluginDiscoveryEntries(entries, sort, discoveryAccessors(stats));
+}
+
+export function marketplaceDetailPath(entryId: string): string {
+  return `/marketplace/${encodeURIComponent(entryId)}`;
+}
+
+export function marketplaceAssetUrl(declared: string): string {
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(declared)) return declared;
+  return new URL(declared, "https://getbb.app/marketplace/v2/marketplace.json")
+    .pathname;
+}
+
+export function marketplaceInstallCommand(entryId: string): string {
+  return `bb plugin install ${entryId}`;
+}
+
+export function marketplaceRepositoryUrl(
+  entry: MarketplaceV2Entry,
+): string | null {
+  if ("npm" in entry.source) {
+    return entry.source.npm.registry === undefined
+      ? `https://www.npmjs.com/package/${entry.source.npm.package}`
+      : null;
+  }
+  return entry.source.git.url.replace(/\.git$/u, "");
+}
+
+export function formatInstalls(value: number | undefined): string | null {
+  if (value === undefined) return null;
+  return new Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
+}
+
+export function formatMarketplaceDate(
+  value: string | undefined,
+): string | null {
+  if (value === undefined) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}

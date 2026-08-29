@@ -3106,8 +3106,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 /* Give the remaining utility links a little more room on narrow phones. */
 @media (max-width: 430px) {
   .nav-links {
-    gap: 12px;
-    font-size: 13px;
+    gap: 8px;
+    font-size: 12.5px;
   }
 
   .updates-label {

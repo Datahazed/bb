@@ -52,9 +52,9 @@
     ],
   },
   // BB Official plugin marketplace. The registry repo (get-bb/marketplace)
-  // uploads marketplace.json + icons here; /marketplace/v1/* serves them.
-  // The route answers 404 until the bucket exists, so this binding can land
-  // before the bucket is provisioned.
+  // uploads the v1 and v2 registry assets here; /marketplace/v1/* and
+  // /marketplace/v2/* serve them. The routes answer 404 until the bucket
+  // exists, so this binding can land before the bucket is provisioned.
   "r2_buckets": [
     {
       "binding": "MARKETPLACE",
