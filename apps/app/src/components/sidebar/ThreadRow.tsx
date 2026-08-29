@@ -32,6 +32,7 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SIDEBAR_COLLAPSIBLE_HOVER_ACTIONS_INSET_CLASS,
+  SIDEBAR_COLLAPSIBLE_STATUS_SLOT_CLASS,
   SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -815,6 +816,9 @@ function ThreadRowComponent({
             className={cn(
               "flex shrink-0 items-center justify-end",
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+              parentOptions &&
+                hasChildren &&
+                SIDEBAR_COLLAPSIBLE_STATUS_SLOT_CLASS,
             )}
           >
             <span
