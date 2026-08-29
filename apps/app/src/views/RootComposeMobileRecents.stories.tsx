@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { StoryCard, StoryRow } from "../../.ladle/story-card";
 import {
   PROJECT_IDS,
@@ -132,10 +132,51 @@ const statusThreads: ThreadListEntry[] = [
   }),
 ];
 
+const metadataThreads: ThreadListEntry[] = [
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_worktree",
+      title: "Anchor the mobile prompt box",
+      titleFallback: "Anchor the mobile prompt box",
+      environmentName: "mobile-home",
+      environmentBranchName: "bb/mobile-home",
+      environmentWorkspaceDisplayKind: "managed-worktree",
+      createdAt: 700,
+      latestAttentionAt: 700,
+    },
+  }),
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_unread",
+      projectId: PROJECT_IDS.pierre,
+      title: "Finished while you were away",
+      titleFallback: "Finished while you were away",
+      status: "idle",
+      lastReadAt: 100,
+      createdAt: 650,
+      latestAttentionAt: 650,
+    },
+  }),
+  makeRecentThread({
+    overrides: {
+      id: "thr_mobile_long_title",
+      title:
+        "A deliberately long thread title that has to truncate on a narrow mobile row",
+      titleFallback: "A deliberately long thread title",
+      environmentBranchName: "bb/very-long-branch-name-for-truncation",
+      environmentWorkspaceDisplayKind: "unmanaged-worktree",
+      createdAt: 600,
+      latestAttentionAt: 600,
+    },
+  }),
+];
+
 const projectNamesById = new Map<string, string>([
   [PROJECT_IDS.bb, PROJECT_NAMES.bb],
   [PROJECT_IDS.pierre, PROJECT_NAMES.pierre],
 ]);
+
+const providersById = new Map<string, ProviderInfo>();
 
 export function Overview() {
   return (
@@ -145,6 +186,7 @@ export function Overview() {
           <RootComposeMobileRecents
             highlightedThreadId="thr_mobile_just_starting"
             projectNamesById={projectNamesById}
+            providersById={providersById}
             showCreatingRow={false}
             threads={recentThreads}
           />
@@ -155,8 +197,20 @@ export function Overview() {
           <RootComposeMobileRecents
             highlightedThreadId={null}
             projectNamesById={projectNamesById}
+            providersById={providersById}
             showCreatingRow
             threads={recentThreads.slice(1)}
+          />
+        </MobileStage>
+      </StoryRow>
+      <StoryRow label="row metadata">
+        <MobileStage>
+          <RootComposeMobileRecents
+            highlightedThreadId={null}
+            projectNamesById={projectNamesById}
+            providersById={providersById}
+            showCreatingRow={false}
+            threads={metadataThreads}
           />
         </MobileStage>
       </StoryRow>
@@ -165,6 +219,7 @@ export function Overview() {
           <RootComposeMobileRecents
             highlightedThreadId={null}
             projectNamesById={projectNamesById}
+            providersById={providersById}
             showCreatingRow={false}
             threads={statusThreads}
           />

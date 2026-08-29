@@ -1,11 +1,16 @@
 import { useMemo } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_TEXT_BASE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
+import { OverflowFade } from "@/components/ui/overflow-fade";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
   hasActiveBackgroundAgentActivity,
@@ -20,10 +25,17 @@ import {
   type ThreadListIndicatorState,
 } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { formatRelativeTime } from "@/lib/relative-time";
+import { getEnvironmentWorkspaceDisplayIconName } from "@/lib/environment-workspace-display";
+import { getProviderIconInfo } from "@/lib/provider-icon";
+import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 
-const MOBILE_RECENT_THREAD_LIMIT = 3;
+export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
+export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
+
+const MOBILE_RECENT_ROW_HEIGHT_CLASS = "h-15";
 
 type ThreadListEntryComparator = (
   left: ThreadListEntry,
@@ -38,12 +50,34 @@ interface GetMobileRecentThreadsArgs {
 interface MobileRecentThreadRowProps {
   highlighted: boolean;
   projectName: string | null;
+  provider: ProviderInfo | null;
   thread: ThreadListEntry;
+}
+
+function getMobileRecentThreadMetadata({
+  projectName,
+  thread,
+}: {
+  projectName: string | null;
+  thread: ThreadListEntry;
+}): string {
+  const workspaceName = thread.environmentBranchName ?? thread.environmentName;
+  return [
+    projectName,
+    workspaceName,
+    formatRelativeTime({
+      timestamp: thread.latestAttentionAt,
+      now: Date.now(),
+    }),
+  ]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .join(" \u00b7 ");
 }
 
 interface RootComposeMobileRecentsProps {
   highlightedThreadId: string | null;
   projectNamesById: ReadonlyMap<string, string>;
+  providersById: ReadonlyMap<string, ProviderInfo>;
   showCreatingRow: boolean;
   threads: readonly ThreadListEntry[];
 }
@@ -63,33 +97,32 @@ const compareMobileRecentThreads: ThreadListEntryComparator = (left, right) => {
   return left.id.localeCompare(right.id);
 };
 
-function getMobileRecentThreads({
+export function getMobileRecentThreads({
   highlightedThreadId,
   threads,
 }: GetMobileRecentThreadsArgs): ThreadListEntry[] {
   const sortedThreads = [...threads].sort(compareMobileRecentThreads);
   if (highlightedThreadId === null) {
-    return sortedThreads.slice(0, MOBILE_RECENT_THREAD_LIMIT);
+    return sortedThreads;
   }
 
   const highlightedThread = sortedThreads.find(
     (thread) => thread.id === highlightedThreadId,
   );
   if (!highlightedThread) {
-    return sortedThreads.slice(0, MOBILE_RECENT_THREAD_LIMIT);
+    return sortedThreads;
   }
 
   return [
     highlightedThread,
-    ...sortedThreads
-      .filter((thread) => thread.id !== highlightedThreadId)
-      .slice(0, MOBILE_RECENT_THREAD_LIMIT - 1),
+    ...sortedThreads.filter((thread) => thread.id !== highlightedThreadId),
   ];
 }
 
 function MobileRecentThreadRow({
   highlighted,
   projectName,
+  provider,
   thread,
 }: MobileRecentThreadRowProps) {
   const threadTitle = getThreadDisplayTitle(thread);
@@ -112,9 +145,14 @@ function MobileRecentThreadRow({
     isRuntimeActive: isRuntimeBusyThread(thread),
     isWorkflowActive: hasActiveWorkflowActivity(thread),
   };
-  const indicatorLabel = getThreadListIndicatorLabel(
-    resolveThreadListIndicator(indicatorState),
+  const indicatorKind = resolveThreadListIndicator(indicatorState);
+  const indicatorLabel = getThreadListIndicatorLabel(indicatorKind);
+  const metadataText = getMobileRecentThreadMetadata({ projectName, thread });
+  const workspaceIconName = getEnvironmentWorkspaceDisplayIconName(
+    thread.environmentWorkspaceDisplayKind,
   );
+  const providerIcon = getProviderIconInfo(thread.providerId, provider);
+  const ProviderMark = providerIcon?.icon;
   return (
     <li>
       {}
@@ -125,21 +163,53 @@ function MobileRecentThreadRow({
         })}
         aria-label={`Open ${threadTitle}${indicatorLabel ? ` — ${indicatorLabel}` : ""}`}
         className={cn(
-          "flex h-8 items-center gap-2 rounded-md px-2 text-sm text-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          "flex items-center gap-2.5 rounded-md px-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          MOBILE_RECENT_ROW_HEIGHT_CLASS,
           highlighted && "bg-surface-selected",
         )}
       >
-        <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="min-w-0 truncate">{threadTitle}</span>
-          {projectName ? (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {projectName}
-            </span>
-          ) : null}
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border-seam bg-surface-raised">
+          {ProviderMark === undefined ? null : provider === null ? (
+            <ProviderMark className="size-4" />
+          ) : (
+            <ProviderIconMark
+              provider={provider}
+              icon={ProviderMark}
+              className="size-4"
+            />
+          )}
         </span>
-        <span className="flex size-6 shrink-0 items-center justify-center">
-          <ThreadStatusGlyph {...indicatorState} />
+        <span className="min-w-0 flex-1 space-y-0.5">
+          <span
+            className={cn(
+              "block min-w-0 truncate font-medium",
+              COARSE_POINTER_TEXT_BASE_CLASS,
+            )}
+          >
+            {threadTitle}
+          </span>
+          <span
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 leading-4 text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
+            title={metadataText}
+          >
+            {workspaceIconName ? (
+              <Icon
+                name={workspaceIconName}
+                className="size-3.5 shrink-0"
+                aria-hidden="true"
+              />
+            ) : null}
+            <span className="min-w-0 truncate">{metadataText}</span>
+          </span>
         </span>
+        {indicatorKind !== "none" ? (
+          <span className="flex size-6 shrink-0 items-center justify-center">
+            <ThreadStatusGlyph {...indicatorState} />
+          </span>
+        ) : null}
       </RouteAnchor>
     </li>
   );
@@ -148,6 +218,7 @@ function MobileRecentThreadRow({
 export function RootComposeMobileRecents({
   highlightedThreadId,
   projectNamesById,
+  providersById,
   showCreatingRow,
   threads,
 }: RootComposeMobileRecentsProps) {
@@ -164,20 +235,24 @@ export function RootComposeMobileRecents({
     <section
       data-root-compose-mobile-recents=""
       aria-labelledby="root-compose-mobile-recents"
-      className="mt-4 md:hidden"
+      className="md:hidden"
     >
-      <div className="mb-1 px-2">
+      <div className="sticky top-0 z-10 mb-1 bg-background px-2">
         <h2
           id="root-compose-mobile-recents"
           className={CHROME_SECTION_LABEL_CLASS}
         >
           Recent
         </h2>
+        <OverflowFade placement="below" tone="background" size="sm" />
       </div>
       {showCreatingRow ? (
         <div
           role="status"
-          className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground"
+          className={cn(
+            "flex items-center gap-2.5 rounded-md px-2 text-sm text-muted-foreground",
+            MOBILE_RECENT_ROW_HEIGHT_CLASS,
+          )}
         >
           <span className="min-w-0 flex-1 truncate">Creating thread</span>
           <span className="flex size-6 shrink-0 items-center justify-center">
@@ -199,6 +274,7 @@ export function RootComposeMobileRecents({
             <MobileRecentThreadRow
               key={thread.id}
               highlighted={thread.id === highlightedThreadId}
+              provider={providersById.get(thread.providerId) ?? null}
               projectName={
                 isProjectlessProjectId(thread.projectId)
                   ? null
