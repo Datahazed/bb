@@ -942,6 +942,9 @@ describe("ThreadRow", () => {
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
     expect(
+      statusSlot?.classList.contains("bb-sidebar-collapsible-status-slot"),
+    ).toBe(true);
+    expect(
       statusSlot!.compareDocumentPosition(mobileActions!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
