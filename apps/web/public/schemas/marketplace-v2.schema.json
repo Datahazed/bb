@@ -107,20 +107,19 @@
           "enum": [
             "themes-and-appearance",
             "thread-lists-and-navigation",
-            "thread-messages-and-timelines",
-            "composer-and-prompts",
+            "thread-content",
             "memory-and-context",
-            "agent-tools",
             "security",
             "agents-and-providers",
             "token-usage-and-cost",
             "notifications-and-attention",
             "code-and-reviews",
             "files-and-viewers",
-            "machines-and-hosts",
+            "remote-development",
+            "terminals",
+            "system-management",
             "plugin-development",
-            "task-tracking",
-            "automation"
+            "tasks-workflows"
           ]
         },
         "screenshots": {

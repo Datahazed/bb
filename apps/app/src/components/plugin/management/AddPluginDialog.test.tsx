@@ -200,11 +200,13 @@ describe("AddPluginDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
 
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /installing plugin/i }),
-      ).toBeTruthy();
+    const installingButton = await screen.findByRole("button", {
+      name: /installing plugin/i,
     });
+    expect(installingButton.textContent).toBe("Installing");
+    expect(
+      installingButton.querySelector('[data-icon="Loading"]'),
+    ).not.toBeNull();
     // The trust warning has served its purpose by now; the bar replaces it.
     expect(screen.getByRole("progressbar")).toBeTruthy();
     expect(screen.queryByTestId("full-trust-warning")).toBeNull();

@@ -146,8 +146,8 @@ describe("MyPluginsTab", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Token Usage & Cost · 1")).toBeTruthy();
-    expect(screen.getByText("Notifications & Attention · 1")).toBeTruthy();
+    expect(screen.getByText("Token Usage & Limits · 1")).toBeTruthy();
+    expect(screen.getByText("Notifications · 1")).toBeTruthy();
     expect(screen.getByText("Code & Reviews · 1")).toBeTruthy();
     expect(screen.getByText("Not published")).toBeTruthy();
     expect(screen.getByText("In review")).toBeTruthy();

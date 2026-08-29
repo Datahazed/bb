@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Switch } from "@bb/shared-ui/switch";
 import { Pill } from "@bb/shared-ui/pill";
 import {
@@ -44,9 +43,7 @@ export function InstalledPluginsTab({
       : (plugins.find((plugin) => plugin.id === updateTargetId) ?? null);
 
   if (plugins.length === 0) {
-    return (
-      <EmptyState message="No plugins installed. Browse the catalog, create a plugin, or run bb plugin install <source>." />
-    );
+    return null;
   }
 
   return (

@@ -35,7 +35,7 @@ function entry(id: string, overrides: Partial<TestEntry> = {}): TestEntry {
   return {
     id,
     name: id,
-    category: { id: "agent-tools" },
+    category: { id: "thread-content" },
     ...overrides,
   };
 }
@@ -61,7 +61,7 @@ describe("plugin discovery projections", () => {
       ]),
     ).toEqual([
       ["themes-and-appearance", ["theme-a", "theme-b"]],
-      ["agent-tools", ["agent-a", "agent-b"]],
+      ["thread-content", ["agent-a", "agent-b"]],
       ["security", ["security"]],
     ]);
   });

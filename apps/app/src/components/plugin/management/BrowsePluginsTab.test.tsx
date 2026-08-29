@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { pluginCatalogCategoryAccentToken } from "@bb/domain";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
@@ -308,6 +309,14 @@ describe("BrowsePluginsTab", () => {
         name: "Open Memory details",
       }),
     ).toBeTruthy();
+    const notableCategory = within(notableShelf).getByText("Memory & Context");
+    expect(
+      notableCategory.parentElement?.classList.contains("col-start-2"),
+    ).toBe(true);
+    expect(
+      notableCategory.parentElement?.classList.contains("row-start-3"),
+    ).toBe(true);
+    expect(notableShelf.querySelector("[data-plugin-category-accent]")).toBeNull();
     // Landing previews are mutually exclusive: a notable entry is not
     // repeated in its broad presentation shelf.
     expect(
@@ -320,9 +329,13 @@ describe("BrowsePluginsTab", () => {
       }),
     );
     fireEvent.click(screen.getByRole("option", { name: /Memory & Context/u }));
+    const scopedCard = screen
+      .getByRole("button", { name: "Open Memory details" })
+      .closest("div");
+    expect(scopedCard).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: "Open Memory details" }),
-    ).toBeTruthy();
+      within(scopedCard as HTMLElement).queryByText("Memory & Context"),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Open Legacy Reviewer details" }),
     ).toBeNull();
@@ -451,7 +464,7 @@ describe("BrowsePluginsTab", () => {
     ).toBeNull();
   });
 
-  it("keeps third-party origin, author, and source facts on shelf cards", async () => {
+  it("keeps the author while leaving source and publisher facts to detail", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Memory" },
       {
@@ -488,7 +501,7 @@ describe("BrowsePluginsTab", () => {
 
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/?sort=name"]}>
         <BrowsePluginsTab
           onInstall={() => {}}
           onOpenPlugin={() => {}}
@@ -499,22 +512,46 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findAllByText("Acme Notes");
-    expect(screen.getAllByText(/Acme Plugins/u).length).toBeGreaterThan(0);
-    const authorLink = screen.getAllByRole("link", { name: "By: Acme" })[0];
+    expect(
+      screen
+        .getByRole("textbox", { name: "Search plugins" })
+        .closest('[class~="px-[var(--resource-source-shelf-inset)]"]'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("radiogroup", {
+          name: "Filter plugins by category",
+        })
+        .closest('[class~="px-[var(--resource-source-shelf-inset)]"]'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("radiogroup", {
+          name: "Filter plugins by category",
+        })
+        .classList.contains("justify-center"),
+    ).toBe(true);
+    expect(screen.queryByText("Acme Plugins")).toBeNull();
+    const authorLink = screen.getByRole("link", { name: "By: Acme" });
     expect(authorLink?.getAttribute("href")).toBe(
       "/extensions/plugins/authors/12%3Aacme-plugins%3Agithub%3Aacme",
     );
-    // The card names and links the source; this fixture's bundled entry has no
-    // source URL because server behavior is covered by the catalog test.
-    const sourceLink = screen.getAllByRole("link", {
-      name: "Open Acme Notes source",
-    })[0]!;
-    expect(sourceLink.textContent).toContain("Source");
-    expect(sourceLink.getAttribute("href")).toBe(
-      "https://github.com/acme/notes",
+    const acmeCard = screen
+      .getByRole("button", { name: "Open Acme Notes details" })
+      .closest("div");
+    if (acmeCard === null) throw new Error("Acme Notes card missing");
+    const categoryPill = within(acmeCard).getByText("Code & Reviews");
+    expect(
+      authorLink.closest(".col-start-1")?.classList.contains("row-start-3"),
+    ).toBe(true);
+    expect(categoryPill.parentElement?.classList.contains("col-start-2")).toBe(
+      true,
+    );
+    expect(categoryPill.parentElement?.classList.contains("row-start-3")).toBe(
+      true,
     );
     expect(
-      screen.queryByRole("link", { name: "Open Memory source" }),
+      screen.queryByRole("link", { name: "Open Acme Notes source" }),
     ).toBeNull();
   });
 
@@ -566,8 +603,15 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findAllByText("Official 1");
-    const memoryHeading = screen.getByText("Agents & Workflows");
-    const codeHeading = screen.getByText("Code & Integrations");
+    const memoryHeading = screen
+      .getAllByText("Memory & Context")
+      .find((element) => element.closest("h2") !== null);
+    const codeHeading = screen
+      .getAllByText("Code & Reviews")
+      .find((element) => element.closest("h2") !== null);
+    if (memoryHeading === undefined || codeHeading === undefined) {
+      throw new Error("Category shelf headings missing");
+    }
     expect(
       memoryHeading.compareDocumentPosition(codeHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -579,13 +623,32 @@ describe("BrowsePluginsTab", () => {
 
     const memoryShelf = memoryHeading.closest("section");
     if (memoryShelf === null) throw new Error("Memory shelf missing");
+    const categoryAccent = memoryShelf.querySelector<HTMLElement>(
+      '[data-plugin-category-accent="memory-and-context"]',
+    );
+    expect(categoryAccent).not.toBeNull();
+    expect(categoryAccent?.classList.contains("h-0.5")).toBe(true);
+    expect(categoryAccent?.classList.contains("w-10")).toBe(true);
+    expect(categoryAccent?.classList.contains("rounded-full")).toBe(true);
+    expect(categoryAccent?.closest("h2")).not.toBeNull();
+    expect(categoryAccent?.style.background).toBe(
+      `var(${pluginCatalogCategoryAccentToken("memory-and-context")})`,
+    );
+    const shelfCard = within(memoryShelf)
+      .getAllByRole("button", { name: /^Open Official .* details$/u })[0]
+      ?.closest("div");
+    if (shelfCard === null || shelfCard === undefined) {
+      throw new Error("Category shelf card missing");
+    }
+    expect(shelfCard.querySelector("[data-plugin-category-accent]")).toBeNull();
+    expect(within(shelfCard).queryByText("Memory & Context")).toBeNull();
     expect(memoryShelf.querySelector(".grid")).not.toBeNull();
     expect(memoryShelf.querySelector(".overflow-x-auto")).toBeNull();
     fireEvent.click(
       within(memoryShelf).getByRole("button", { name: /View all/ }),
     );
     expect(screen.getByTestId("location").textContent).toBe(
-      "?shelf=agents-and-workflows",
+      "?category=memory-and-context",
     );
     expect(screen.getByText("· 8 plugins")).toBeTruthy();
     expect(
@@ -678,15 +741,15 @@ describe("BrowsePluginsTab", () => {
       screen.getByRole("menuitemradio", { name: "Most installed" }),
     );
     fireEvent.keyDown(document, { key: "Escape" });
-    const count = screen.getByLabelText("1,204 installs");
-    expect(count).toBeTruthy();
-    // The count is metadata for the install control, not a sibling that
-    // happens to sit nearby: the button points at it as its description, so
-    // screen readers announce the offer and its weight together.
     const installButton = screen.getByRole("button", {
-      name: "Install Popular",
+      name: "Install Popular — 1,204 installs",
     });
-    expect(installButton.getAttribute("aria-describedby")).toBe(count.id);
+    // Download and count are one compact action, not two neighboring facts.
+    expect(
+      installButton.querySelector('[data-icon="Download"]'),
+    ).not.toBeNull();
+    expect(installButton.textContent).toBe("1.2k");
+    expect(installButton.classList.contains("border-border/80")).toBe(true);
     // No card carries an "updated" date, including this entry which has one.
     // Recency belongs to the detail page: on a browse card it competed with
     // the author for the same glance without helping anyone choose.
@@ -797,7 +860,7 @@ describe("BrowsePluginsTab", () => {
     // The taxonomy size is not a filter the user can act on, so the menu shows
     // the categories themselves rather than a count of them.
     expect(screen.queryByText(/^\d+ categories$/u)).toBeNull();
-    expect(screen.getAllByRole("option")).toHaveLength(17);
+    expect(screen.getAllByRole("option")).toHaveLength(16);
 
     const categorySearch = screen.getByRole("combobox", {
       name: "Search plugin categories",
@@ -805,7 +868,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.keyDown(categorySearch, { key: "ArrowDown" });
     expect(document.activeElement?.textContent).toContain("All categories");
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
-    expect(document.activeElement?.textContent).toContain("Automation");
+    expect(document.activeElement?.textContent).toContain("Tasks & Workflows");
 
     categorySearch.focus();
     fireEvent.change(categorySearch, {
@@ -942,9 +1005,8 @@ describe("BrowsePluginsTab", () => {
     expect(
       screen
         .getByRole("textbox", { name: "Search plugins" })
-        .closest("div.w-full")
-        ?.classList.contains("px-[var(--resource-source-shelf-inset)]"),
-    ).toBe(true);
+        .closest('[class~="px-[var(--resource-source-shelf-inset)]"]'),
+    ).not.toBeNull();
     expect(
       screen.getAllByText(MEMORY_ENTRY.description).length,
     ).toBeGreaterThan(0);
@@ -1060,7 +1122,7 @@ describe("BrowsePluginsTab", () => {
         }
         if (url === "/api/v1/plugin-catalog/search?q=") {
           return jsonResponse({
-            results: [{ ...MEMORY_ENTRY, installed: true }],
+            results: [{ ...MEMORY_ENTRY, installed: true, installs: 1_204 }],
           });
         }
         if (url === "/api/v1/plugins") {
@@ -1087,46 +1149,44 @@ describe("BrowsePluginsTab", () => {
     );
 
     const installed = (
-      await screen.findAllByRole("button", { name: "Uninstall Memory" })
+      await screen.findAllByLabelText("Memory installed — 1,204 installs")
     )[0]!;
     fireEvent.pointerMove(installed);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Installed — uninstall Memory",
+      "Installed — 1,204 installs",
     );
     // The same glyph install uses, at a resting weight: one symbol for one
     // idea, so an installed card reads as the settled version of the control
     // rather than a second, unrelated mark. That it offers no install is
     // asserted below by the absence of an Install button, not by the glyph.
     expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
-    // No outline and no fill, at rest or on hover/focus.
-    // Tokenize: `toContain` also matches inside the hover:/focus-visible:
-    // twins, which would leave the resting state unverified.
+    expect(installed.textContent).toBe("1.2k");
+    // Installed is passive and backgroundless; uninstall stays in detail.
     const installedClasses = new Set(installed.className.split(/\s+/));
-    for (const restingClass of ["border-transparent", "bg-transparent"]) {
-      expect(installedClasses.has(restingClass)).toBe(true);
-    }
-    for (const variantClass of [
-      "hover:border-transparent",
-      "hover:bg-transparent",
-      "focus-visible:border-transparent",
-      "focus-visible:bg-transparent",
-    ]) {
-      expect(installedClasses.has(variantClass)).toBe(true);
-    }
-    // Installed is a settled state, so the marker sits at disabled weight
-    // rather than shouting success at every already-installed card.
     expect(installedClasses.has("text-subtle-foreground")).toBe(true);
-    expect(installedClasses.has("hover:text-muted-foreground")).toBe(true);
+    expect(installed.tagName).toBe("SPAN");
+    expect(
+      [...installedClasses].some(
+        (entry) => entry.startsWith("bg-") || entry.startsWith("border"),
+      ),
+    ).toBe(false);
+    expect(
+      [...installedClasses].some(
+        (entry) =>
+          entry.startsWith("hover:") || entry.startsWith("group-hover:"),
+      ),
+    ).toBe(false);
+    expect(installed.querySelector('[data-icon="Trash2"]')).toBeNull();
     expect(
       [...installedClasses].some((entry) => entry.includes("--success")),
     ).toBe(false);
     expect(installedClasses.has("text-success-foreground")).toBe(false);
-    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
-    fireEvent.click(installed);
     expect(
-      screen.getByRole("heading", { name: "Uninstall Memory?" }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      screen.queryByRole("button", { name: /Install Memory/u }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Uninstall Memory/u }),
+    ).toBeNull();
 
     fireEvent.click(
       screen.getAllByRole("button", { name: "Open Memory details" })[0]!,
@@ -1134,7 +1194,7 @@ describe("BrowsePluginsTab", () => {
     expect(onOpenPlugin).toHaveBeenCalledWith("memory");
   });
 
-  it("uses the catalog's canonical plugin id for uninstall", async () => {
+  it("opens an installed entry by the catalog's canonical plugin id", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -1187,7 +1247,7 @@ describe("BrowsePluginsTab", () => {
     );
 
     expect(
-      (await screen.findAllByRole("button", { name: "Uninstall Docs" })).length,
+      (await screen.findAllByLabelText("Docs installed")).length,
     ).toBeGreaterThan(0);
 
     fireEvent.click(

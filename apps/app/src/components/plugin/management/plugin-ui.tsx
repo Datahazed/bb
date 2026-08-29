@@ -1,14 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { PLUGIN_CATALOG_SHELF_GROUPS } from "@bb/domain";
+import { pluginCatalogCategoryAccentToken } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
 import { accentInk, accentTint, neutral } from "@bb/showcase-hero";
-import {
-  PluginCompactIconMask,
-  PluginIcon,
-  pluginIconName,
-} from "@/components/plugin/PluginIcon";
+import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -120,12 +116,6 @@ export function CatalogEntryIcon({
   className: string;
 }) {
   const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
-  // The server marks single-color artwork (a bundled compact icon or a catalog
-  // SVG not declared a logo) for masking with the surrounding text color, so a
-  // black-on-transparent glyph stays visible on a dark theme.
-  if (entry.iconUrl !== null && entry.iconTinted) {
-    return <PluginCompactIconMask url={entry.iconUrl} className={className} />;
-  }
   if (entry.iconUrl === null || entry.iconUrl === failedIconUrl) {
     return (
       <PlaceholderBadge
@@ -146,21 +136,9 @@ export function CatalogEntryIcon({
 }
 
 /**
- * The accent belonging to the shelf group a category sits in. Bound to the
- * group's identity in @bb/domain, so reordering groups cannot repaint cards.
- */
-export function pluginCategoryAccentToken(
-  categoryId: string | undefined,
-): string | undefined {
-  return PLUGIN_CATALOG_SHELF_GROUPS.find((group) =>
-    group.categoryIds.some((candidate) => candidate === categoryId),
-  )?.accentToken;
-}
-
-/**
- * The card's category, as a tinted pill. The shelf group's accent fills the
- * pill rather than the text, so the category reads as a tag at a glance while
- * its label keeps normal reading contrast.
+ * The card's category, as a tinted pill. Its semantic accent fills the pill
+ * rather than the text, so the category reads as a tag at a glance while its
+ * label keeps normal reading contrast.
  */
 export function PluginCategoryLabel({
   categoryId,
@@ -169,7 +147,7 @@ export function PluginCategoryLabel({
   categoryId: string | undefined;
   label: string;
 }) {
-  const accentToken = pluginCategoryAccentToken(categoryId);
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
   return (
     <span
       className="shrink-0 truncate rounded px-1.5 py-0.5 text-2xs"
@@ -177,8 +155,8 @@ export function PluginCategoryLabel({
         accentToken === undefined
           ? { background: neutral(6), color: neutral(55) }
           : {
-              background: accentTint(accentToken, 16),
-              color: accentInk(accentToken, 70),
+              background: accentTint(accentToken, 10),
+              color: accentInk(accentToken, 52),
             }
       }
     >
@@ -187,7 +165,7 @@ export function PluginCategoryLabel({
   );
 }
 
-/** The compact, tinted identity chip shared by Browse and related listings. */
+/** The compact, neutral identity chip shared by Browse and related listings. */
 export function CatalogEntryIconChip({
   entry,
   className,
@@ -201,36 +179,20 @@ export function CatalogEntryIconChip({
   };
   className?: string;
 }) {
-  // The accent travels with the shelf group itself, so reordering the groups
-  // in @bb/domain cannot silently repaint the catalog.
-  const accentToken = PLUGIN_CATALOG_SHELF_GROUPS.find((group) =>
-    group.categoryIds.some((categoryId) => categoryId === entry.categoryId),
-  )?.accentToken;
-  // Full-colour artwork carries its own opaque background, which punches a
-  // hole in a tinted chip. Those entries get a neutral chip so they keep the
-  // same footprint as every other icon without fighting the category colour.
-  // Monochrome art and named glyphs adopt the chip's ink, so they keep it.
-  const keepsOwnColors = entry.iconUrl !== null && !entry.iconTinted;
-  const tint = keepsOwnColors ? undefined : accentToken;
+  // Category does not ride the artwork or its tile. Author-supplied images and
+  // SVGs render as supplied above; named UI glyphs inherit only neutral ink.
+  // Classification belongs to the shelf or category label instead.
   // The frame owns the box and the glyph size together; this chip supplies
   // only the paint. Sizing them at two call sites is what let a placeholder
   // glyph outgrow its box and land off-centre.
   return (
     <ResourceIconFrame
       className={cn("rounded-md border", className)}
-      style={
-        tint === undefined
-          ? {
-              background: neutral(5),
-              borderColor: neutral(14),
-              color: neutral(55),
-            }
-          : {
-              background: accentTint(tint, 14),
-              borderColor: accentTint(tint, 40),
-              color: accentInk(tint, 62),
-            }
-      }
+      style={{
+        background: neutral(5),
+        borderColor: neutral(14),
+        color: neutral(55),
+      }}
     >
       {(glyphClassName) => (
         <CatalogEntryIcon entry={entry} className={glyphClassName} />

@@ -2,9 +2,15 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToolsSidebar } from "./ToolsSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
+
+const usePluginListMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
+  usePluginList: usePluginListMock,
+}));
 
 afterEach(cleanup);
 
@@ -17,7 +23,10 @@ const PAGE_ROWS = [
   "My skills",
 ];
 
-function renderAt(path: string, appRoutePath = "/") {
+function renderAt(path: string, appRoutePath = "/", pluginCount = 1) {
+  usePluginListMock.mockReturnValue({
+    data: { plugins: Array.from({ length: pluginCount }) },
+  });
   return render(
     <MemoryRouter initialEntries={[path]}>
       <SidebarProvider>
@@ -35,6 +44,17 @@ function renderAt(path: string, appRoutePath = "/") {
 const row = (name: string) => screen.getByRole("link", { name });
 
 describe("ToolsSidebar", () => {
+  it("removes Installed plugins when there is nothing to manage", () => {
+    renderAt("/extensions/plugins", "/", 0);
+
+    expect(row("Browse plugins")).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "Installed plugins" }),
+    ).toBeNull();
+    expect(row("My plugins")).toBeTruthy();
+    expect(row("Installed skills")).toBeTruthy();
+  });
+
   it("groups every Extensions page by noun and keeps the back target", () => {
     renderAt("/extensions/plugins", "/projects/proj_one");
 

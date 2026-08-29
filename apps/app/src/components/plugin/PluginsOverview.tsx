@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
@@ -43,6 +43,7 @@ import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-colle
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginDetailRoutePath,
+  getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 
@@ -202,6 +203,29 @@ export function PluginsOverview({
     });
   };
 
+  if (
+    activeMode === "installed" &&
+    listQuery.data === undefined &&
+    listQuery.isFetching
+  ) {
+    return (
+      <div className={cn("py-6", TOOLS_PAGE_BAND_CLASSES)}>
+        <ResourceListState state="loading" message="Loading plugins" />
+      </div>
+    );
+  }
+
+  // Installed represents objects that exist, not an onboarding destination.
+  // Once the list resolves empty, remove the stale/deep-linked projection and
+  // let Browse become the canonical Extensions landing page again.
+  if (
+    activeMode === "installed" &&
+    listQuery.isSuccess &&
+    plugins.length === 0
+  ) {
+    return <Navigate to={getPluginsRoutePath()} replace />;
+  }
+
   // Browse renders no page shell at all — its actions live in the hero's CTA
   // row. Installed keeps the New plugin button, which starts a thread, plus
   // an on-demand update check beside it (the server also sweeps every 6h).
@@ -243,31 +267,33 @@ export function PluginsOverview({
         // width on compact screens and clips their persistent switches.
         contentClassName="[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full"
         toolbar={
-          <ResourceToolbar
-            searchValue={installedQuery}
-            searchPlaceholder="Search installed plugins"
-            onSearchChange={setInstalledQuery}
-            action={installedActions}
-            controls={
-              <>
-                <InstalledPluginSourceFilter
-                  value={sourceFilter}
-                  onChange={setSourceFilter}
-                />
-                <ResourceSortMenu
-                  value="alpha"
-                  direction={installedSortDirection}
-                  compact
-                  options={[{ id: "alpha", label: "Plugin name" }]}
-                  onChange={() =>
-                    setInstalledSortDirection((current) =>
-                      current === "asc" ? "desc" : "asc",
-                    )
-                  }
-                />
-              </>
-            }
-          />
+          plugins.length > 0 ? (
+            <ResourceToolbar
+              searchValue={installedQuery}
+              searchPlaceholder="Search installed plugins"
+              onSearchChange={setInstalledQuery}
+              action={installedActions}
+              controls={
+                <>
+                  <InstalledPluginSourceFilter
+                    value={sourceFilter}
+                    onChange={setSourceFilter}
+                  />
+                  <ResourceSortMenu
+                    value="alpha"
+                    direction={installedSortDirection}
+                    compact
+                    options={[{ id: "alpha", label: "Plugin name" }]}
+                    onChange={() =>
+                      setInstalledSortDirection((current) =>
+                        current === "asc" ? "desc" : "asc",
+                      )
+                    }
+                  />
+                </>
+              }
+            />
+          ) : undefined
         }
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
@@ -292,13 +318,15 @@ export function PluginsOverview({
             />
           ) : (
             <>
-              <PluginCategoryChips
-                options={categoryOptions}
-                value={activeCategoryFilter}
-                allLabel={`All · ${plugins.length}`}
-                ariaLabel="Filter installed plugins by category"
-                onChange={setCategoryFilter}
-              />
+              {plugins.length > 0 ? (
+                <PluginCategoryChips
+                  options={categoryOptions}
+                  value={activeCategoryFilter}
+                  allLabel={`All · ${plugins.length}`}
+                  ariaLabel="Filter installed plugins by category"
+                  onChange={setCategoryFilter}
+                />
+              ) : null}
               <InstalledPluginsTab
                 plugins={installedList.items}
                 onOpenPlugin={(pluginId) => openPlugin(pluginId, "installed")}
@@ -328,26 +356,21 @@ export function PluginsOverview({
     );
   }
 
-  // Browse and Installed are separate top-nav destinations now, not tabs:
-  // Browse is the full-bleed discovery page (its description lives in the
-  // hero), while Installed keeps the collection shell for its description and
-  // actions row.
+  // Browse and My plugins are content-led pages, so neither spends a header
+  // band on description copy. Installed keeps the collection shell because
+  // its management context still benefits from that description.
   return (
     <>
-      {activeMode === "browse" ? (
-        <div className="flex h-full min-h-0 flex-col">{content}</div>
-      ) : (
+      {activeMode === "installed" ? (
         <ResourceCollectionPage
           id="plugins-collection"
-          description={
-            activeMode === "my"
-              ? "Plugins authored from local paths, grouped by their marketplace listing category."
-              : PLUGINS_INSTALLED_DESCRIPTION
-          }
+          description={PLUGINS_INSTALLED_DESCRIPTION}
           bandClassName={TOOLS_PAGE_BAND_CLASSES}
         >
           {content}
         </ResourceCollectionPage>
+      ) : (
+        <div className="flex h-full min-h-0 flex-col">{content}</div>
       )}
       <AddPluginDialog
         open={addDialog.open}

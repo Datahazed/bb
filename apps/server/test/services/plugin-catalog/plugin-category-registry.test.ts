@@ -42,14 +42,14 @@ describe("plugin category registry", () => {
     expect(PLUGIN_CATALOG_CATEGORIES.map((category) => category.id)).toEqual(
       PLUGIN_CATALOG_CATEGORY_IDS,
     );
-    expect(PLUGIN_CATALOG_CATEGORIES).toHaveLength(16);
+    expect(PLUGIN_CATALOG_CATEGORIES).toHaveLength(15);
   });
 
   it("keeps reviewed community entry ids unique and categories valid", () => {
     const ids = Object.keys(REVIEWED_COMMUNITY_ENTRY_CATEGORIES);
     const validCategoryIds = new Set(PLUGIN_CATALOG_CATEGORY_IDS);
 
-    expect(ids).toHaveLength(81);
+    expect(ids).toHaveLength(87);
     expect(new Set(ids).size).toBe(ids.length);
     const assignedCategoryIds = Object.values(
       REVIEWED_COMMUNITY_ENTRY_CATEGORIES,
@@ -76,7 +76,7 @@ describe("plugin category registry", () => {
     expect(
       marketplaceEntryCategoryId({
         schemaVersion: 1,
-        entry: entry("advisor", "agent-tools"),
+        entry: entry("advisor", "code-and-reviews"),
       }),
     ).toBeUndefined();
   });
@@ -108,7 +108,7 @@ describe("plugin category registry", () => {
           name,
           displayName: name === "acme" ? "Acme" : "Other",
           newAndNotable: [],
-          plugins: [entry("listed", "agent-tools")],
+          plugins: [entry("listed", "thread-content")],
         }),
         statsJson: null,
         etag: null,
@@ -157,7 +157,7 @@ describe("plugin category registry", () => {
         displayName: "Acme",
         newAndNotable: [],
         plugins: [
-          entry("installed", "agent-tools"),
+          entry("installed", "thread-content"),
           entry("not-installed", "security"),
         ],
       }),
@@ -177,8 +177,8 @@ describe("plugin category registry", () => {
         [
           installedKey,
           {
-            categoryId: "agent-tools",
-            category: "Agent Tools",
+            categoryId: "thread-content",
+            category: "Thread Content",
             screenshots: [],
           },
         ],

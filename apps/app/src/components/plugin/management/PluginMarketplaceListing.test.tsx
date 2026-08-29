@@ -16,7 +16,7 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
     iconUrl: null,
     iconTinted: false,
     categoryId: "token-usage-and-cost",
-    category: "Token Usage & Cost",
+    category: "Token Usage & Limits",
     screenshots: [],
     newAndNotableRank: null,
     source: `npm:${pluginId}`,
@@ -117,7 +117,7 @@ describe("PluginMarketplaceListing", () => {
     expect(screen.queryByRole("img", { name: /screenshot/u })).toBeNull();
     expect(screen.queryByText("More from this author")).toBeNull();
     expect(screen.getByText("Pat Lee")).toBeTruthy();
-    expect(screen.queryByText("Token Usage & Cost")).toBeNull();
+    expect(screen.queryByText("Token Usage & Limits")).toBeNull();
     expect(document.body.textContent).not.toContain("Other");
   });
 });

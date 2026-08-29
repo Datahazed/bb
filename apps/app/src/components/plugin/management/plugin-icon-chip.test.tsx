@@ -24,9 +24,8 @@ function glyphOf(container: HTMLElement): Element {
 
 describe("catalog entry icon chip", () => {
   it("sizes every icon variant to the frame's glyph size", () => {
-    // The three branches are artwork, monochrome artwork masked to the chip's
-    // ink, and a placeholder glyph. They sit in the same chip beside each
-    // other, so they have to resolve to one footprint.
+    // Raster artwork, custom SVG artwork, and a placeholder glyph sit in the
+    // same chip beside each other, so they have to resolve to one footprint.
     const variants = [
       { label: "placeholder", entry: BASE },
       {
@@ -34,7 +33,7 @@ describe("catalog entry icon chip", () => {
         entry: { ...BASE, iconUrl: "https://example.test/icon.png" },
       },
       {
-        label: "masked artwork",
+        label: "custom SVG artwork",
         entry: {
           ...BASE,
           iconUrl: "https://example.test/icon.svg",
@@ -76,6 +75,17 @@ describe("catalog entry icon chip", () => {
     expect(frameClass).toContain("items-center");
     expect(frameClass).toContain("justify-center");
     expect(frameClass).toContain(RESOURCE_ICON_FRAME_SIZES.md.frame);
+  });
+
+  it("keeps the tile neutral across categories", () => {
+    const memory = render(<CatalogEntryIconChip entry={BASE} />);
+    const security = render(
+      <CatalogEntryIconChip entry={{ ...BASE, categoryId: "security" }} />,
+    );
+
+    expect(memory.container.firstElementChild?.getAttribute("style")).toBe(
+      security.container.firstElementChild?.getAttribute("style"),
+    );
   });
 
   it("renders one glyph per chip, so nothing stacks inside the frame", () => {

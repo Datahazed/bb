@@ -59,7 +59,7 @@ const lifecycleCases: Array<{
 describe("authored plugin listing prompts", () => {
   it("uses the canonical category display name", () => {
     expect(pluginListingCategoryLabel("token-usage-and-cost")).toBe(
-      "Token Usage & Cost",
+      "Token Usage & Limits",
     );
   });
 

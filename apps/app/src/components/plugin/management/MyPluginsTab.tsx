@@ -3,7 +3,6 @@ import type {
   PluginListingLifecycle,
   PluginListingRecord,
 } from "@bb/server-contract";
-import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Pill } from "@bb/shared-ui/pill";
 import {
   ResourceListPanel,
@@ -18,6 +17,7 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { pluginListingCategoryLabel } from "@/lib/plugin-listing-prompts";
+import { PluginCreationEmptyState } from "./PluginCreationEmptyState";
 
 export function PluginListingStatusPill({
   lifecycle,
@@ -146,9 +146,7 @@ export function MyPluginsTab({
     return <ResourceListState state="loading" message="Loading your plugins" />;
   }
   if (groups.length === 0) {
-    return (
-      <EmptyState message="No authored plugins yet. Install a local plugin path or create a plugin to get started." />
-    );
+    return <PluginCreationEmptyState />;
   }
 
   return (

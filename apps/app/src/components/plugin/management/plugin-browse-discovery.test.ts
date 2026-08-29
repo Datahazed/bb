@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import {
-  browseShelfGroups,
   categoryShelves,
   newAndNotableEntries,
   sortPluginEntries,
@@ -19,8 +18,8 @@ function entry(
     icon: null,
     iconUrl: null,
     iconTinted: false,
-    categoryId: "agent-tools",
-    category: "Agent Tools",
+    categoryId: "thread-content",
+    category: "Thread Content",
     screenshots: [],
     newAndNotableRank: null,
     installs: null,
@@ -40,10 +39,10 @@ function entry(
 }
 
 describe("plugin browse discovery projections", () => {
-  it("maps server category labels while excluding v1 fallback entries", () => {
+  it("uses canonical category copy while excluding v1 fallback entries", () => {
     const shelves = categoryShelves([
-      entry("agent-b"),
-      entry("agent-a"),
+      entry("agent-b", { category: "Server-provided alias" }),
+      entry("agent-a", { category: "Server-provided alias" }),
       entry("theme-a", {
         categoryId: "themes-and-appearance",
         category: "Themes & Appearance",
@@ -58,7 +57,7 @@ describe("plugin browse discovery projections", () => {
         shelf.entries.map(({ entryId }) => entryId),
       ]),
     ).toEqual([
-      ["agent-tools", "Agent Tools", ["agent-a", "agent-b"]],
+      ["thread-content", "Thread Content", ["agent-a", "agent-b"]],
       ["themes-and-appearance", "Themes & Appearance", ["theme-a"]],
     ]);
   });
@@ -86,43 +85,6 @@ describe("plugin browse discovery projections", () => {
         }),
       ]).map((item) => item.entryId),
     ).toEqual(["older"]);
-  });
-
-  it("projects categories through the shared five-shelf grouping", () => {
-    const groups = browseShelfGroups([
-      entry("theme", {
-        categoryId: "themes-and-appearance",
-        category: "Themes & Appearance",
-      }),
-      entry("timeline", {
-        categoryId: "thread-messages-and-timelines",
-        category: "Thread Messages & Timelines",
-      }),
-      entry("provider", {
-        categoryId: "agents-and-providers",
-        category: "Agents & Providers",
-      }),
-      entry("security", {
-        categoryId: "security",
-        category: "Security",
-      }),
-      entry("host", {
-        categoryId: "machines-and-hosts",
-        category: "Machines & Hosts",
-      }),
-    ]);
-
-    expect(
-      groups.map(({ id, entries }) => [
-        id,
-        entries.map(({ entryId }) => entryId),
-      ]),
-    ).toEqual([
-      ["threads-and-interface", ["theme", "timeline"]],
-      ["agents-and-workflows", ["provider"]],
-      ["insights-and-security", ["security"]],
-      ["machines-and-hosts", ["host"]],
-    ]);
   });
 
   it("sorts app entries in both directions", () => {

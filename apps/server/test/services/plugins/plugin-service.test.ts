@@ -177,7 +177,7 @@ describe("plugin service", () => {
             displayName: "Listed",
             description: "A listed plugin.",
             icon: "Zap",
-            category: "agent-tools",
+            category: "thread-content",
             screenshots: ["./screenshots/listed.png"],
             author: { name: "Acme" },
             source: { npm: { package: "bb-plugin-listed", range: "^1" } },
@@ -226,8 +226,8 @@ describe("plugin service", () => {
     expect(
       service.list().find((plugin) => plugin.id === "listed"),
     ).toMatchObject({
-      categoryId: "agent-tools",
-      category: "Agent Tools",
+      categoryId: "thread-content",
+      category: "Thread Content",
       screenshots: ["https://plugins.example/screenshots/listed.png"],
     });
 

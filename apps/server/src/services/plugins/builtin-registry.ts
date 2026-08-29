@@ -40,13 +40,13 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
-    category: "composer-and-prompts",
+    category: "thread-content",
   },
   {
     name: "automations",
     pluginId: "automations",
     defaultEnabled: true,
-    category: "automation",
+    category: "tasks-workflows",
     screenshots: [
       "screenshots/automations-catalog.png",
       "screenshots/automations-sidebar.png",
@@ -56,7 +56,7 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     name: "connect",
     pluginId: "connect",
     defaultEnabled: true,
-    category: "machines-and-hosts",
+    category: "remote-development",
   },
   {
     name: "custom-instructions",
@@ -74,7 +74,7 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     name: "inline-vis",
     pluginId: "inline-vis",
     defaultEnabled: true,
-    category: "thread-messages-and-timelines",
+    category: "thread-content",
   },
   {
     name: "monaco-editor",
@@ -122,7 +122,7 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     name: "keep-awake",
     pluginId: "keep-awake",
     defaultEnabled: true,
-    category: "machines-and-hosts",
+    category: "system-management",
   },
   {
     name: "plugin-api-docs",
@@ -151,13 +151,13 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,
-    category: "thread-messages-and-timelines",
+    category: "thread-content",
   },
   {
     name: "workflows",
     pluginId: "workflows",
     defaultEnabled: false,
-    category: "automation",
+    category: "tasks-workflows",
   },
 ] satisfies Omit<BundledPluginDefinition, "autoInstall">[];
 
@@ -183,7 +183,7 @@ const OFFICIAL_PLUGIN_DEFINITIONS = [
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,
-    category: "memory-and-context",
+    category: "files-and-viewers",
   },
   {
     name: "memory",
@@ -195,7 +195,7 @@ const OFFICIAL_PLUGIN_DEFINITIONS = [
     name: "tasks",
     pluginId: "tasks",
     defaultEnabled: true,
-    category: "task-tracking",
+    category: "tasks-workflows",
   },
 ] satisfies Omit<BundledPluginDefinition, "autoInstall">[];
 

@@ -1,6 +1,6 @@
 import {
-  PLUGIN_CATALOG_SHELF_GROUPS,
   defaultPluginDiscoverySortDirection,
+  pluginCatalogCategory,
   pluginDiscoveryNewAndNotableEntries,
   pluginDiscoveryShelves,
   sortPluginDiscoveryEntries,
@@ -8,7 +8,6 @@ import {
   type PluginDiscoveryEntryAccessors,
   type PluginDiscoverySort,
   type PluginDiscoverySortDirection,
-  type PluginCatalogShelfGroupId,
 } from "@bb/domain";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 
@@ -23,14 +22,7 @@ export type CategorizedPluginCatalogEntry = PluginCatalogSearchEntry & {
 export interface PluginCategoryShelf {
   id: CategorizedPluginCatalogEntry["categoryId"];
   label: string;
-  entries: CategorizedPluginCatalogEntry[];
-}
-
-export interface PluginBrowseShelfGroup {
-  id: PluginCatalogShelfGroupId;
-  label: string;
   description: string;
-  categoryIds: readonly CategorizedPluginCatalogEntry["categoryId"][];
   entries: CategorizedPluginCatalogEntry[];
 }
 
@@ -74,36 +66,23 @@ const DISCOVERY_ACCESSORS = {
   AppPluginCategory
 >;
 
-/** Groups categorized entries while leaving v1 fallback entries ungrouped. */
+/**
+ * Groups categorized entries while leaving v1 fallback entries ungrouped.
+ * The canonical taxonomy owns shelf copy so Browse and its category picker
+ * cannot drift when a marketplace sends a stale display label.
+ */
 export function categoryShelves(
   entries: readonly PluginCatalogSearchEntry[],
 ): PluginCategoryShelf[] {
-  return pluginDiscoveryShelves(entries, DISCOVERY_ACCESSORS).map((shelf) => ({
-    id: shelf.category.id,
-    label: shelf.category.label,
-    entries: shelf.entries.filter(hasPluginCatalogCategory),
-  }));
-}
-
-/** Groups categorized entries into the five presentation shelves. */
-export function browseShelfGroups(
-  entries: readonly PluginCatalogSearchEntry[],
-): PluginBrowseShelfGroup[] {
-  const categorizedEntries = entries.filter(hasPluginCatalogCategory);
-  return PLUGIN_CATALOG_SHELF_GROUPS.map((group) => {
-    const categoryIds = new Set(group.categoryIds);
+  return pluginDiscoveryShelves(entries, DISCOVERY_ACCESSORS).map((shelf) => {
+    const category = pluginCatalogCategory(shelf.category.id);
     return {
-      id: group.id,
-      label: group.displayName,
-      description: group.description,
-      categoryIds: group.categoryIds,
-      entries: categorizedEntries
-        .filter((entry) => categoryIds.has(entry.categoryId))
-        .sort((left, right) =>
-          left.displayName.localeCompare(right.displayName),
-        ),
+      id: category.id,
+      label: category.displayName,
+      description: category.description,
+      entries: shelf.entries.filter(hasPluginCatalogCategory),
     };
-  }).filter((group) => group.entries.length > 0);
+  });
 }
 
 /** Curated official order wins; a categorized catalog falls back to newest. */

@@ -114,8 +114,8 @@ const AUTOMATIONS_CATALOG_ENTRY = {
   displayName: "Automations",
   description: AUTOMATIONS_PLUGIN.description,
   icon: AUTOMATIONS_PLUGIN.icon,
-  categoryId: "automation",
-  category: "Workflow management",
+  categoryId: "tasks-workflows",
+  category: "Tasks & Workflows",
   source: AUTOMATIONS_PLUGIN.source,
   installed: true,
 };
@@ -127,8 +127,8 @@ const DOCS_CATALOG_ENTRY = {
   displayName: "Docs",
   description: "Create and edit Markdown documents.",
   icon: "NotebookText",
-  categoryId: "memory-and-context",
-  category: "Context & knowledge",
+  categoryId: "files-and-viewers",
+  category: "File Viewers & Editors",
   source: "builtin:docs",
   installed: true,
 };
@@ -187,6 +187,9 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
           },
         });
       }
+      if (url.pathname === "/api/v1/plugin-listings") {
+        return responseJson({ records: [], notices: [] });
+      }
       return responseJson({ error: "not found" }, 404);
     }),
   );
@@ -194,6 +197,10 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
 
 function LocationPath() {
   return <span data-testid="location-path">{useLocation().pathname}</span>;
+}
+
+function LocationSearch() {
+  return <span data-testid="location-search">{useLocation().search}</span>;
 }
 
 afterEach(() => {
@@ -205,6 +212,47 @@ afterEach(() => {
 });
 
 describe("PluginsOverview", () => {
+  it("redirects an empty Installed collection to Browse", async () => {
+    installFetch([]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+          <LocationSearch />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("location-search").textContent).toBe("");
+    expect(screen.queryByTestId("inline-composer")).toBeNull();
+    expect(
+      screen.queryByRole("textbox", { name: "Search installed plugins" }),
+    ).toBeNull();
+  });
+
+  it("uses the creation surface when My plugins has no authored plugins", async () => {
+    installFetch([AUTOMATIONS_PLUGIN]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins?view=my"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("inline-composer")).toBeTruthy();
+    expect(screen.getByText("Start from an example")).toBeTruthy();
+    expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Plugins authored from local paths, grouped by their marketplace listing category.",
+      ),
+    ).toBeNull();
+  });
+
   it("opens on Browse and renders it before Installed", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -822,8 +870,8 @@ describe("PluginsOverview", () => {
         ...AUTOMATIONS_PLUGIN,
         id: "builtin-one",
         name: "Builtin One",
-        categoryId: "automation",
-        category: "Automation",
+        categoryId: "tasks-workflows",
+        category: "Tasks & Workflows",
       },
       {
         ...AUTOMATIONS_PLUGIN,
@@ -867,7 +915,9 @@ describe("PluginsOverview", () => {
       "plugin-row-direct-one",
     ]);
     expect(screen.getByRole("radio", { name: "All · 3" })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Automation" })).toBeTruthy();
+    expect(
+      screen.getByRole("radio", { name: "Tasks & Workflows" }),
+    ).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Security" })).toBeTruthy();
     const categoryRow = screen.getByRole("radiogroup", {
       name: "Filter installed plugins by category",
@@ -876,7 +926,9 @@ describe("PluginsOverview", () => {
     expect(categoryRow.classList.contains("overflow-x-auto")).toBe(false);
     expect(screen.queryByText("Other")).toBeNull();
 
-    fireEvent.click(screen.getByRole("radio", { name: "Automation" }));
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Tasks & Workflows" }),
+    );
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
     });
@@ -884,7 +936,7 @@ describe("PluginsOverview", () => {
     // Category is a collection filter only, never a row pill.
     expect(
       screen.getByTestId("plugin-row-builtin-one").textContent,
-    ).not.toContain("Automation");
+    ).not.toContain("Tasks & Workflows");
 
     fireEvent.click(screen.getByRole("radio", { name: "All · 3" }));
     await waitFor(() => {

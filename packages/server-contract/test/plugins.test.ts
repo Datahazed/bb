@@ -194,7 +194,7 @@ describe("plugin catalog contracts", () => {
           icon: "StickyNote",
           author: { name: "BB" },
           source: { npm: { package: "bb-plugin-notes" } },
-          category: "automation",
+          category: "tasks-workflows",
           screenshots: [],
         },
         futureRequestField: true,

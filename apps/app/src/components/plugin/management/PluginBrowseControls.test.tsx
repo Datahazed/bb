@@ -17,7 +17,7 @@ import {
 const OPTIONS: PluginBrowseCategoryOption[] = [
   { id: "memory-and-context", label: "Memory & Context", count: 4 },
   { id: "security", label: "Security", count: 2 },
-  { id: "automation", label: "Automation", count: 7 },
+  { id: "tasks-workflows", label: "Tasks & Workflows", count: 7 },
 ];
 
 function renderFilter(
@@ -95,8 +95,8 @@ describe("PluginBrowseCategoryFilter", () => {
   it("still selects a different category and the explicit All row", () => {
     const { onChange } = renderFilter({ value: "security" });
     openMenu("Security");
-    fireEvent.click(screen.getByRole("option", { name: /Automation/u }));
-    expect(onChange).toHaveBeenCalledWith("automation");
+    fireEvent.click(screen.getByRole("option", { name: /Tasks & Workflows/u }));
+    expect(onChange).toHaveBeenCalledWith("tasks-workflows");
 
     onChange.mockClear();
     openMenu("Security");
@@ -105,8 +105,8 @@ describe("PluginBrowseCategoryFilter", () => {
   });
 
   it("keeps keyboard traversal and toggle-off on the focused option", () => {
-    const { onChange } = renderFilter({ value: "automation" });
-    openMenu("Automation");
+    const { onChange } = renderFilter({ value: "tasks-workflows" });
+    openMenu("Tasks & Workflows");
 
     const search = screen.getByRole("combobox", {
       name: "Search plugin categories",
@@ -116,7 +116,7 @@ describe("PluginBrowseCategoryFilter", () => {
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
     const last = document.activeElement as HTMLElement;
-    expect(last.textContent).toContain("Automation");
+    expect(last.textContent).toContain("Tasks & Workflows");
     expect(last.getAttribute("aria-selected")).toBe("true");
 
     fireEvent.click(last);

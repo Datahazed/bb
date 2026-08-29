@@ -21,7 +21,7 @@ export const MARKETPLACE_V2_FIXTURE: MarketplaceV2Manifest = {
       displayName: "Prompt Library",
       description: "Save and reuse project prompts from the composer.",
       icon: "Text",
-      category: "composer-and-prompts",
+      category: "thread-content",
       screenshots: [
         "screenshots/prompt-library.png",
         "https://cdn.getbb.app/prompt-library-dark.webp?v=2",

@@ -50,7 +50,7 @@ function officialEntry(
     pluginId: "builtin-fixture",
     autoInstall: false,
     defaultEnabled: true,
-    category: "task-tracking",
+    category: "tasks-workflows",
     rootDir: fixtureRoot,
     ...overrides,
   };
@@ -90,15 +90,15 @@ describe("official plugin registry invariants", () => {
 
   it("assigns every bundled plugin to one curated store category", () => {
     const expectedCategories = {
-      "ask-user-question": "composer-and-prompts",
-      automations: "automation",
-      connect: "machines-and-hosts",
+      "ask-user-question": "thread-content",
+      automations: "tasks-workflows",
+      connect: "remote-development",
       "custom-instructions": "memory-and-context",
       "plugin-api-tester": "plugin-development",
-      docs: "memory-and-context",
+      docs: "files-and-viewers",
       github: "code-and-reviews",
-      "inline-vis": "thread-messages-and-timelines",
-      "keep-awake": "machines-and-hosts",
+      "inline-vis": "thread-content",
+      "keep-awake": "system-management",
       memory: "memory-and-context",
       "monaco-editor": "files-and-viewers",
       "pdf-preview": "files-and-viewers",
@@ -109,9 +109,9 @@ describe("official plugin registry invariants", () => {
       "provider-pi": "agents-and-providers",
       "provider-retry": "agents-and-providers",
       secrets: "security",
-      "side-chat": "thread-messages-and-timelines",
-      tasks: "task-tracking",
-      workflows: "automation",
+      "side-chat": "thread-content",
+      tasks: "tasks-workflows",
+      workflows: "tasks-workflows",
     };
 
     expect(new Set(BUNDLED_PLUGINS.map((plugin) => plugin.name)).size).toBe(

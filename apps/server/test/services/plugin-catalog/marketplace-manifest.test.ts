@@ -70,7 +70,7 @@ function manifest(plugins: unknown[]): unknown {
 }
 
 function entryV2(overrides: Record<string, unknown> = {}): unknown {
-  return entry({ category: "agent-tools", screenshots: [], ...overrides });
+  return entry({ category: "thread-content", screenshots: [], ...overrides });
 }
 
 function manifestV2(plugins: unknown[], newAndNotable: string[] = []): unknown {
@@ -148,7 +148,7 @@ describe("marketplace manifest schema", () => {
   });
 
   it("keeps v1 strict and reserves discovery fields for v2", () => {
-    expect(() => parse([entry({ category: "agent-tools" })])).toThrow(
+    expect(() => parse([entry({ category: "thread-content" })])).toThrow(
       /unrecognized key/iu,
     );
     expect(() =>

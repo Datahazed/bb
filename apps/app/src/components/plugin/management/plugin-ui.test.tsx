@@ -6,7 +6,7 @@ import { CatalogEntryIcon } from "./plugin-ui";
 
 afterEach(cleanup);
 
-it("masks a tinted icon instead of embedding it as an image", () => {
+it("renders author artwork as supplied even when catalog metadata marks it tinted", () => {
   const iconUrl = "/api/v1/plugin-catalog/icons/bb-community/agent-proxy?h=ab";
   const view = render(
     <CatalogEntryIcon
@@ -20,12 +20,12 @@ it("masks a tinted icon instead of embedding it as an image", () => {
     />,
   );
 
-  // An <img> resolves the SVG's currentColor against the image document, so
-  // the mark would paint black on a dark surface.
-  expect(view.container.querySelector("img")).toBeNull();
-  expect(
-    view.container.querySelector(`[data-plugin-icon-asset="${iconUrl}"]`),
-  ).toBeTruthy();
+  expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
+    iconUrl,
+  );
+  // Masking would repaint the asset with bb's currentColor. A catalog hint
+  // cannot safely distinguish a UI glyph from a monochrome brand mark.
+  expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
 });
 
 it("embeds a marketplace listing's logo as an image", () => {

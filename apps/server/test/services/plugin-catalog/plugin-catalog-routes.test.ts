@@ -123,7 +123,7 @@ describe("plugin catalog routes", () => {
                   displayName: "Acme Widgets",
                   description: "Widgets for threads.",
                   icon: { url: "./icons/widgets.svg" },
-                  category: "automation",
+                  category: "tasks-workflows",
                   screenshots: [],
                   author: { name: "Acme" },
                   source: {

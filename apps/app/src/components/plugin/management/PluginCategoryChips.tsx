@@ -22,12 +22,14 @@ export function PluginCategoryChips({
   onChange,
   allLabel = "All",
   ariaLabel,
+  centered = false,
 }: {
   options: readonly PluginCategoryChipOption[];
   value: string | null;
   onChange: (value: string | null) => void;
   allLabel?: string;
   ariaLabel: string;
+  centered?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const allMeasureRef = useRef<HTMLButtonElement>(null);
@@ -90,9 +92,12 @@ export function PluginCategoryChips({
         ref={containerRef}
         role="radiogroup"
         aria-label={ariaLabel}
-        // Packed left at a tight gap rather than justified across the row: spreading
-        // them put ~30px between pills, which read as unrelated controls.
-        className="flex min-w-0 items-center gap-1.5 overflow-hidden"
+        // Keep the pills packed at a tight gap. Browse centers that packed
+        // group; Installed keeps it aligned with its list rows.
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 overflow-hidden",
+          centered && "justify-center",
+        )}
       >
         <Button
           type="button"

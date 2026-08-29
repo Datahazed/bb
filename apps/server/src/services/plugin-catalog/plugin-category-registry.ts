@@ -27,10 +27,9 @@ export {
 };
 
 /**
- * Reviewed taxonomy handoff for all 81 BB Community entries. The first 63
- * were reviewed at get-bb/marketplace commit
- * 410621e9d0190a1711623dac8a02db1a8a2a83b2; the remaining 18 assignments
- * were confirmed before publisher integration. The marketplace repository
+ * Reviewed taxonomy handoff for all 87 BB Community entries at
+ * get-bb/marketplace commit e937f462a47180aef8725c5e71af6898da5ccfdd.
+ * The marketplace repository
  * uses this map to seed its single source-entry model before projecting v1
  * and v2. Production v1 fallback never applies it: v1 remains untouched and
  * its entries retain genuine category absence. Development builds also join
@@ -42,8 +41,7 @@ export {
  * repository's own git history: an entry file's first commit is when the
  * plugin was published, its latest is when the listing last changed.
  *
- * Same standing as {@link REVIEWED_COMMUNITY_ENTRY_CATEGORIES} and the same
- * lifetime — v1 carries no dates, so until the registry publishes a v2
+ * V1 carries no dates, so until the registry publishes a v2
  * manifest the "Recently added" sort has nothing to order by. Joined onto the
  * live v1 registry in development only; production v1 fallback never applies
  * it, and a real v2 manifest supersedes it entirely.
@@ -384,102 +382,93 @@ export const REVIEWED_COMMUNITY_ENTRY_DATES: Readonly<
 export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES: Readonly<
   Record<string, PluginCatalogCategoryId>
 > = {
-  ayu: "themes-and-appearance",
-  monokai: "themes-and-appearance",
-  fonts: "themes-and-appearance",
-  pets: "themes-and-appearance",
-  "theme-toggle": "themes-and-appearance",
-  "tokyo-night": "themes-and-appearance",
-  "ui-tweaks": "themes-and-appearance",
-
+  "advisor": "code-and-reviews",
+  "agent-plugins": "agents-and-providers",
+  "agent-proxy": "agents-and-providers",
+  "agentation": "plugin-development",
+  "agentation-mentions": "plugin-development",
+  "amp": "agents-and-providers",
   "arc-switcher": "thread-lists-and-navigation",
-  cascade: "thread-lists-and-navigation",
-  "gtd-sidebar": "thread-lists-and-navigation",
-  t3sidebar: "thread-lists-and-navigation",
-  "thread-namer": "thread-lists-and-navigation",
-  "tinted-threads": "thread-lists-and-navigation",
+  "audio-preview": "files-and-viewers",
+  "auto-archive": "thread-lists-and-navigation",
+  "autorouter": "agents-and-providers",
+  "ayu": "themes-and-appearance",
+  "monokai": "themes-and-appearance",
   "bb-sidebar": "thread-lists-and-navigation",
+  "bb-ui-reference": "plugin-development",
+  "bb-better-latex": "thread-content",
+  "bots": "agents-and-providers",
+  "callstack": "code-and-reviews",
+  "cascade": "thread-lists-and-navigation",
+  "agent-checklists": "tasks-workflows",
+  "chime": "notifications-and-attention",
+  "cloud-sandbox": "remote-development",
+  "code-review": "code-and-reviews",
+  "context-meter": "token-usage-and-cost",
   "copy-session-id": "thread-lists-and-navigation",
-  "sidebar-filter": "thread-lists-and-navigation",
-  "thread-provider-icons": "thread-lists-and-navigation",
-
-  "bb-better-latex": "thread-messages-and-timelines",
-  "emoji-react": "thread-messages-and-timelines",
-  "image-preview": "thread-messages-and-timelines",
-  "message-timestamps": "thread-messages-and-timelines",
-  "bb-rpiv-todo-renderer": "thread-messages-and-timelines",
-  "session-notes": "thread-messages-and-timelines",
-  "sticky-notes": "thread-messages-and-timelines",
-
-  dispatch: "composer-and-prompts",
-  "prompt-enhancer": "composer-and-prompts",
-  prompts: "composer-and-prompts",
-  rephrase: "composer-and-prompts",
-
-  noema: "memory-and-context",
+  "dependabot": "code-and-reviews",
+  "disk-usage": "system-management",
+  "dispatch": "tasks-workflows",
+  "emoji-react": "thread-content",
+  "file-manager": "files-and-viewers",
+  "floating-terminal": "terminals",
+  "fonts": "themes-and-appearance",
+  "git-history": "code-and-reviews",
+  "gh-stack": "code-and-reviews",
+  "gitlab": "code-and-reviews",
+  "global-workflows": "tasks-workflows",
+  "gtd-sidebar": "thread-lists-and-navigation",
+  "handoff": "agents-and-providers",
+  "headroom": "token-usage-and-cost",
+  "image-preview": "thread-content",
+  "lanes": "token-usage-and-cost",
+  "linear": "tasks-workflows",
+  "message-timestamps": "thread-content",
+  "model-presets": "agents-and-providers",
+  "attention": "notifications-and-attention",
+  "noema": "memory-and-context",
+  "noisegate": "thread-content",
+  "notify": "notifications-and-attention",
+  "ntfy": "notifications-and-attention",
+  "pdf-viewer": "files-and-viewers",
+  "perspectives": "agents-and-providers",
+  "pets": "themes-and-appearance",
+  "ports": "system-management",
+  "pr-manager": "code-and-reviews",
   "progressive-skill": "memory-and-context",
   "project-instructions": "memory-and-context",
-
-  advisor: "agent-tools",
-  noisegate: "agent-tools",
-  perspectives: "agent-tools",
-  rtk: "agent-tools",
-  unslop: "agent-tools",
-
-  "security-guidance": "security",
-
-  "agent-proxy": "agents-and-providers",
-  amp: "agents-and-providers",
-  handoff: "agents-and-providers",
-  autorouter: "agents-and-providers",
-  bots: "agents-and-providers",
+  "prompt-enhancer": "thread-content",
+  "prompts": "thread-content",
   "provider-authentication": "agents-and-providers",
-
-  "context-meter": "token-usage-and-cost",
-  headroom: "token-usage-and-cost",
-  lanes: "token-usage-and-cost",
-  "usage-page": "token-usage-and-cost",
-  "usage-tracker": "token-usage-and-cost",
-  usage: "token-usage-and-cost",
   "provider-usage": "token-usage-and-cost",
-  "usage-meter": "token-usage-and-cost",
-
-  chime: "notifications-and-attention",
-  attention: "notifications-and-attention",
-  notify: "notifications-and-attention",
-  ntfy: "notifications-and-attention",
-  "web-push-notify": "notifications-and-attention",
-
-  callstack: "code-and-reviews",
-  dependabot: "code-and-reviews",
-  "gh-stack": "code-and-reviews",
-  gitlab: "code-and-reviews",
-  slopcop: "code-and-reviews",
-  "git-history": "code-and-reviews",
+  "rephrase": "thread-content",
   "repo-watch": "code-and-reviews",
-
-  monaco: "files-and-viewers",
-  "audio-preview": "files-and-viewers",
-  "pdf-viewer": "files-and-viewers",
-
-  "disk-usage": "machines-and-hosts",
-  "floating-terminal": "machines-and-hosts",
-  "worktree-setup": "machines-and-hosts",
-  "wterm-terminal-preview": "machines-and-hosts",
-  "file-manager": "machines-and-hosts",
-  ports: "machines-and-hosts",
-  "server-status": "machines-and-hosts",
-
-  agentation: "plugin-development",
-  "agentation-mentions": "plugin-development",
-  "bb-ui-reference": "plugin-development",
-  traces: "plugin-development",
-
-  "agent-checklists": "task-tracking",
-  taskboard: "task-tracking",
-
-  "global-workflows": "automation",
-  "auto-archive": "automation",
+  "bb-rpiv-todo-renderer": "thread-content",
+  "rtk": "token-usage-and-cost",
+  "security-guidance": "security",
+  "server-status": "system-management",
+  "session-notes": "thread-content",
+  "sidebar-filter": "thread-lists-and-navigation",
+  "slopcop": "code-and-reviews",
+  "sticky-notes": "thread-content",
+  "t3sidebar": "thread-lists-and-navigation",
+  "theme-toggle": "themes-and-appearance",
+  "thread-inbox": "thread-lists-and-navigation",
+  "thread-namer": "thread-lists-and-navigation",
+  "thread-provider-icons": "thread-lists-and-navigation",
+  "tinted-threads": "thread-lists-and-navigation",
+  "tokenmaxx": "agents-and-providers",
+  "tokyo-night": "themes-and-appearance",
+  "traces": "plugin-development",
+  "ui-tweaks": "themes-and-appearance",
+  "unslop": "thread-content",
+  "usage-page": "token-usage-and-cost",
+  "usage": "token-usage-and-cost",
+  "usage-meter": "token-usage-and-cost",
+  "web-push-notify": "notifications-and-attention",
+  "worktree-setup": "tasks-workflows",
+  "wterm-terminal-preview": "terminals",
+  "xcode": "code-and-reviews",
 };
 
 /**

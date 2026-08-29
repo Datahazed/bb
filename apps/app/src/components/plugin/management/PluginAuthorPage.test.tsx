@@ -70,20 +70,28 @@ describe("PluginAuthorPage", () => {
     const entries = [
       catalogEntry(
         "emoji-react",
-        "thread-messages-and-timelines",
-        "Thread Messages & Timelines",
+        "thread-content",
+        "Thread Content",
       ),
       catalogEntry(
         "checklists",
-        "thread-messages-and-timelines",
-        "Thread Messages & Timelines",
+        "thread-content",
+        "Thread Content",
       ),
-      catalogEntry("council", "agent-tools", "Agent Tools"),
+      catalogEntry("council", "agents-and-providers", "Agents & Providers"),
       withoutCategory(
-        catalogEntry("legacy-notes", "agent-tools", "Agent Tools"),
+        catalogEntry(
+          "legacy-notes",
+          "agents-and-providers",
+          "Agents & Providers",
+        ),
       ),
       {
-        ...catalogEntry("rival-author", "agent-tools", "Agent Tools"),
+        ...catalogEntry(
+          "rival-author",
+          "agents-and-providers",
+          "Agents & Providers",
+        ),
         author: { name: "Someone Else", url: "https://github.com/else" },
       },
     ];
@@ -124,7 +132,7 @@ describe("PluginAuthorPage", () => {
       ),
     ).toBeTruthy();
     const messages = screen.getByRole("heading", {
-      name: /Thread Messages & Timelines/,
+      name: /Thread Content/,
     }).parentElement;
     expect(messages).not.toBeNull();
     expect(

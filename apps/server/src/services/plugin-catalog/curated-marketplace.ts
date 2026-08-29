@@ -58,7 +58,7 @@ export const BUNDLED_CURATED_MARKETPLACE_SOURCE: CuratedMarketplaceSource = {
       description:
         "Adds an Improve prompt action to the composer that sends your rough draft to a hidden helper agent, which applies the prompt-shaper skill to rewrite it into a clear, complete prompt and returns it in place for review before you send.",
       icon: "AiContentGenerator01",
-      category: "composer-and-prompts",
+      category: "thread-content",
       screenshots: [],
       tags: ["agent-interaction", "prompts"],
       author: { name: "Bersabel Tadesse", github: "brsbl" },

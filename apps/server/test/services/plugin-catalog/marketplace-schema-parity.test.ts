@@ -52,7 +52,7 @@ function manifestV2With(
     schemaVersion: 2,
     newAndNotable,
     plugins: (v1.plugins as Record<string, unknown>[]).map((plugin) => ({
-      category: "agent-tools",
+      category: "thread-content",
       screenshots: [],
       ...plugin,
     })),
@@ -247,7 +247,7 @@ const v2Fixtures: readonly Fixture[] = [
     label: "category and relative screenshots",
     valid: true,
     manifest: manifestV2With({
-      category: "thread-messages-and-timelines",
+      category: "thread-content",
       screenshots: [
         "./screenshots/acme.png",
         "https://cdn.example.com/acme-dark.webp",
@@ -377,7 +377,7 @@ describe("published marketplace schema parity", () => {
       newAndNotable: [],
       plugins: oversize.plugins.map((plugin) => ({
         ...plugin,
-        category: "agent-tools",
+        category: "thread-content",
         screenshots: [],
       })),
     };

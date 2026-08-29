@@ -6,6 +6,7 @@ import {
   SectionSidebarLabel,
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { resolveToolsActivePage, TOOLS_PAGES } from "./tools-navigation";
 
 /**
@@ -55,6 +56,10 @@ export function ToolsSidebar({
 }) {
   const location = useLocation();
   const activePage = resolveToolsActivePage(location.pathname, location.search);
+  const pluginList = usePluginList({ enabled: true });
+  // Installed is absent until the shared query proves there is something to
+  // manage, so an empty account never sees the row flash and disappear.
+  const showInstalledPlugins = (pluginList.data?.plugins.length ?? 0) > 0;
 
   return (
     <SectionSidebar
@@ -84,6 +89,12 @@ export function ToolsSidebar({
             </SectionSidebarLabel>
             <div className="mt-1 space-y-0.5">
               {group.pageIds.map((pageId) => {
+                if (
+                  pageId === "plugins-installed" &&
+                  !showInstalledPlugins
+                ) {
+                  return null;
+                }
                 const page = TOOLS_PAGES.find(
                   (candidate) => candidate.id === pageId,
                 );

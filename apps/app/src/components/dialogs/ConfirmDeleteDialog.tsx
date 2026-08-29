@@ -34,7 +34,7 @@ export function ConfirmDeleteDialogContent({
 }: ConfirmDeleteDialogContentProps) {
   return (
     <>
-      <DialogHeader>
+      <DialogHeader className="space-y-2">
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>

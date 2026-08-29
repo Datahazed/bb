@@ -187,7 +187,7 @@ function createService(args: {
               autoInstall: args.autoInstall ?? true,
               rootDir: args.rootDir ?? fixtureRoot,
               defaultEnabled: args.defaultEnabled ?? true,
-              category: "agent-tools",
+              category: "thread-content",
             },
           ],
     watchBuiltinPluginSources: args.watchBuiltinPluginSources,

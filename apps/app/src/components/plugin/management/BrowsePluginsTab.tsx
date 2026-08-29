@@ -1,27 +1,21 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
 import {
   PLUGIN_CATALOG_CATEGORIES,
-  PLUGIN_CATALOG_SHELF_GROUPS,
   defaultPluginDiscoverySortDirection,
+  pluginCatalogCategoryAccentToken,
 } from "@bb/domain";
 import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
   ResourceCollectionViewport,
-  ResourceInstallControl,
   ResourceListState,
   ResourceShelfAction,
   ResourceSourceShelf,
   ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
-import {
-  ConfirmDeleteDialog,
-  ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -31,25 +25,18 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { appToast } from "@/components/ui/app-toast";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
 import { nextComposerRequestNonce } from "@/components/plugin/browse-hero/browse-hero-archetypes";
 import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
 import {
-  invalidatePluginCatalogSearch,
-  invalidatePluginList,
-} from "@/hooks/cache-owners/plugin-cache-owner";
-import {
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
-import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import { formatInstallCount } from "@/lib/skills-registry";
 import { getPluginAuthorRoutePath } from "@/lib/route-paths";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import {
-  browseShelfGroups,
   categoryShelves,
   newAndNotableEntries,
   publisherGroups,
@@ -63,6 +50,7 @@ import {
   type PluginBrowseCategoryOption,
 } from "./PluginBrowseControls";
 import { PluginCategoryChips } from "./PluginCategoryChips";
+import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
 import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
 
@@ -176,12 +164,6 @@ export function BrowsePluginsTab({
   );
   const selectedCategoryLabel =
     selectedCategory?.displayName ?? selectedCategoryId ?? "All categories";
-  const selectedShelfId = hasCategoryDiscovery
-    ? searchParams.get("shelf")
-    : null;
-  const selectedShelf = PLUGIN_CATALOG_SHELF_GROUPS.find(
-    (group) => group.id === selectedShelfId,
-  );
   const hasInstallCounts = catalogEntries.some(
     (entry) => entry.installs !== null,
   );
@@ -236,11 +218,6 @@ export function BrowsePluginsTab({
     if (selectedCategoryId !== null) {
       return entry.categoryId === selectedCategoryId;
     }
-    if (selectedShelf !== undefined) {
-      return selectedShelf.categoryIds.some(
-        (categoryId) => categoryId === entry.categoryId,
-      );
-    }
     return true;
   });
   const flatEntries =
@@ -248,9 +225,6 @@ export function BrowsePluginsTab({
       ? scopedEntries
       : sortPluginEntries(scopedEntries, activeSort, activeDirection);
   const notableEntries = newAndNotableEntries(categorizedEntries);
-  const notableEntryKeys = new Set(
-    notableEntries.map((entry) => `${entry.marketplace}/${entry.entryId}`),
-  );
   const legacyGroups = publisherGroups(legacyEntries).map((group) => ({
     ...group,
     entries: sortPluginEntries(
@@ -259,7 +233,6 @@ export function BrowsePluginsTab({
       activeSort === null ? "asc" : activeDirection,
     ),
   }));
-  const groupedShelves = browseShelfGroups(entries);
   const showLegacyPublisherHeadings =
     hasCategoryDiscovery || legacyGroups.length > 1;
 
@@ -268,13 +241,6 @@ export function BrowsePluginsTab({
     nextSearchParams.delete("shelf");
     if (categoryId === null) nextSearchParams.delete("category");
     else nextSearchParams.set("category", categoryId);
-    setSearchParams(nextSearchParams);
-  }
-
-  function setShelf(shelfId: string) {
-    const nextSearchParams = new URLSearchParams(searchParams);
-    nextSearchParams.delete("category");
-    nextSearchParams.set("shelf", shelfId);
     setSearchParams(nextSearchParams);
   }
 
@@ -370,7 +336,14 @@ export function BrowsePluginsTab({
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
           <section>
-            <div className="w-full px-[var(--resource-source-shelf-inset)]">
+            <div
+              className={cn(
+                "w-full",
+                activeSort === null &&
+                  selectedCategoryId === null &&
+                  "px-[var(--resource-source-shelf-inset)]",
+              )}
+            >
               <ResourceToolbar
                 searchValue={query}
                 searchPlaceholder="Search plugins"
@@ -409,15 +382,16 @@ export function BrowsePluginsTab({
             </div>
 
             {activeSort === null ? null : (
-              // Same content width as the toolbar above, so the pill row lines
-              // up with the search field rather than running past it.
-              <div className="mt-3 w-full px-[var(--resource-source-shelf-inset)]">
+              // The page band owns the shared left and right edge for the
+              // toolbar, pills, and flat cards below it.
+              <div className="mt-3 w-full">
                 {hasCategoryDiscovery ? (
                   <PluginCategoryChips
                     options={categoryOptions}
                     value={selectedCategoryId}
                     ariaLabel="Filter plugins by category"
                     onChange={setCategory}
+                    centered
                   />
                 ) : null}
               </div>
@@ -469,9 +443,7 @@ export function BrowsePluginsTab({
                 />
               ) : activeSort !== null ? (
                 flatEntries.length === 0 &&
-                (selectedCategoryId !== null ||
-                  selectedShelfId !== null ||
-                  legacyEntries.length === 0) ? (
+                (selectedCategoryId !== null || legacyEntries.length === 0) ? (
                   <ResourceListState
                     state="empty"
                     message="No plugins match these filters."
@@ -486,7 +458,7 @@ export function BrowsePluginsTab({
                         onOpenPlugin={onOpenPlugin}
                       />
                     )}
-                    {selectedCategoryId === null && selectedShelfId === null ? (
+                    {selectedCategoryId === null ? (
                       <LegacyPublisherGroups
                         groups={legacyGroups}
                         showHeadings={showLegacyPublisherHeadings}
@@ -496,12 +468,13 @@ export function BrowsePluginsTab({
                     ) : null}
                   </div>
                 )
-              ) : selectedCategoryId === null && selectedShelfId === null ? (
+              ) : selectedCategoryId === null ? (
                 <div className="space-y-9 [&>*+*]:border-t [&>*+*]:border-border-seam/60 [&>*+*]:pt-9">
                   {hasCategoryDiscovery ? (
                     <BrowseShelf
                       label="New & notable"
                       entries={notableEntries}
+                      showCategory
                       leading={
                         // Filled, and geometric rather than pictorial: a set of
                         // modules reads as "extensions" at 14px, where an
@@ -516,20 +489,14 @@ export function BrowsePluginsTab({
                       onOpenPlugin={onOpenPlugin}
                     />
                   ) : null}
-                  {groupedShelves.map((shelf) => (
+                  {shelves.map((shelf) => (
                     <BrowseShelf
                       key={shelf.id}
+                      categoryId={shelf.id}
                       label={shelf.label}
                       description={shelf.description}
-                      entries={shelf.entries
-                        .filter(
-                          (entry) =>
-                            !notableEntryKeys.has(
-                              `${entry.marketplace}/${entry.entryId}`,
-                            ),
-                        )
-                        .slice(0, 6)}
-                      onViewAll={() => setShelf(shelf.id)}
+                      entries={shelf.entries.slice(0, 6)}
+                      onViewAll={() => setCategory(shelf.id)}
                       onInstall={onInstall}
                       onOpenPlugin={onOpenPlugin}
                     />
@@ -553,18 +520,12 @@ export function BrowsePluginsTab({
                       Browse plugins
                     </ResourceShelfAction>
                     <h2 className="text-base font-semibold text-foreground">
-                      {selectedCategoryId === null
-                        ? (selectedShelf?.displayName ?? selectedShelfId)
-                        : selectedCategoryLabel}
+                      {selectedCategoryLabel}
                       <span className="ml-1.5 text-xs font-normal text-subtle-foreground">
                         · {scopedEntries.length} plugins
                       </span>
                     </h2>
-                    {selectedCategoryId === null && selectedShelf ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {selectedShelf.description}
-                      </p>
-                    ) : selectedCategory?.description ? (
+                    {selectedCategory?.description ? (
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selectedCategory.description}
                       </p>
@@ -578,7 +539,6 @@ export function BrowsePluginsTab({
                   ) : (
                     <PluginCatalogGrid
                       entries={flatEntries}
-                      showCategory={selectedShelf !== undefined}
                       onInstall={onInstall}
                       onOpenPlugin={onOpenPlugin}
                     />
@@ -618,7 +578,7 @@ export function PluginCatalogGrid({
     <PluginCatalogCard
       key={`${entry.marketplace}/${entry.entryId}`}
       entry={entry}
-      installedPluginId={entry.installed ? entry.pluginId : null}
+      installed={entry.installed}
       showCategory={showCategory}
       onInstall={onInstall}
       onOpenPlugin={onOpenPlugin}
@@ -644,26 +604,45 @@ export function PluginCatalogGrid({
 }
 
 function BrowseShelf({
+  categoryId,
   label,
   description,
   leading,
   entries,
+  showCategory = false,
   onViewAll,
   onInstall,
   onOpenPlugin,
 }: {
+  categoryId?: string;
   label: string;
   description?: string;
   leading?: ReactNode;
   entries: readonly PluginCatalogSearchEntry[];
+  showCategory?: boolean;
   onViewAll?: () => void;
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string) => void;
 }) {
   if (entries.length === 0) return null;
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
+  const shelfLabel =
+    accentToken === undefined ? (
+      label
+    ) : (
+      <span className="flex min-w-0 flex-col items-start gap-1.5">
+        <span className="truncate">{label}</span>
+        <span
+          data-plugin-category-accent={categoryId}
+          className="block h-0.5 w-10 rounded-full"
+          style={{ background: `var(${accentToken})` }}
+          aria-hidden
+        />
+      </span>
+    );
   return (
     <ResourceSourceShelf
-      label={label}
+      label={shelfLabel}
       leading={leading}
       description={description}
       contentMode="panel"
@@ -692,6 +671,7 @@ function BrowseShelf({
       <PluginCatalogGrid
         entries={entries}
         preview
+        showCategory={showCategory}
         onInstall={onInstall}
         onOpenPlugin={onOpenPlugin}
       />
@@ -739,40 +719,18 @@ function LegacyPublisherGroups({
 export function PluginCatalogCard({
   entry,
   className,
-  installedPluginId,
+  installed,
   showCategory = false,
   onInstall,
   onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
   className?: string;
-  installedPluginId: string | null;
+  installed: boolean;
   showCategory?: boolean;
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string) => void;
 }) {
-  const queryClient = useQueryClient();
-  const [confirmingUninstall, setConfirmingUninstall] = useState(false);
-  const uninstall = useMutation({
-    mutationFn: () => {
-      if (installedPluginId === null) {
-        throw new Error("Installed plugin id is unavailable");
-      }
-      return removePlugin(fetch, installedPluginId);
-    },
-    onSuccess: () => {
-      setConfirmingUninstall(false);
-      invalidatePluginList({ queryClient });
-      invalidatePluginCatalogSearch({ queryClient });
-      appToast.success(`${entry.displayName} uninstalled`);
-    },
-    onError: (error) => {
-      appToast.error(`Uninstalling ${entry.displayName} failed`, {
-        description: error instanceof Error ? error.message : String(error),
-      });
-    },
-  });
-
   const leading = <CatalogEntryIconChip entry={entry} />;
   const description =
     entry.description.length > 0 ? entry.description : undefined;
@@ -790,61 +748,13 @@ export function PluginCatalogCard({
         <span className="text-xs text-foreground/80">{entry.author.name}</span>
       </Link>
     );
-  // The category rides the byline rather than its own row: a card's metadata
-  // line is where a reader already looks for it, and a fourth row made every
-  // card taller for one short tag.
-  const byline =
+  const categoryLabel =
     showCategory && entry.category !== undefined ? (
-      <span className="flex min-w-0 items-center gap-1.5">
-        <PluginCategoryLabel
-          categoryId={entry.categoryId}
-          label={entry.category}
-        />
-        {/* The pill keeps its full width; the author is what gives way, or a
-            long name runs under the source link beside it. */}
-        <span className="min-w-0 truncate">{authorByline}</span>
-      </span>
-    ) : (
-      authorByline
-    );
-  // The publisher label, not the marketplace's raw display name: a third-party
-  // manifest names itself, and the raw name would print a reserved BB label on
-  // the card that the server already refused to grant.
-  // The source link sits with the publisher label: both say where the
-  // plugin comes from. The card footer ignores pointer events so clicks fall
-  // through to the open button; the link opts back in to take its own click.
-  const sourceLink =
-    entry.repositoryUrl === null ? null : (
-      <a
-        href={entry.repositoryUrl}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`Open ${entry.displayName} source`}
-        className="pointer-events-auto inline-flex items-center gap-0.5 leading-none underline underline-offset-2 hover:text-foreground"
-      >
-        Source
-        {/* Optical nudge: centered against the line box, the glyph sits a
-            pixel above the x-height of the lowercase label beside it. */}
-        <Icon
-          name="ExternalLink"
-          className="size-2.5 shrink-0 translate-y-px"
-          aria-hidden
-        />
-      </a>
-    );
-  // Compact cards prioritize the registry trust signal when it exists. Keep
-  // the actionable source link beside it; the marketplace label remains on
-  // cards with no install count (or when there is no link to show).
-  const showPublisherLabel =
-    !entry.official && (entry.installs === null || sourceLink === null);
-  const originMeta =
-    !showPublisherLabel && sourceLink === null ? undefined : (
-      <span className="min-w-0 truncate text-2xs text-subtle-foreground">
-        {showPublisherLabel ? entry.publisherLabel : null}
-        {showPublisherLabel && sourceLink !== null ? " · " : null}
-        {sourceLink}
-      </span>
-    );
+      <PluginCategoryLabel
+        categoryId={entry.categoryId}
+        label={entry.category}
+      />
+    ) : undefined;
   // Just the number, handed to the install control as its own metadata. The
   // download glyph it used to carry repeated the control's glyph an inch away,
   // which read as two install affordances.
@@ -855,92 +765,54 @@ export function PluginCatalogCard({
           display: formatInstallCount(entry.installs),
           accessibleLabel: `${entry.installs.toLocaleString()} installs`,
         };
-  // The card's metadata row is who made it (left) and where it came from
-  // (right). The install count rides the install control above, and the
-  // "updated" date now lives on the detail page: a browse card is for
-  // choosing between plugins, and a relative date on every card competed with
-  // the author for the same glance without helping that choice.
-  const footerMeta = originMeta;
-  const installControl =
-    installedPluginId !== null ? (
-      <ResourceInstallControl
-        accessibleLabel={`Uninstall ${entry.displayName}`}
-        icon="Download"
-        pending={uninstall.isPending}
-        presentation="icon"
-        tooltip={`Installed — uninstall ${entry.displayName}`}
+  // Source and last-updated live on detail. Author stays in the byline;
+  // category appears only where the surrounding view does not already own it.
+  const installInitial: AddPluginInitial = {
+    entryId: entry.entryId,
+    marketplace: entry.marketplace,
+    publisherLabel: entry.publisherLabel,
+    displayName: entry.displayName,
+    icon: entry.icon,
+    iconUrl: entry.iconUrl,
+    iconTinted: entry.iconTinted,
+    source: entry.source,
+  };
+  const headerAction =
+    installed ? (
+      <PluginCatalogInstallControl
+        displayName={entry.displayName}
+        installed
         count={installCount}
-        // Installed is a settled state, not an offer: it sits at the weight of
-        // a disabled control so the eye goes to the cards you can still act on.
-        // The glyph matches the install count beside it so the pair reads level.
-        className="border-transparent bg-transparent text-subtle-foreground shadow-none hover:border-transparent hover:bg-transparent hover:text-muted-foreground focus-visible:border-transparent focus-visible:bg-transparent [&_svg]:size-3.5"
-        onAction={() => setConfirmingUninstall(true)}
       />
     ) : (
-      <ResourceInstallControl
-        accessibleLabel={`Install ${entry.displayName}`}
+      <PluginCatalogInstallControl
+        displayName={entry.displayName}
+        installed={false}
         disabled={!entry.compatible}
-        presentation="icon"
-        tooltip={`Install ${entry.displayName}`}
         count={installCount}
-        // A bordered box here competed with the card's own edge; the glyph
-        // alone is enough on a surface this dense, sized to match the count.
-        className="border-transparent bg-transparent shadow-none hover:border-transparent hover:bg-state-hover [&_svg]:size-3.5"
-        onAction={() =>
-          onInstall({
-            entryId: entry.entryId,
-            marketplace: entry.marketplace,
-            publisherLabel: entry.publisherLabel,
-            displayName: entry.displayName,
-            icon: entry.icon,
-            iconUrl: entry.iconUrl,
-            iconTinted: entry.iconTinted,
-            source: entry.source,
-          })
-        }
+        onInstall={() => onInstall(installInitial)}
       />
     );
-  // The control owns the count now, so the header action is the control.
-  const headerAction = installControl;
 
   return (
-    <>
-      <ResourceBrowseCard
-        className={cn(
-          "min-h-28 gap-2 border-border bg-background p-3 shadow-none",
-          className,
-        )}
-        leading={leading}
-        title={
-          <span className="line-clamp-2 whitespace-normal break-words font-medium leading-tight">
-            {entry.displayName}
-          </span>
-        }
-        description={descriptionArea}
-        descriptionLines={2}
-        byline={byline}
-        footerMeta={footerMeta}
-        headerAction={headerAction}
-        openLabel={`Open ${entry.displayName} details`}
-        onOpen={() => onOpenPlugin(entry.pluginId)}
-      />
-      {confirmingUninstall ? (
-        <ConfirmDeleteDialog
-          open
-          onOpenChange={(open) => {
-            if (!uninstall.isPending) setConfirmingUninstall(open);
-          }}
-        >
-          <ConfirmDeleteDialogContent
-            title={`Uninstall ${entry.displayName}?`}
-            description="The plugin, its installed files, and its settings, secrets, and schedules are removed from this BB host."
-            confirmLabel={uninstall.isPending ? "Uninstalling…" : "Uninstall"}
-            pending={uninstall.isPending}
-            onConfirm={() => uninstall.mutate()}
-            onCancel={() => setConfirmingUninstall(false)}
-          />
-        </ConfirmDeleteDialog>
-      ) : null}
-    </>
+    <ResourceBrowseCard
+      className={cn(
+        "min-h-28 gap-2 border-border bg-background p-3 shadow-none",
+        className,
+      )}
+      leading={leading}
+      title={
+        <span className="line-clamp-2 whitespace-normal break-words font-medium leading-tight">
+          {entry.displayName}
+        </span>
+      }
+      description={descriptionArea}
+      descriptionLines={2}
+      byline={authorByline}
+      headerAction={headerAction}
+      footerMeta={categoryLabel}
+      openLabel={`Open ${entry.displayName} details`}
+      onOpen={() => onOpenPlugin(entry.pluginId)}
+    />
   );
 }

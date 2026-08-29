@@ -227,8 +227,8 @@ describe("plugin catalog service", () => {
       displayName: "Docs",
       icon: "FileText",
       iconUrl: null,
-      categoryId: "memory-and-context",
-      category: "Memory & Context",
+      categoryId: "files-and-viewers",
+      category: "File Viewers & Editors",
       screenshots: [],
       newAndNotableRank: null,
       source: "builtin:docs",
@@ -252,7 +252,7 @@ describe("plugin catalog service", () => {
       entryId: "thread-hover-cards",
       pluginId: "thread-hover-cards",
       categoryId: "thread-lists-and-navigation",
-      category: "Thread Lists & Navigation",
+      category: "Thread Management",
       newAndNotableRank: 1,
       icon: "ZoomIn",
       iconUrl: null,
@@ -564,7 +564,7 @@ describe("plugin catalog service", () => {
         ),
       ).toMatchObject({
         categoryId: "thread-lists-and-navigation",
-        category: "Thread Lists & Navigation",
+        category: "Thread Management",
         screenshots: [
           "https://marketplace.test/marketplace/v2/screenshots/widgets.png",
         ],
@@ -665,8 +665,8 @@ describe("plugin catalog service", () => {
           displayName: "Live Advisor Name",
           description: "Live registry description.",
           icon: "Sparkles",
-          categoryId: "agent-tools",
-          category: "Agent Tools",
+          categoryId: "code-and-reviews",
+          category: "Code & Reviews",
           screenshots: [],
           newAndNotableRank: null,
           source: "npm:bb-plugin-live-advisor@next",
@@ -678,8 +678,8 @@ describe("plugin catalog service", () => {
         {
           entryId: "ports",
           displayName: "Live Ports",
-          categoryId: "machines-and-hosts",
-          category: "Machines & Hosts",
+          categoryId: "system-management",
+          category: "Utilities",
         },
       ]);
       expect(await catalog.search("registry")).toHaveLength(1);
@@ -700,7 +700,7 @@ describe("plugin catalog service", () => {
         plugins: [
           {
             ...liveAdvisor,
-            category: "agent-tools",
+            category: "code-and-reviews",
             // v1 carries no dates, so the synthesis joins the reviewed ones on
             // alongside the category — without them "Recently added" has
             // nothing to order by.
@@ -712,7 +712,7 @@ describe("plugin catalog service", () => {
               displayName: "Live Ports",
               icon: "Network",
             }),
-            category: "machines-and-hosts",
+            category: "system-management",
             ...REVIEWED_COMMUNITY_ENTRY_DATES.ports,
           },
         ],
@@ -804,7 +804,7 @@ describe("plugin catalog service", () => {
         entryId: "widgets",
         displayName: "Acme Widgets",
         categoryId: "thread-lists-and-navigation",
-        category: "Thread Lists & Navigation",
+        category: "Thread Management",
         icon: null,
         source:
           "git:https://github.com/acme/plugins.git@v1.0.0#plugins/widgets",

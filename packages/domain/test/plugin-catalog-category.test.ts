@@ -3,16 +3,32 @@ import { describe, expect, it } from "vitest";
 import {
   PLUGIN_CATALOG_CATEGORIES,
   PLUGIN_CATALOG_CATEGORY_IDS,
-  PLUGIN_CATALOG_SHELF_GROUPS,
   pluginCatalogCategory,
+  pluginCatalogCategoryAccentToken,
   pluginCatalogCategoryIdSchema,
-  pluginCatalogShelfGroupForCategory,
 } from "../src/plugin-catalog-category.js";
 
 describe("plugin catalog categories", () => {
   it("keeps one complete, ordered record for every stable category id", () => {
-    expect(PLUGIN_CATALOG_CATEGORIES).toHaveLength(16);
-    expect(new Set(PLUGIN_CATALOG_CATEGORY_IDS).size).toBe(16);
+    expect(PLUGIN_CATALOG_CATEGORIES).toHaveLength(15);
+    expect(new Set(PLUGIN_CATALOG_CATEGORY_IDS).size).toBe(15);
+    expect(PLUGIN_CATALOG_CATEGORY_IDS).toEqual([
+      "themes-and-appearance",
+      "thread-lists-and-navigation",
+      "thread-content",
+      "memory-and-context",
+      "security",
+      "agents-and-providers",
+      "token-usage-and-cost",
+      "notifications-and-attention",
+      "code-and-reviews",
+      "files-and-viewers",
+      "remote-development",
+      "terminals",
+      "system-management",
+      "plugin-development",
+      "tasks-workflows",
+    ]);
     expect(PLUGIN_CATALOG_CATEGORY_IDS).toEqual(
       PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
     );
@@ -20,11 +36,37 @@ describe("plugin catalog categories", () => {
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       expect(category.displayName).not.toHaveLength(0);
       expect(category.description).not.toHaveLength(0);
+      expect(category.accentToken).toMatch(/^--/u);
       expect(pluginCatalogCategory(category.id)).toBe(category);
+      expect(pluginCatalogCategoryAccentToken(category.id)).toBe(
+        category.accentToken,
+      );
       expect(pluginCatalogCategoryIdSchema.parse(category.id)).toBe(
         category.id,
       );
     }
+  });
+
+  it("uses the approved category display names", () => {
+    expect(
+      PLUGIN_CATALOG_CATEGORIES.map((category) => category.displayName),
+    ).toEqual([
+      "Themes & Appearance",
+      "Thread Management",
+      "Thread Content",
+      "Memory & Context",
+      "Security",
+      "Agents & Providers",
+      "Token Usage & Limits",
+      "Notifications",
+      "Code & Reviews",
+      "File Viewers & Editors",
+      "Cloud & Remote",
+      "Command Line",
+      "Utilities",
+      "Plugin Development",
+      "Tasks & Workflows",
+    ]);
   });
 
   it("keeps the category vocabulary closed", () => {
@@ -36,26 +78,8 @@ describe("plugin catalog categories", () => {
     );
   });
 
-  it("assigns every canonical category to exactly one browse shelf", () => {
-    const groupedCategoryIds = PLUGIN_CATALOG_SHELF_GROUPS.flatMap(
-      (group) => group.categoryIds,
-    );
-
-    expect(PLUGIN_CATALOG_SHELF_GROUPS).toHaveLength(5);
-    expect(groupedCategoryIds).toHaveLength(PLUGIN_CATALOG_CATEGORIES.length);
-    expect(new Set(groupedCategoryIds).size).toBe(
-      PLUGIN_CATALOG_CATEGORIES.length,
-    );
-    expect(new Set(groupedCategoryIds)).toEqual(
-      new Set(PLUGIN_CATALOG_CATEGORY_IDS),
-    );
-
-    for (const group of PLUGIN_CATALOG_SHELF_GROUPS) {
-      expect(group.displayName).not.toHaveLength(0);
-      expect(group.description).not.toHaveLength(0);
-      for (const categoryId of group.categoryIds) {
-        expect(pluginCatalogShelfGroupForCategory(categoryId)).toBe(group);
-      }
-    }
+  it("leaves unknown or absent categories without an accent", () => {
+    expect(pluginCatalogCategoryAccentToken(undefined)).toBeUndefined();
+    expect(pluginCatalogCategoryAccentToken("not-a-category")).toBeUndefined();
   });
 });
