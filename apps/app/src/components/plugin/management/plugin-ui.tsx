@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { pluginCatalogCategoryAccentToken } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
-import { accentTint, neutral } from "@bb/showcase-hero";
+import { accentInk, accentTint, neutral } from "@bb/showcase-hero";
 import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -23,6 +23,48 @@ export function displayPluginVersion(version: string): string {
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
+
+const PLUGIN_CATEGORY_PILL_FILL_PERCENT = 16;
+const PLUGIN_CATEGORY_PILL_INK_PERCENT = 52;
+const PLUGIN_CATEGORY_MUTED_ACCENT_PERCENT = 55;
+
+export function pluginCatalogCategoryPillStyle(
+  categoryId: string | undefined,
+): CSSProperties {
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
+  return accentToken === undefined
+    ? { background: neutral(8), color: neutral(55) }
+    : {
+        background: accentTint(
+          accentToken,
+          PLUGIN_CATEGORY_PILL_FILL_PERCENT,
+        ),
+        color: accentInk(accentToken, PLUGIN_CATEGORY_PILL_INK_PERCENT),
+      };
+}
+
+export function pluginCatalogCategoryMutedAccentStyle(
+  categoryId: string | undefined,
+): CSSProperties | undefined {
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
+  return accentToken === undefined
+    ? undefined
+    : {
+        background: accentTint(
+          accentToken,
+          PLUGIN_CATEGORY_MUTED_ACCENT_PERCENT,
+        ),
+      };
+}
+
+export function pluginCatalogCategoryAccentStyle(
+  categoryId: string | undefined,
+): CSSProperties | undefined {
+  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
+  return accentToken === undefined
+    ? undefined
+    : { background: `var(${accentToken})` };
+}
 
 export function PluginLogo({
   plugin,
@@ -106,16 +148,10 @@ export function PluginCategoryLabel({
   categoryId: string | undefined;
   label: string;
 }) {
-  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
   return (
     <span
-      className="shrink-0 truncate rounded px-2 py-1 text-2xs leading-none text-subtle-foreground"
-      style={{
-        background:
-          accentToken === undefined
-            ? neutral(6)
-            : accentTint(accentToken, 10),
-      }}
+      className="shrink-0 truncate rounded px-2 py-1 text-2xs leading-none"
+      style={pluginCatalogCategoryPillStyle(categoryId)}
     >
       {label}
     </span>

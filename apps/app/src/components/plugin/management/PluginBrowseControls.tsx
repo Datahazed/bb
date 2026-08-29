@@ -17,6 +17,24 @@ const ENGAGED_CONTROL_CLASS =
 
 const SCROLLBAR_IDLE_DELAY_MS = 600;
 
+function CategoryOptionCheckbox({ enabled }: { enabled: boolean }) {
+  return (
+    <span
+      data-category-option-checkbox
+      data-state={enabled ? "enabled" : "disabled"}
+      className={cn(
+        "grid size-4 shrink-0 place-items-center rounded-sm border shadow-xs",
+        enabled
+          ? "border-foreground bg-foreground text-background"
+          : "border-input bg-background text-transparent",
+      )}
+      aria-hidden
+    >
+      <Icon name="Check" className="size-3.5" />
+    </span>
+  );
+}
+
 export function PluginBrowseCategoryFilter({
   options,
   value,
@@ -225,20 +243,18 @@ export function PluginBrowseCategoryFilter({
                     className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground md:gap-1.5"
                     onKeyDown={focusCategoryOption}
                   >
-                    <span className="min-w-0 flex-1 truncate">
+                    <span className="flex w-8 shrink-0 justify-center">
+                      <span
+                        data-category-option-count
+                        className="rounded-full bg-surface-recessed p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
+                      >
+                        {totalCount.toLocaleString()}
+                      </span>
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                       All categories
                     </span>
-                    <span className="text-2xs tabular-nums text-subtle-foreground">
-                      {totalCount.toLocaleString()}
-                    </span>
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "size-3.5",
-                        value === null ? "opacity-100" : "opacity-0",
-                      )}
-                      aria-hidden
-                    />
+                    <CategoryOptionCheckbox enabled={value === null} />
                   </button>
                 ) : null}
                 {filteredOptions.map((option) => {
@@ -252,20 +268,18 @@ export function PluginBrowseCategoryFilter({
                       className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground md:gap-1.5"
                       onKeyDown={focusCategoryOption}
                     >
-                      <span className="min-w-0 flex-1 truncate">
+                      <span className="flex w-8 shrink-0 justify-center">
+                        <span
+                          data-category-option-count
+                          className="rounded-full bg-surface-recessed p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
+                        >
+                          {option.count.toLocaleString()}
+                        </span>
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                         {option.label}
                       </span>
-                      <span className="text-2xs tabular-nums text-subtle-foreground">
-                        {option.count.toLocaleString()}
-                      </span>
-                      <Icon
-                        name="Check"
-                        className={cn(
-                          "size-3.5",
-                          option.id === value ? "opacity-100" : "opacity-0",
-                        )}
-                        aria-hidden
-                      />
+                      <CategoryOptionCheckbox enabled={option.id === value} />
                     </button>
                   );
                 })}

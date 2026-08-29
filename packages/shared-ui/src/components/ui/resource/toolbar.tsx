@@ -88,9 +88,11 @@ export interface ResourceOption {
 function ResourceOptionContent({
   option,
   compact = false,
+  labelClassName,
 }: {
   option: ResourceOption;
   compact?: boolean;
+  labelClassName?: string;
 }) {
   return (
     <span
@@ -106,7 +108,7 @@ function ResourceOptionContent({
       ) : null}
       <span className="flex min-w-0 flex-col">
         <span
-          className="truncate text-xs"
+          className={cn("truncate text-xs", labelClassName)}
           title={compact ? option.label : undefined}
         >
           {option.label}
@@ -451,7 +453,7 @@ export function ResourceSortMenu({
       >
         <DropdownMenuLabel
           className={cn(
-            "text-xs font-normal text-subtle-foreground",
+            "text-2xs font-medium text-subtle-foreground",
             compact && "md:px-1.5 md:py-1",
           )}
         >
@@ -475,7 +477,11 @@ export function ResourceSortMenu({
                 compact && "md:gap-2 md:px-1.5 md:py-1",
               )}
             >
-              <ResourceOptionContent option={option} compact={compact} />
+              <ResourceOptionContent
+                option={option}
+                compact={compact}
+                labelClassName="font-medium text-foreground"
+              />
               {
 }
               <Icon

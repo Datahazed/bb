@@ -1,10 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useDebounceValue } from "usehooks-ts";
 import {
   PLUGIN_CATALOG_CATEGORIES,
   defaultPluginDiscoverySortDirection,
-  pluginCatalogCategoryAccentToken,
 } from "@bb/domain";
 import {
   ResourceBrowseCard,
@@ -51,7 +50,13 @@ import {
 } from "./PluginBrowseControls";
 import { PluginCategoryChips } from "./PluginCategoryChips";
 import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
-import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
+import {
+  CatalogEntryIconChip,
+  PluginCategoryLabel,
+  pluginCatalogCategoryAccentStyle,
+  pluginCatalogCategoryMutedAccentStyle,
+  pluginCatalogCategoryPillStyle,
+} from "./plugin-ui";
 import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
 
 const PLUGIN_BROWSE_SORTS = [
@@ -80,6 +85,77 @@ function browseSortDirection(
   value: string | null,
 ): PluginBrowseSortDirection | null {
   return value === "asc" || value === "desc" ? value : null;
+}
+
+const NEW_AND_NOTABLE_ICON_SPARKLES = [
+  { left: 0, top: 0, size: 8 },
+  { left: 11, top: 1, size: 5 },
+  { left: 8, top: 9, size: 7 },
+  { left: 1, top: 12, size: 4 },
+] as const;
+
+const NEW_AND_NOTABLE_SPARKLE_CLIP_PATH =
+  "polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%)";
+
+function NewAndNotableIcon({
+  entries,
+}: {
+  entries: readonly PluginCatalogSearchEntry[];
+}) {
+  return (
+    <span className="relative size-4 shrink-0" aria-hidden>
+      {NEW_AND_NOTABLE_ICON_SPARKLES.map((sparkle, index) => {
+        const accentStyle = pluginCatalogCategoryMutedAccentStyle(
+          entries[index]?.categoryId,
+        );
+        return (
+          <span
+            key={index}
+            data-new-notable-accent={index}
+            className="absolute"
+            style={{
+              background:
+                accentStyle?.background ?? "var(--muted-foreground)",
+              left: sparkle.left,
+              top: sparkle.top,
+              width: sparkle.size,
+              height: sparkle.size,
+              clipPath: NEW_AND_NOTABLE_SPARKLE_CLIP_PATH,
+            }}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+function scrollShelfToTop(event: MouseEvent<HTMLButtonElement>) {
+  const shelf = event.currentTarget.closest("section");
+  if (shelf === null) return;
+  const scrollContainer = shelf.closest<HTMLElement>(
+    '[data-resource-collection-scroll="true"]',
+  );
+  if (scrollContainer === null) return;
+  const targetTop =
+    scrollContainer.scrollTop +
+    shelf.getBoundingClientRect().top -
+    scrollContainer.getBoundingClientRect().top;
+  const shelfList = shelf.closest<HTMLElement>("[data-plugin-shelf-list]");
+  const missingEndSpace = Math.max(
+    0,
+    targetTop - (scrollContainer.scrollHeight - scrollContainer.clientHeight),
+  );
+  if (shelfList !== null && missingEndSpace > 0) {
+    const currentEndSpace = Number.parseFloat(shelfList.style.paddingBottom) || 0;
+    shelfList.style.paddingBottom = `${Math.ceil(
+      currentEndSpace + missingEndSpace,
+    )}px`;
+    shelfList.getBoundingClientRect();
+  }
+  scrollContainer.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "auto",
+  });
 }
 
 export function BrowsePluginsTab({
@@ -421,19 +497,17 @@ export function BrowsePluginsTab({
                   </div>
                 )
               ) : selectedCategoryId === null ? (
-                <div className="space-y-9 [&>*+*]:border-t [&>*+*]:border-border-seam/60 [&>*+*]:pt-9">
+                <div
+                  key={debouncedQuery}
+                  data-plugin-shelf-list
+                  className="space-y-9 [&>*+*]:border-t [&>*+*]:border-border-seam/60 [&>*+*]:pt-9"
+                >
                   {hasCategoryDiscovery ? (
                     <BrowseShelf
                       label="New & notable"
                       entries={notableEntries}
                       showCategory
-                      leading={
-                        <Icon
-                          name="GridView"
-                          className="size-3.5 fill-current text-muted-foreground"
-                          aria-hidden
-                        />
-                      }
+                      leading={<NewAndNotableIcon entries={notableEntries} />}
                       onInstall={onInstall}
                       onOpenPlugin={onOpenPlugin}
                     />
@@ -468,10 +542,15 @@ export function BrowsePluginsTab({
                       <Icon name="ChevronLeft" className="size-3" />
                       Browse plugins
                     </ResourceShelfAction>
-                    <h2 className="text-base font-semibold text-foreground">
-                      {selectedCategoryLabel}
-                      <span className="ml-1.5 text-xs font-normal text-subtle-foreground">
-                        · {scopedEntries.length} plugins
+                    <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold text-foreground">
+                      <span>{selectedCategoryLabel}</span>
+                      <span
+                        className="rounded-md px-2 py-1 text-2xs font-medium tabular-nums"
+                        style={pluginCatalogCategoryPillStyle(
+                          selectedCategoryId ?? undefined,
+                        )}
+                      >
+                        {scopedEntries.length} plugins
                       </span>
                     </h2>
                     {selectedCategory?.description ? (
@@ -563,21 +642,37 @@ function BrowseShelf({
   onOpenPlugin: (pluginId: string) => void;
 }) {
   if (entries.length === 0) return null;
-  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  const shelfLabel =
-    accentToken === undefined ? (
-      label
-    ) : (
-      <span className="flex min-w-0 flex-col items-start gap-1.5">
-        <span className="truncate">{label}</span>
+  const accentStyle = pluginCatalogCategoryMutedAccentStyle(categoryId);
+  const focusAccentStyle = pluginCatalogCategoryAccentStyle(categoryId);
+  const shelfLabel = (
+    <button
+      type="button"
+      data-plugin-shelf-title
+      aria-label={`Scroll ${label} shelf to top`}
+      className="group inline-flex max-w-full cursor-pointer items-center gap-2 rounded-sm text-left font-semibold text-foreground underline-offset-4 outline-none hover:underline"
+      onMouseDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.focus({ preventScroll: true });
+      }}
+      onClick={scrollShelfToTop}
+    >
+      {accentStyle === undefined ? null : (
         <span
           data-plugin-category-accent={categoryId}
-          className="block h-0.5 w-10 rounded-full"
-          style={{ background: `var(${accentToken})` }}
+          className="relative block h-4 w-0.5 shrink-0 overflow-hidden rounded-full"
+          style={accentStyle}
           aria-hidden
-        />
-      </span>
-    );
+        >
+          <span
+            className="absolute inset-0 opacity-0 transition-opacity group-focus-visible:opacity-100"
+            style={focusAccentStyle}
+          />
+        </span>
+      )}
+      <span className="truncate">{label}</span>
+    </button>
+  );
   return (
     <ResourceSourceShelf
       label={shelfLabel}
@@ -590,7 +685,7 @@ function BrowseShelf({
           <ResourceShelfAction
             type="button"
             onClick={onViewAll}
-            className="group gap-1"
+            className="group gap-1 font-medium text-subtle-foreground"
           >
             View all
             { }

@@ -73,7 +73,21 @@ describe("PluginBrowseCategoryFilter", () => {
 
     expect(screen.getAllByRole("option")).toHaveLength(OPTIONS.length + 1);
     expect(screen.queryByText(/^\d+ categories$/u)).toBeNull();
-    expect(screen.getByRole("option", { name: /Security/u })).toBeTruthy();
+    const security = screen.getByRole("option", { name: /Security/u });
+    expect(security.children[0]?.textContent).toBe("2");
+    expect(security.children[0]?.classList.contains("rounded-full")).toBe(true);
+    expect(security.children[1]?.textContent).toBe("Security");
+    expect(
+      security.querySelector("[data-category-option-checkbox]")?.getAttribute(
+        "data-state",
+      ),
+    ).toBe("disabled");
+    expect(
+      screen
+        .getByRole("option", { name: /All categories/u })
+        .querySelector("[data-category-option-checkbox]")
+        ?.getAttribute("data-state"),
+    ).toBe("enabled");
   });
 
   it("clears the filter when the active category is chosen again", () => {
@@ -82,6 +96,11 @@ describe("PluginBrowseCategoryFilter", () => {
 
     const active = screen.getByRole("option", { name: /Security/u });
     expect(active.getAttribute("aria-selected")).toBe("true");
+    expect(
+      active
+        .querySelector("[data-category-option-checkbox]")
+        ?.getAttribute("data-state"),
+    ).toBe("enabled");
 
     fireEvent.click(active);
     expect(onChange).toHaveBeenCalledTimes(1);

@@ -606,12 +606,14 @@ describe("BrowsePluginsTab", () => {
       '[data-plugin-category-accent="memory-and-context"]',
     );
     expect(categoryAccent).not.toBeNull();
-    expect(categoryAccent?.classList.contains("h-0.5")).toBe(true);
-    expect(categoryAccent?.classList.contains("w-10")).toBe(true);
+    expect(categoryAccent?.classList.contains("h-4")).toBe(true);
+    expect(categoryAccent?.classList.contains("w-0.5")).toBe(true);
     expect(categoryAccent?.classList.contains("rounded-full")).toBe(true);
     expect(categoryAccent?.closest("h2")).not.toBeNull();
     expect(categoryAccent?.style.background).toBe(
-      `var(${pluginCatalogCategoryAccentToken("memory-and-context")})`,
+      `color-mix(in oklab, var(${pluginCatalogCategoryAccentToken(
+        "memory-and-context",
+      )}) 55%, var(--canvas))`,
     );
     const shelfCard = within(memoryShelf)
       .getAllByRole("button", { name: /^Open Official .* details$/u })[0]
@@ -623,13 +625,64 @@ describe("BrowsePluginsTab", () => {
     expect(within(shelfCard).queryByText("Memory & Context")).toBeNull();
     expect(memoryShelf.querySelector(".grid")).not.toBeNull();
     expect(memoryShelf.querySelector(".overflow-x-auto")).toBeNull();
+    expect(document.querySelectorAll("[data-new-notable-accent]")).toHaveLength(
+      4,
+    );
+    expect(
+      document.querySelector<HTMLElement>('[data-new-notable-accent="0"]')
+        ?.style.background,
+    ).toBe("color-mix(in oklab, var(--success) 55%, var(--canvas))");
+    expect(
+      document.querySelector<HTMLElement>('[data-new-notable-accent="0"]')
+        ?.style.width,
+    ).toBe("8px");
+    expect(
+      document.querySelector<HTMLElement>('[data-new-notable-accent="0"]')
+        ?.style.clipPath,
+    ).toBe(
+      "polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%)",
+    );
+    const scrollViewport = document.getElementById("plugins-browse-results");
+    if (scrollViewport === null) throw new Error("Browse viewport missing");
+    const scrollTo = vi.fn();
+    Object.defineProperties(scrollViewport, {
+      scrollTop: { configurable: true, value: 180, writable: true },
+      scrollTo: { configurable: true, value: scrollTo },
+    });
+    vi.spyOn(scrollViewport, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 100, 800, 600),
+    );
+    vi.spyOn(memoryShelf, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 340, 800, 300),
+    );
+    const shelfTitle = within(memoryShelf).getByRole("button", {
+      name: "Scroll Memory & Context shelf to top",
+    });
+    expect(
+      shelfTitle.classList.contains("focus-visible:bg-state-hover"),
+    ).toBe(true);
+    expect(shelfTitle.classList.contains("focus-visible:ring-1")).toBe(false);
+    fireEvent.mouseDown(shelfTitle, { button: 0 });
+    expect(document.activeElement).toBe(shelfTitle);
+    fireEvent.click(shelfTitle);
+    expect(document.activeElement).toBe(shelfTitle);
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ top: 420 }),
+    );
     fireEvent.click(
       within(memoryShelf).getByRole("button", { name: /View all/ }),
     );
     expect(screen.getByTestId("location").textContent).toBe(
       "?category=memory-and-context",
     );
-    expect(screen.getByText("· 8 plugins")).toBeTruthy();
+    const pluginCount = screen.getByText("8 plugins");
+    expect(pluginCount.style.background).toBe(
+      "color-mix(in oklab, var(--success) 16%, var(--canvas))",
+    );
+    expect(pluginCount.style.color).toBe(
+      "color-mix(in oklab, var(--success) 52%, var(--ink))",
+    );
+    expect(pluginCount.textContent).not.toContain("·");
     expect(
       screen.getAllByRole("button", { name: /^Open Official .* details$/u }),
     ).toHaveLength(8);
@@ -708,6 +761,12 @@ describe("BrowsePluginsTab", () => {
         name: "Sort: Most installed, descending",
       }),
     );
+    const sortMenuLabel = screen.getByText("Sort by");
+    expect(sortMenuLabel.classList.contains("text-2xs")).toBe(true);
+    expect(sortMenuLabel.classList.contains("font-medium")).toBe(true);
+    expect(
+      screen.getByText("Most installed").classList.contains("font-medium"),
+    ).toBe(true);
     fireEvent.click(
       screen.getByRole("menuitemradio", { name: "Most installed" }),
     );
