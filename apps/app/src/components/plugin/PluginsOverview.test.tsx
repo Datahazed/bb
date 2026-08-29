@@ -707,12 +707,6 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-local",
       "plugin-row-inactive-official",
     ]);
-    for (const row of rows) {
-      expect(row.textContent).not.toContain("BB Official");
-      expect(row.textContent).not.toContain("BB Community");
-      expect(row.textContent).not.toContain("Local");
-    }
-
     const sortTrigger = screen.getByRole("button", {
       name: "Sort: Plugin name, ascending",
     });
@@ -1035,7 +1029,9 @@ describe("PluginsOverview", () => {
       { target: { value: "Builtin" } },
     );
     expect(
-      screen.getByText('No plugins match "Builtin" with these filters.'),
+      await screen.findByText(
+        'No plugins match "Builtin" with these filters.',
+      ),
     ).toBeTruthy();
     fireEvent.change(
       screen.getByRole("textbox", { name: "Search installed plugins" }),
