@@ -302,18 +302,26 @@ export function EnvironmentRow({
     environmentId: environment?.id ?? "",
   });
   if (!environment) return null;
+  const isWorktree = isWorktreeEnvironment(environment);
+  if (!isWorktree) return null;
   const display = formatEnvironmentDisplay({
     environment,
     host: environmentDisplayHost,
   });
-  const isWorktree = isWorktreeEnvironment(environment);
   const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
   const worktreeTitle =
     environment.name ?? (onRenameWorktree ? "Add name" : "Unnamed");
-  const environmentTitle =
-    isWorktree && display.lifecycle === null
-      ? worktreeTitle
-      : display.modeLabel;
+  const lifecycleTitle =
+    display.lifecycle === "provisioning"
+      ? "Provisioning"
+      : display.lifecycle === "destroying"
+        ? "Destroying"
+        : display.lifecycle === "destroyed"
+          ? "Destroyed"
+          : null;
+  const environmentTitle = lifecycleTitle
+    ? `${worktreeTitle} · ${lifecycleTitle}`
+    : worktreeTitle;
   return (
     <DetailRow
       label={
@@ -321,7 +329,7 @@ export function EnvironmentRow({
           name={getEnvironmentWorkspaceLabelIconName(
             display.workspaceDisplayKind,
           )}
-          aria-label={isWorktree ? "Worktree" : "Environment"}
+          aria-label="Worktree"
           className="size-3.5 shrink-0 text-muted-foreground"
         />
       }
@@ -329,7 +337,7 @@ export function EnvironmentRow({
       labelClassName="flex items-center"
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      {isWorktree && onRenameWorktree ? (
+      {onRenameWorktree ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -362,11 +370,14 @@ export function EnvironmentRow({
           className="min-w-0 truncate text-foreground"
           title={environmentTitle}
         >
-          {isWorktree && display.lifecycle === null
-            ? worktreeTitle
-            : display.compactModeLabel}
+          {worktreeTitle}
         </span>
       )}
+      {lifecycleTitle ? (
+        <span className="shrink-0 text-muted-foreground">
+          · {lifecycleTitle}
+        </span>
+      ) : null}
       {showCreateThreadButton ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -397,15 +408,22 @@ export function MachineRow({ name, connected = true }: MachineRowProps) {
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon={PersistentHostIconName}>
-          Machine
-        </DetailRowIconLabel>
+        <Icon
+          name={PersistentHostIconName}
+          aria-label="Machine"
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
       }
-      valueClassName="min-w-0"
+      className="grid-cols-[1rem_minmax(0,1fr)] gap-x-1.5"
+      labelClassName="flex items-center"
+      valueClassName="flex min-w-0 items-center gap-1"
     >
-      <span className="block truncate" title={value}>
-        {value}
+      <span className="min-w-0 truncate text-foreground" title={value}>
+        {name}
       </span>
+      {connected ? null : (
+        <span className="shrink-0 text-muted-foreground">· Offline</span>
+      )}
     </DetailRow>
   );
 }

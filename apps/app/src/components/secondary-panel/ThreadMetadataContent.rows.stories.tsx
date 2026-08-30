@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   ParentSelectorRow,
   EnvironmentRow,
@@ -31,11 +30,6 @@ export default {
 };
 
 const noop = () => {};
-
-const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
-  locality: "remote",
-  identity: null,
-};
 
 function RowStage({ children }: { children: ReactNode }) {
   return (
@@ -132,10 +126,7 @@ export function ParentSelector() {
 export function Environment() {
   return (
     <StoryCard>
-      <StoryRow
-        label="typical name"
-        hint="worktree icon and custom name form one identity row"
-      >
+      <StoryRow label="worktree" hint="typical name">
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
@@ -145,10 +136,7 @@ export function Environment() {
           />
         </RowStage>
       </StoryRow>
-      <StoryRow
-        label="long name"
-        hint="long identity truncates before the trailing thread control"
-      >
+      <StoryRow label="worktree" hint="long name">
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
@@ -160,42 +148,24 @@ export function Environment() {
           />
         </RowStage>
       </StoryRow>
-      <StoryRow label="direct" hint="local state sits directly beside its icon">
+      <StoryRow label="machine" hint="local">
         <RowStage>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({
-              isWorktree: false,
-              workspaceProvisionType: "unmanaged",
-            })}
-            environmentDisplayHost={localEnvironmentDisplayHost}
-          />
+          <MachineRow name="Bersabel's MacBook Pro" />
         </RowStage>
       </StoryRow>
-      <StoryRow
-        label="remote direct"
-        hint="remote state sits directly beside its icon"
-      >
+      <StoryRow label="machine" hint="remote">
         <RowStage>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({
-              isWorktree: false,
-              workspaceProvisionType: "unmanaged",
-            })}
-            environmentDisplayHost={remoteEnvironmentDisplayHost}
-          />
+          <MachineRow name="Build Mac mini" />
         </RowStage>
       </StoryRow>
-      <StoryRow
-        label="provisioning"
-        hint="provisioning state replaces the identity in place"
-      >
+      <StoryRow label="worktree" hint="provisioning">
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
             environment={makeEnvironment({
+              name: "Design system polish",
               status: "provisioning",
+              path: null,
               isWorktree: false,
               workspaceProvisionType: "managed-worktree",
             })}

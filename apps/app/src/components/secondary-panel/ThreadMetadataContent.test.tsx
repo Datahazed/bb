@@ -204,7 +204,7 @@ describe("EnvironmentRow", () => {
     expect(screen.queryByText("Name")).toBeNull();
   });
 
-  it("places direct and provisioning state beside the workspace icon", () => {
+  it("does not present direct locality as a resource identity", () => {
     const result = render(
       <MemoryRouter>
         <EnvironmentRow
@@ -218,14 +218,31 @@ describe("EnvironmentRow", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Local").closest("dd")).not.toBeNull();
-    expect(screen.queryByText("Environment")).toBeNull();
+    expect(screen.queryByText("Local")).toBeNull();
 
     result.rerender(
       <MemoryRouter>
         <EnvironmentRow
           thread={makeThread()}
           environment={makeEnvironment({
+            isWorktree: false,
+            workspaceProvisionType: "unmanaged",
+          })}
+          environmentDisplayHost={{ locality: "remote", identity: null }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Remote")).toBeNull();
+  });
+
+  it("keeps worktree identity primary while lifecycle stays secondary", () => {
+    render(
+      <MemoryRouter>
+        <EnvironmentRow
+          thread={makeThread()}
+          environment={makeEnvironment({
+            name: "Design system polish",
             status: "provisioning",
             path: null,
             isWorktree: false,
@@ -236,15 +253,34 @@ describe("EnvironmentRow", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Provisioning").closest("dd")).not.toBeNull();
-    expect(screen.queryByText("Environment")).toBeNull();
+    const worktreeName = screen.getByText("Design system polish");
+    const worktreeValue = worktreeName.closest("dd");
+    expect(worktreeValue).not.toBeNull();
+    expect(
+      worktreeValue?.previousElementSibling?.querySelector(
+        '[data-icon="FolderGit"]',
+      ),
+    ).not.toBeNull();
+    expect(screen.getByText("· Provisioning").getAttribute("class")).toContain(
+      "text-muted-foreground",
+    );
   });
 
-  it("shows machine identity as a separate row", () => {
+  it("places the actual machine name beside its icon and keeps state secondary", () => {
     render(<MachineRow name="Bersabel's MacBook Pro" connected={false} />);
 
-    expect(screen.getByText("Machine")).toBeTruthy();
-    expect(screen.getByText("Bersabel's MacBook Pro · Offline")).toBeTruthy();
+    const machineName = screen.getByText("Bersabel's MacBook Pro");
+    const machineValue = machineName.closest("dd");
+    expect(machineValue).not.toBeNull();
+    expect(
+      machineValue?.previousElementSibling?.querySelector(
+        '[data-icon="Laptop"]',
+      ),
+    ).not.toBeNull();
+    expect(screen.queryByText("Machine")).toBeNull();
+    expect(screen.getByText("· Offline").getAttribute("class")).toContain(
+      "text-muted-foreground",
+    );
   });
 
   it("shows the create-thread action for a provisioned worktree", () => {
