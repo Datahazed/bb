@@ -143,6 +143,7 @@ describe("EnvironmentRow", () => {
         '[data-icon="FolderGit"]',
       ),
     ).not.toBeNull();
+    expect(screen.getByText("Worktree").closest("dt")).not.toBeNull();
     expect(screen.queryByText("Name")).toBeNull();
     expect(screen.queryByText("Bersabel's MacBook Pro")).toBeNull();
     expect(screen.queryByText("env_obfuscated")).toBeNull();
@@ -201,6 +202,7 @@ describe("EnvironmentRow", () => {
     expect(
       screen.getByRole("button", { name: "Name worktree" }).textContent,
     ).toContain("Add name");
+    expect(screen.getByText("Worktree").closest("dt")).not.toBeNull();
     expect(screen.queryByText("Name")).toBeNull();
   });
 
@@ -261,6 +263,7 @@ describe("EnvironmentRow", () => {
         '[data-icon="FolderGit"]',
       ),
     ).not.toBeNull();
+    expect(screen.getByText("Worktree").closest("dt")).not.toBeNull();
     expect(screen.getByText("· Provisioning").getAttribute("class")).toContain(
       "text-muted-foreground",
     );
@@ -277,7 +280,7 @@ describe("EnvironmentRow", () => {
         '[data-icon="Laptop"]',
       ),
     ).not.toBeNull();
-    expect(screen.queryByText("Machine")).toBeNull();
+    expect(screen.getByText("Machine").closest("dt")).not.toBeNull();
     expect(screen.getByText("· Offline").getAttribute("class")).toContain(
       "text-muted-foreground",
     );

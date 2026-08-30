@@ -325,16 +325,14 @@ export function EnvironmentRow({
   return (
     <DetailRow
       label={
-        <Icon
-          name={getEnvironmentWorkspaceLabelIconName(
+        <DetailRowIconLabel
+          icon={getEnvironmentWorkspaceLabelIconName(
             display.workspaceDisplayKind,
           )}
-          aria-label="Worktree"
-          className="size-3.5 shrink-0 text-muted-foreground"
-        />
+        >
+          Worktree
+        </DetailRowIconLabel>
       }
-      className="grid-cols-[1rem_minmax(0,1fr)] gap-x-1.5"
-      labelClassName="flex items-center"
       valueClassName="flex min-w-0 items-center gap-1"
     >
       {onRenameWorktree ? (
@@ -408,14 +406,10 @@ export function MachineRow({ name, connected = true }: MachineRowProps) {
   return (
     <DetailRow
       label={
-        <Icon
-          name={PersistentHostIconName}
-          aria-label="Machine"
-          className="size-3.5 shrink-0 text-muted-foreground"
-        />
+        <DetailRowIconLabel icon={PersistentHostIconName}>
+          Machine
+        </DetailRowIconLabel>
       }
-      className="grid-cols-[1rem_minmax(0,1fr)] gap-x-1.5"
-      labelClassName="flex items-center"
       valueClassName="flex min-w-0 items-center gap-1"
     >
       <span className="min-w-0 truncate text-foreground" title={value}>
