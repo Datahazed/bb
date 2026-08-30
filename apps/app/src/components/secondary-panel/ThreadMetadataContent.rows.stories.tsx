@@ -3,6 +3,7 @@ import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   ParentSelectorRow,
   EnvironmentRow,
+  MachineRow,
   WorkspacePathRow,
   BranchRow,
   MergeBaseRow,
@@ -131,12 +132,31 @@ export function ParentSelector() {
 export function Environment() {
   return (
     <StoryCard>
-      <StoryRow label="worktree">
+      <StoryRow
+        label="worktree · typical name"
+        hint="custom worktree name is primary; rename appears on interaction"
+      >
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment()}
+            environment={makeEnvironment({ name: "Design system polish" })}
             environmentDisplayHost={localEnvironmentDisplayHost}
+            onRenameWorktree={noop}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow
+        label="worktree · long name"
+        hint="long worktree name truncates before trailing controls"
+      >
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({
+              name: "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout",
+            })}
+            environmentDisplayHost={localEnvironmentDisplayHost}
+            onRenameWorktree={noop}
           />
         </RowStage>
       </StoryRow>
@@ -175,6 +195,23 @@ export function Environment() {
             })}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
+        </RowStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function Machine() {
+  return (
+    <StoryCard>
+      <StoryRow label="connected">
+        <RowStage>
+          <MachineRow name="Bersabel's MacBook Pro" />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="offline">
+        <RowStage>
+          <MachineRow name="Build Mac mini" connected={false} />
         </RowStage>
       </StoryRow>
     </StoryCard>

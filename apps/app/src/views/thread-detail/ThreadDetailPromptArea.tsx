@@ -64,7 +64,6 @@ import {
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
-import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
@@ -145,7 +144,6 @@ interface ThreadDetailPromptAreaProps {
   activeBackgroundAgentCount: number;
   canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
-  environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
   environmentGoneStatus: Extract<
     EnvironmentStatus,
@@ -154,8 +152,12 @@ interface ThreadDetailPromptAreaProps {
   environmentHostId?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
+  environmentMachineConnected?: boolean;
+  environmentMachineName?: string;
   environmentTypeLabel?: EnvironmentWorkspaceTypeLabel;
   onCreateNewThreadInWorktree?: () => void;
+  onRenameWorktree?: () => void;
+  renameWorktreePending?: boolean;
   onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
   onPullRequestReady?: () => void;
@@ -340,14 +342,17 @@ export function ThreadDetailPromptArea({
   activeBackgroundAgentCount,
   canUseGitUi,
   contextWindowUsage,
-  environmentCheckout,
   environmentCompactLabel,
   environmentGoneStatus,
   environmentHostId,
   environmentIcon,
   environmentLabel,
+  environmentMachineConnected,
+  environmentMachineName,
   environmentTypeLabel,
   onCreateNewThreadInWorktree,
+  onRenameWorktree,
+  renameWorktreePending,
   onPullRequestDraft,
   onPullRequestMerge,
   onPullRequestReady,
@@ -1171,25 +1176,31 @@ export function ThreadDetailPromptArea({
 
   const environmentSummary = useMemo(
     () =>
-      environmentLabel ? (
+      environmentLabel || environmentMachineName ? (
         <ThreadEnvironmentSummary
           projectName={projectName}
           environmentLabel={environmentLabel}
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
           environmentTypeLabel={environmentTypeLabel}
-          environmentCheckout={environmentCheckout}
+          machineName={environmentMachineName}
+          machineConnected={environmentMachineConnected}
           onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
+          onRenameWorktree={onRenameWorktree}
+          renameWorktreePending={renameWorktreePending}
         />
       ) : null,
     [
-      environmentCheckout,
       environmentCompactLabel,
       environmentIcon,
       environmentLabel,
+      environmentMachineConnected,
+      environmentMachineName,
       environmentTypeLabel,
       onCreateNewThreadInWorktree,
+      onRenameWorktree,
       projectName,
+      renameWorktreePending,
     ],
   );
   const activePromptModeCard = useMemo(
@@ -1424,7 +1435,7 @@ export function ThreadDetailPromptArea({
           promptPlaceholder: "Edit message",
           submit: handleSentMessageEditSubmit,
           submitMode: sentMessageEditSubmitMode,
-          submitTitle: "Submit edit (Enter)",
+          submitTitle: "Submit edit",
           suppressPluginComposerCustomizations: true,
           textEffects: sentMessageComposerTextEffects,
           threadRuntimeDisplayStatus: runtimeDisplayStatus,

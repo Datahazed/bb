@@ -80,6 +80,10 @@ import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
+import {
+  EnvironmentRenameDialog,
+  type EnvironmentRenameDialogTarget,
+} from "@/components/dialogs/EnvironmentRenameDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -95,6 +99,7 @@ import {
 } from "@bb/core-ui";
 import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
+import { useDialogState } from "@/hooks/useDialogState";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useHosts } from "@/hooks/queries/host-queries";
@@ -107,6 +112,7 @@ import {
 } from "@/hooks/queries/thread-terminal-queries";
 import {
   getEnvironmentWorkspaceSummaryDisplay,
+  shouldShowWorktreeMachineInComposer,
 } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import {
@@ -867,6 +873,91 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   );
   const markThreadRead = useMarkThreadRead();
   const updateEnvironment = useUpdateEnvironment();
+  const renameEnvironment = useUpdateEnvironment();
+  const worktreeRenameDialog = useDialogState<EnvironmentRenameDialogTarget>();
+  const worktreeRenameReturnFocusRef = useRef<HTMLElement | null>(null);
+  const {
+    error: renameEnvironmentError,
+    isPending: renameEnvironmentPending,
+    mutate: renameEnvironmentMutate,
+    reset: resetRenameEnvironment,
+    variables: renameEnvironmentVariables,
+  } = renameEnvironment;
+  const {
+    onClose: closeWorktreeRenameDialog,
+    onOpen: openWorktreeRenameDialog,
+  } = worktreeRenameDialog;
+  const restoreWorktreeRenameFocus = useCallback(() => {
+    const returnFocusTarget = worktreeRenameReturnFocusRef.current;
+    worktreeRenameReturnFocusRef.current = null;
+    if (returnFocusTarget === null) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (returnFocusTarget.isConnected) {
+        returnFocusTarget.focus();
+      }
+    });
+  }, []);
+  const closeWorktreeRenameDialogAndRestoreFocus = useCallback(() => {
+    closeWorktreeRenameDialog();
+    restoreWorktreeRenameFocus();
+  }, [closeWorktreeRenameDialog, restoreWorktreeRenameFocus]);
+  const handleWorktreeRenameOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        closeWorktreeRenameDialogAndRestoreFocus();
+      }
+    },
+    [closeWorktreeRenameDialogAndRestoreFocus],
+  );
+  const canRenameWorktree =
+    environment !== undefined &&
+    environment.status === "ready" &&
+    (environment.isWorktree ||
+      environment.workspaceProvisionType === "managed-worktree");
+  const renameWorktreePending =
+    renameEnvironmentPending &&
+    renameEnvironmentVariables?.id === environment?.id;
+  const renameWorktreeErrorMessage =
+    renameEnvironmentError && renameEnvironmentVariables?.id === environment?.id
+      ? getMutationErrorMessage({
+          error: renameEnvironmentError,
+          fallbackMessage: "Failed to update environment.",
+        })
+      : null;
+  const handleOpenWorktreeRename = useCallback(() => {
+    if (!canRenameWorktree || environment === undefined) {
+      return;
+    }
+    resetRenameEnvironment();
+    worktreeRenameReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    openWorktreeRenameDialog({
+      ...(environment.branchName !== null
+        ? { branchName: environment.branchName }
+        : {}),
+      canClearName: environment.name !== null,
+      id: environment.id,
+      currentName: environment.name ?? "",
+    });
+  }, [
+    canRenameWorktree,
+    environment,
+    openWorktreeRenameDialog,
+    resetRenameEnvironment,
+  ]);
+  const handleRenameWorktree = useCallback(
+    (environmentId: string, name: string | null) => {
+      renameEnvironmentMutate(
+        { id: environmentId, name },
+        { onSuccess: closeWorktreeRenameDialogAndRestoreFocus },
+      );
+    },
+    [closeWorktreeRenameDialogAndRestoreFocus, renameEnvironmentMutate],
+  );
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
   });
@@ -2350,17 +2441,24 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         host: environmentDisplayHostContext,
       })
     : undefined;
-  const environmentMachinePrefix =
-    threadEnvironmentHost !== null ? `${threadEnvironmentHost.name} · ` : "";
   const composerEnvironmentSummary = threadEnvironmentDisplay
     ? getEnvironmentWorkspaceSummaryDisplay({
         display: threadEnvironmentDisplay,
         environmentName: environment?.name ?? null,
         locality: environmentDisplayHostContext.locality,
-        hostName: resolvedThreadEnvironmentHost?.name,
-        machinePrefix: environmentMachinePrefix,
       })
     : undefined;
+  const composerMachine =
+    resolvedThreadEnvironmentHost !== null &&
+    (threadEnvironmentDisplay?.mode === "direct" ||
+      (threadEnvironmentDisplay?.mode === "worktree" &&
+        shouldShowWorktreeMachineInComposer({
+          connected: resolvedThreadEnvironmentHost.status === "connected",
+          locality: environmentDisplayHostContext.locality,
+          machineCount: hostsQuery.data?.length ?? 0,
+        })))
+      ? resolvedThreadEnvironmentHost
+      : null;
   const isThreadOnProvisionedWorktreeEnvironment =
     environment !== undefined &&
     environment.status === "ready" &&
@@ -2486,15 +2584,22 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
-      environmentCheckout={threadCheckoutDisplay}
       environmentCompactLabel={composerEnvironmentSummary?.compactLabel}
       environmentIcon={composerEnvironmentSummary?.icon}
       environmentLabel={composerEnvironmentSummary?.label}
+      environmentMachineConnected={
+        composerMachine ? composerMachine.status === "connected" : undefined
+      }
+      environmentMachineName={composerMachine?.name}
       environmentTypeLabel={composerEnvironmentSummary?.typeLabel}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       environmentHostId={environment?.hostId}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
+      onRenameWorktree={
+        canRenameWorktree ? handleOpenWorktreeRename : undefined
+      }
+      renameWorktreePending={renameWorktreePending}
       onPullRequestMerge={handlePullRequestMerge}
       onPullRequestDraft={handlePullRequestDraft}
       onPullRequestReady={handlePullRequestReady}
@@ -2855,6 +2960,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               isParentThreadsError: parentThreadSubsetQuery.isError,
               environment: environment ?? null,
               environmentDisplayHost: environmentDisplayHostContext,
+              environmentHostName: resolvedThreadEnvironmentHost?.name,
+              environmentHostConnected:
+                resolvedThreadEnvironmentHost?.status === "connected",
               workspaceStatus,
               workspaceStatusError: workspaceStatusError ?? null,
               workspaceUnavailable,
@@ -2866,6 +2974,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               isLoadingMergeBaseBranchOptions,
               updateThreadPending:
                 updateThread.isPending || updateEnvironment.isPending,
+              onRenameWorktree: canRenameWorktree
+                ? handleOpenWorktreeRename
+                : undefined,
+              renameWorktreePending,
               storage: metadataStorage,
               onAssignParent: handleAssignParent,
               onParentSelectorOpenChange: handleParentSelectorOpenChange,
@@ -2884,6 +2996,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               activeTab: activeFixedSecondaryTab,
               canUseGitUi,
               gitDiffTabStatus,
+              gitCheckout: threadCheckoutDisplay,
               environmentId: thread.environmentId ?? undefined,
               workspaceRootPath: environment?.path,
               tabs: panelTabs,
@@ -2985,6 +3098,13 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     <>
       <ThreadArchiveCommandHandler thread={thread} />
       <ThreadRenameCommandHandler thread={thread} />
+      <EnvironmentRenameDialog
+        errorMessage={renameWorktreeErrorMessage}
+        target={worktreeRenameDialog.target}
+        pending={renameWorktreePending}
+        onOpenChange={handleWorktreeRenameOpenChange}
+        onRename={handleRenameWorktree}
+      />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>
         <PluginThreadPanelNavigationProvider
           openThreadPanel={handleOpenTimelinePluginPanel}

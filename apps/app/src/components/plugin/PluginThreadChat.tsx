@@ -28,8 +28,8 @@ import { useThread } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   getEnvironmentWorkspaceSummaryDisplay,
+  shouldShowWorktreeMachineInComposer,
 } from "@/lib/environment-workspace-display";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
 import {
   getProjectComposeRoutePath,
@@ -111,9 +111,8 @@ function PluginThreadChatBody({
   const environmentQuery = useEnvironment(thread?.environmentId ?? null);
   const environment = environmentQuery.data ?? null;
   const hostsQuery = useHosts({ enabled: environment !== null });
-  const environmentHostName = environment
-    ? (hostsQuery.data?.find((host) => host.id === environment.hostId)?.name ??
-      null)
+  const environmentHost = environment
+    ? (hostsQuery.data?.find((host) => host.id === environment.hostId) ?? null)
     : null;
   const timelineNavigation = useThreadTimelineNavigation();
   const canUseHostFileNavigation =
@@ -190,28 +189,36 @@ function PluginThreadChatBody({
       display,
       environmentName: environment.name,
       locality: host.locality,
-      hostName: environmentHostName ?? undefined,
     });
+    const composerMachine =
+      environmentHost !== null &&
+      (display.mode === "direct" ||
+        (display.mode === "worktree" &&
+          shouldShowWorktreeMachineInComposer({
+            connected: environmentHost.status === "connected",
+            locality: host.locality,
+            machineCount: hostsQuery.data?.length ?? 0,
+          })))
+        ? environmentHost
+        : null;
     return (
       <ThreadEnvironmentSummary
         environmentLabel={summaryDisplay.label}
         environmentCompactLabel={summaryDisplay.compactLabel}
         environmentIcon={summaryDisplay.icon}
         environmentTypeLabel={summaryDisplay.typeLabel}
-        environmentCheckout={
-          environment.branchName
-            ? formatWorkspaceCheckoutDisplay({
-                checkout: {
-                  kind: "branch",
-                  branchName: environment.branchName,
-                  headSha: null,
-                },
-              })
-            : undefined
+        machineName={composerMachine?.name}
+        machineConnected={
+          composerMachine ? composerMachine.status === "connected" : undefined
         }
       />
     );
-  }, [environment, environmentHostName, isLocalDaemonHost]);
+  }, [
+    environment,
+    environmentHost,
+    hostsQuery.data?.length,
+    isLocalDaemonHost,
+  ]);
 
   const isThreadMissing =
     threadQuery.error instanceof BbHttpError &&

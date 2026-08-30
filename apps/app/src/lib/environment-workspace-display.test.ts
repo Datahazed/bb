@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getEnvironmentWorkspaceSummaryDisplay,
   getEnvironmentWorkspaceTypeLabel,
+  shouldShowWorktreeMachineInComposer,
 } from "./environment-workspace-display";
 
 describe("getEnvironmentWorkspaceTypeLabel", () => {
@@ -29,7 +30,6 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
         },
         environmentName: null,
         locality: "remote",
-        hostName: "Remote builder",
       }),
     ).toEqual({
       label: "Provisioning",
@@ -39,7 +39,7 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     });
   });
 
-  it("uses the host for a worktree without a custom name", () => {
+  it("keeps an unnamed worktree distinct from its host", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -52,18 +52,16 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
         },
         environmentName: null,
         locality: "remote",
-        hostName: "Build Mac mini",
-        machinePrefix: "Build Mac mini · ",
       }),
     ).toMatchObject({
-      label: "Build Mac mini",
-      compactLabel: "Build Mac mini",
+      label: "Worktree",
+      compactLabel: "Worktree",
       icon: "FolderGit",
       typeLabel: "Remote worktree",
     });
   });
 
-  it("preserves a real custom worktree name", () => {
+  it("uses the custom worktree name as the primary label", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -76,12 +74,52 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
         },
         environmentName: "Design system polish",
         locality: "remote",
-        hostName: "Build Mac mini",
-        machinePrefix: "Build Mac mini · ",
       }),
     ).toMatchObject({
-      label: "Build Mac mini · Design system polish",
+      label: "Design system polish",
       compactLabel: "Design system polish",
     });
+  });
+
+  it("does not present a machine name as an unnamed direct environment", () => {
+    expect(
+      getEnvironmentWorkspaceSummaryDisplay({
+        display: {
+          modeLabel: "Working locally",
+          compactModeLabel: "Local",
+          lifecycle: null,
+          id: "env_test",
+          mode: "direct",
+          workspaceDisplayKind: "other",
+        },
+        environmentName: null,
+        locality: "local",
+      }),
+    ).toMatchObject({
+      label: undefined,
+      compactLabel: undefined,
+      icon: "Laptop",
+      typeLabel: "Local",
+    });
+  });
+});
+
+describe("shouldShowWorktreeMachineInComposer", () => {
+  it("hides the only connected local machine", () => {
+    expect(
+      shouldShowWorktreeMachineInComposer({
+        connected: true,
+        locality: "local",
+        machineCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    { connected: true, locality: "remote", machineCount: 1 },
+    { connected: true, locality: "local", machineCount: 2 },
+    { connected: false, locality: "local", machineCount: 1 },
+  ] as const)("shows salient machine context for %o", (input) => {
+    expect(shouldShowWorktreeMachineInComposer(input)).toBe(true);
   });
 });

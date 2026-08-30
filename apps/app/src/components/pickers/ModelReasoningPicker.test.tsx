@@ -160,6 +160,8 @@ function renderPicker({
   compact = false,
   splitPane = false,
   muted = false,
+  fastModeEnabled = false,
+  showFastModeToggle = false,
 }: {
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
@@ -178,6 +180,8 @@ function renderPicker({
   compact?: boolean;
   splitPane?: boolean;
   muted?: boolean;
+  fastModeEnabled?: boolean;
+  showFastModeToggle?: boolean;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -214,9 +218,9 @@ function renderPicker({
         reasoningValue={reasoningValue}
         reasoningOptions={pickerReasoningOptions}
         onReasoningChange={onReasoningChange}
-        fastModeEnabled={false}
+        fastModeEnabled={fastModeEnabled}
         onFastModeChange={vi.fn()}
-        showFastModeToggle={false}
+        showFastModeToggle={showFastModeToggle}
         muted={muted}
         modal={false}
       />
@@ -251,6 +255,17 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("keeps the fast-mode qualifier out of parenthetical tooltip copy", () => {
+    renderPicker({ fastModeEnabled: true, showFastModeToggle: true });
+
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    expect(trigger.querySelector("[title]")?.getAttribute("title")).toBe(
+      "Codex: GPT-5.5 · Medium reasoning · Fast mode",
+    );
+  });
+
   it("uses the lower-emphasis chrome token for the composer caret", () => {
     renderPicker({ muted: true });
 

@@ -27,7 +27,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="standard"
-        hint="canonical state — parent + env + worktree path + branch + merge base + pull request + clean git status"
+        hint="canonical state — worktree + machine + path + Git context + pull request"
       >
         {render({
           pullRequest: makePullRequest(),

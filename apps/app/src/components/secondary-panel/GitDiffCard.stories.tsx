@@ -22,6 +22,7 @@ import {
 } from "../git-diff/git-diff-parsing";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { appToast } from "@/components/ui/app-toast";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 export default {
   title: "right-panel/Diff",
@@ -767,6 +768,13 @@ function InteractiveDiffPanel({
   return (
     <PanelStage>
       <GitDiffToolbar
+        checkout={formatWorkspaceCheckoutDisplay({
+          checkout: {
+            kind: "branch",
+            branchName: "bb/design-system-polish",
+            headSha: null,
+          },
+        })}
         selectionValue={selection}
         selectionOptions={SELECTION_OPTIONS}
         onSelectionChange={setSelection}

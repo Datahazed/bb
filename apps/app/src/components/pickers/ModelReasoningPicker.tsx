@@ -160,10 +160,12 @@ export function buildModelNavRows({
   isSearching: boolean;
   showMoreModels: boolean;
 }): ModelNavRow[] {
-  const rows: ModelNavRow[] = modelOptions.map((option): ModelNavRow => ({
-    kind: "model",
-    option,
-  }));
+  const rows: ModelNavRow[] = modelOptions.map(
+    (option): ModelNavRow => ({
+      kind: "model",
+      option,
+    }),
+  );
   if (moreModelOptions.length === 0) return rows;
 
   if (isSearching) {
@@ -770,7 +772,7 @@ export function ModelReasoningPicker({
   const triggerTitle = [
     `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
-    showSelectedFastMode ? " (Fast mode)" : "",
+    showSelectedFastMode ? " · Fast mode" : "",
   ].join("");
   const trigger = (
     <Button
@@ -778,11 +780,7 @@ export function ModelReasoningPicker({
       type="button"
       variant="ghost"
       size="sm"
-      aria-label={
-        toggleShortcut
-          ? `Provider, model and reasoning (${toggleShortcut.label})`
-          : "Provider, model and reasoning"
-      }
+      aria-label="Provider, model and reasoning"
       aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
       className={cn(

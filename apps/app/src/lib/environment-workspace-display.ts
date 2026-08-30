@@ -13,8 +13,6 @@ interface EnvironmentWorkspaceSummaryDisplayArgs {
   display: EnvironmentDisplayInfo;
   environmentName: string | null;
   locality: "local" | "remote";
-  hostName?: string;
-  machinePrefix?: string;
 }
 
 export interface EnvironmentWorkspaceSummaryDisplay {
@@ -24,12 +22,24 @@ export interface EnvironmentWorkspaceSummaryDisplay {
   typeLabel: EnvironmentWorkspaceTypeLabel | undefined;
 }
 
+interface WorktreeMachineComposerVisibilityArgs {
+  connected: boolean;
+  locality: "local" | "remote";
+  machineCount: number;
+}
+
+export function shouldShowWorktreeMachineInComposer({
+  connected,
+  locality,
+  machineCount,
+}: WorktreeMachineComposerVisibilityArgs): boolean {
+  return locality === "remote" || machineCount > 1 || !connected;
+}
+
 export function getEnvironmentWorkspaceSummaryDisplay({
   display,
   environmentName,
   locality,
-  hostName,
-  machinePrefix = "",
 }: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentWorkspaceSummaryDisplay {
   if (display.lifecycle === "provisioning") {
     return {
@@ -40,19 +50,13 @@ export function getEnvironmentWorkspaceSummaryDisplay({
     };
   }
 
+  const isWorktree = display.mode === "worktree";
+
   return {
-    label:
-      display.mode === "direct"
-        ? hostName
-        : environmentName === null
-          ? hostName
-          : `${machinePrefix}${display.modeLabel}`,
-    compactLabel:
-      display.mode === "direct"
-        ? hostName
-        : environmentName === null
-          ? hostName
-          : display.compactModeLabel,
+    label: isWorktree ? display.modeLabel : (environmentName ?? undefined),
+    compactLabel: isWorktree
+      ? display.compactModeLabel
+      : (environmentName ?? undefined),
     icon: getEnvironmentWorkspaceLabelIconName(display.workspaceDisplayKind),
     typeLabel: getEnvironmentWorkspaceTypeLabel(
       display.workspaceDisplayKind,

@@ -286,6 +286,9 @@ describe("public environments", () => {
         id: environment.id,
         name: "Review workspace",
       });
+      expect(getEnvironment(harness.db, environment.id)?.name).toBe(
+        "Review workspace",
+      );
     });
   });
 

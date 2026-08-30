@@ -14,6 +14,7 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EnvironmentRow,
+  MachineRow,
   ParentSelectorRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
@@ -116,6 +117,68 @@ describe("ThreadMetadataCard", () => {
 });
 
 describe("EnvironmentRow", () => {
+  it("keeps the worktree name primary and exposes the rename action", async () => {
+    const onRenameWorktree = vi.fn();
+    const result = render(
+      <TooltipProvider delayDuration={0}>
+        <MemoryRouter>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({
+              id: "env_obfuscated",
+              name: "Design system polish",
+            })}
+            environmentDisplayHost={localHost}
+            onRenameWorktree={onRenameWorktree}
+          />
+        </MemoryRouter>
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByText("Worktree")).toBeTruthy();
+    expect(screen.getByText("Design system polish")).toBeTruthy();
+    expect(screen.queryByText("Bersabel's MacBook Pro")).toBeNull();
+    expect(screen.queryByText("env_obfuscated")).toBeNull();
+    const renameButton = screen.getByRole("button", {
+      name: "Rename worktree",
+    });
+    expect(renameButton.textContent).toContain("Design system polish");
+    expect(
+      renameButton.querySelector('[data-icon="Edit"]')?.className,
+    ).toContain("opacity-0");
+    renameButton.focus();
+    expect(document.activeElement).toBe(renameButton);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Rename");
+    fireEvent.click(renameButton);
+    expect(onRenameWorktree).toHaveBeenCalledTimes(1);
+
+    result.rerender(
+      <TooltipProvider delayDuration={0}>
+        <MemoryRouter>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({ name: "Design system polish" })}
+            environmentDisplayHost={localHost}
+            onRenameWorktree={onRenameWorktree}
+            renameWorktreePending
+          />
+        </MemoryRouter>
+      </TooltipProvider>,
+    );
+
+    expect(renameButton.hasAttribute("disabled")).toBe(true);
+    expect(
+      renameButton.querySelector('[data-icon="Loading"]')?.className,
+    ).toContain("opacity-100");
+  });
+
+  it("shows machine identity as a separate row", () => {
+    render(<MachineRow name="Bersabel's MacBook Pro" connected={false} />);
+
+    expect(screen.getByText("Machine")).toBeTruthy();
+    expect(screen.getByText("Bersabel's MacBook Pro · Offline")).toBeTruthy();
+  });
+
   it("shows the create-thread action for a provisioned worktree", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="Create thread in worktree"',

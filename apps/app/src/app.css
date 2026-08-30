@@ -366,6 +366,11 @@
     [data-promptbox] [data-promptbox-icon-only-control] {
       flex-shrink: 0;
     }
+
+    [data-promptbox] [data-promptbox-worktree-context] {
+      flex: 1 1 8rem !important;
+      min-inline-size: 5rem !important;
+    }
   }
 
   @container promptbox-shell (max-width: 34rem) {
@@ -387,11 +392,22 @@
       flex-shrink: 0;
       max-inline-size: 10rem;
     }
+
+    [data-promptbox-shell] [data-promptbox-worktree-context] {
+      flex: 1 1 8rem !important;
+      min-inline-size: 5rem !important;
+    }
   }
 
   @container promptbox-shell (max-width: 22rem) {
-    [data-promptbox-shell] [data-promptbox-hide-branch-compact],
+    [data-promptbox-shell] [data-promptbox-secondary-context],
     [data-promptbox-shell] [data-promptbox-hide-tiny] {
+      display: none !important;
+    }
+  }
+
+  @container promptbox (max-width: 22rem) {
+    [data-promptbox] [data-promptbox-secondary-context] {
       display: none !important;
     }
   }

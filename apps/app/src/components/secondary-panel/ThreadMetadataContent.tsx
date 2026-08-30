@@ -82,6 +82,7 @@ import {
 } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
+import { PersistentHostIconName } from "@/lib/host-display";
 
 interface ParentSelectorRowProps {
   thread: Thread;
@@ -285,12 +286,16 @@ interface EnvironmentRowProps {
   thread: Thread;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
+  onRenameWorktree?: () => void;
+  renameWorktreePending?: boolean;
 }
 
 export function EnvironmentRow({
   thread,
   environment,
   environmentDisplayHost,
+  onRenameWorktree,
+  renameWorktreePending = false,
 }: EnvironmentRowProps) {
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId: thread.projectId,
@@ -301,7 +306,9 @@ export function EnvironmentRow({
     environment,
     host: environmentDisplayHost,
   });
+  const isWorktree = isWorktreeEnvironment(environment);
   const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
+  const worktreeTitle = display.compactModeLabel;
   return (
     <DetailRow
       label={
@@ -310,28 +317,41 @@ export function EnvironmentRow({
             display.workspaceDisplayKind,
           )}
         >
-          Environment
+          {isWorktree ? "Worktree" : "Environment"}
         </DetailRowIconLabel>
       }
       valueClassName="min-w-0"
     >
       <span className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 truncate" title={display.modeLabel}>
-          {display.compactModeLabel}
-        </span>
-        {environmentDisplayHost.identity ? (
-          <span
-            className="min-w-0 shrink-0 truncate text-muted-foreground"
-            title={`On ${environmentDisplayHost.identity.name} (${
-              environmentDisplayHost.identity.connected
-                ? "connected"
-                : "offline"
-            })`}
-          >
-            · {environmentDisplayHost.identity.name}
-            {environmentDisplayHost.identity.connected ? "" : " (offline)"}
+        {isWorktree && onRenameWorktree ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Rename worktree"
+                disabled={renameWorktreePending}
+                onClick={onRenameWorktree}
+                className="group -ml-1 inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
+              >
+                <span className="min-w-0 truncate">{worktreeTitle}</span>
+                <Icon
+                  name={renameWorktreePending ? "Loading" : "Edit"}
+                  className={cn(
+                    "size-3.5 shrink-0 text-muted-foreground transition-opacity",
+                    renameWorktreePending
+                      ? "animate-spin opacity-100"
+                      : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+                  )}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Rename</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="min-w-0 truncate" title={display.modeLabel}>
+            {isWorktree ? worktreeTitle : display.compactModeLabel}
           </span>
-        ) : null}
+        )}
         {showCreateThreadButton ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -347,6 +367,30 @@ export function EnvironmentRow({
             <TooltipContent>Create thread in worktree</TooltipContent>
           </Tooltip>
         ) : null}
+      </span>
+    </DetailRow>
+  );
+}
+
+interface MachineRowProps {
+  name?: string;
+  connected?: boolean;
+}
+
+export function MachineRow({ name, connected = true }: MachineRowProps) {
+  if (!name) return null;
+  const value = connected ? name : `${name} · Offline`;
+  return (
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon={PersistentHostIconName}>
+          Machine
+        </DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
+      <span className="block truncate" title={value}>
+        {value}
       </span>
     </DetailRow>
   );
@@ -376,15 +420,15 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
 
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="Folder">Directory</DetailRowIconLabel>}
+      label={<DetailRowIconLabel icon="Folder">Path</DetailRowIconLabel>}
       valueClassName="min-w-0"
     >
       <CopyableInlineLabel
         text={environment.path}
-        label="Copy directory"
+        label="Copy path"
         title={environment.path}
-        successMessage="Directory copied"
-        errorMessage="Failed to copy directory"
+        successMessage="Path copied"
+        errorMessage="Failed to copy path"
       />
     </DetailRow>
   );
@@ -582,9 +626,7 @@ export function MergeBaseRow({
 
   return (
     <DetailRow
-      label={
-        <DetailRowIconLabel icon="GitMerge">Merge base</DetailRowIconLabel>
-      }
+      label={<DetailRowIconLabel icon="GitMerge">Base</DetailRowIconLabel>}
       valueClassName="min-w-0"
     >
       {canSelectMergeBase && mergeBaseBranch ? (
@@ -655,9 +697,7 @@ export function GitStatusRow({
 
   return (
     <DetailRow
-      label={
-        <DetailRowIconLabel icon="FileDiff">Git status</DetailRowIconLabel>
-      }
+      label={<DetailRowIconLabel icon="FileDiff">Status</DetailRowIconLabel>}
       align="start"
       valueClassName="min-w-0"
     >
@@ -863,6 +903,8 @@ export interface ThreadMetadataContentProps {
   isParentThreadsError: boolean;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
+  environmentHostName?: string;
+  environmentHostConnected?: boolean;
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
@@ -873,6 +915,8 @@ export interface ThreadMetadataContentProps {
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   updateThreadPending: boolean;
+  onRenameWorktree?: () => void;
+  renameWorktreePending?: boolean;
   storage?: ThreadStorageRowProps;
   onAssignParent: (parentThreadId: string | null) => void;
   onParentSelectorOpenChange: (open: boolean) => void;
@@ -987,6 +1031,8 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     isParentThreadsError,
     environment,
     environmentDisplayHost,
+    environmentHostName,
+    environmentHostConnected,
     workspaceStatus,
     workspaceStatusError,
     workspaceUnavailable,
@@ -997,6 +1043,8 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     mergeBaseRemoteBranchOptions,
     isLoadingMergeBaseBranchOptions,
     updateThreadPending,
+    onRenameWorktree,
+    renameWorktreePending,
     storage,
     onAssignParent,
     onParentSelectorOpenChange,
@@ -1030,6 +1078,12 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         thread={thread}
         environment={environment}
         environmentDisplayHost={environmentDisplayHost}
+        onRenameWorktree={onRenameWorktree}
+        renameWorktreePending={renameWorktreePending}
+      />
+      <MachineRow
+        name={environmentHostName}
+        connected={environmentHostConnected}
       />
       <WorkspacePathRow environment={environment} />
       <BranchRow workspaceStatus={workspaceStatus} />

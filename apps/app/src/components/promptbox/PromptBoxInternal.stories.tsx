@@ -351,7 +351,7 @@ function makeSubmission(
   return {
     isSubmitting: false,
     disabled: false,
-    title: "Submit (Enter)",
+    title: "Submit",
     ...overrides,
   };
 }
@@ -875,7 +875,7 @@ function RunningWithStopRow() {
       submission={makeSubmission({
         isRunning: true,
         onStop: noop,
-        title: "Queue follow-up (Enter)",
+        title: "Queue follow-up",
       })}
       voice={idleVoice}
       footerStart={<ExecutionControls {...mockExecution} />}
