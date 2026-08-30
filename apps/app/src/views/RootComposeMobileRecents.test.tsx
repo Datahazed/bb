@@ -335,7 +335,6 @@ describe("mobile recents hierarchy interaction", () => {
     expect(childTile.className).toContain("border-transparent");
     expect(childTile.className).not.toContain("bg-surface-raised");
 
-    // Footprint, alignment and hit target must be identical on both.
     for (const tile of [parentTile, childTile]) {
       expect(tile.className).toContain("size-7");
       expect(tile.className).toContain("self-start");
