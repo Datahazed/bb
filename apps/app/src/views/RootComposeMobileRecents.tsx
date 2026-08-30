@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
@@ -142,6 +142,34 @@ function flattenMobileRecentNodes({
       });
     }
   }
+}
+
+export function getMobileRecentAncestorIds({
+  threadId,
+  threads,
+}: {
+  threadId: string;
+  threads: readonly ThreadListEntry[];
+}): string[] {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const selected = byId.get(threadId);
+  if (selected === undefined || selected.visibility === "hidden") {
+    return [];
+  }
+
+  const ancestorIds: string[] = [];
+  let current: ThreadListEntry | undefined = selected;
+  let remainingHops = byId.size;
+  while (current !== undefined && remainingHops > 0) {
+    const parentThreadId: string | null = current.parentThreadId;
+    if (parentThreadId === null) break;
+    const parent = byId.get(parentThreadId);
+    if (parent === undefined) break;
+    ancestorIds.push(parent.id);
+    current = parent;
+    remainingHops -= 1;
+  }
+  return ancestorIds;
 }
 
 export function getMobileRecentThreads({
@@ -318,6 +346,18 @@ export function RootComposeMobileRecents({
     },
     [setCollapsedThreadIdList],
   );
+  useEffect(() => {
+    if (highlightedThreadId === null) return;
+    const ancestorIds = getMobileRecentAncestorIds({
+      threadId: highlightedThreadId,
+      threads,
+    });
+    if (ancestorIds.length === 0) return;
+    setCollapsedThreadIdList((current) => {
+      const next = current.filter((id) => !ancestorIds.includes(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [highlightedThreadId, setCollapsedThreadIdList, threads]);
   const recentThreads = useMemo(
     () => getMobileRecentThreads({ collapsedThreadIds, threads }),
     [collapsedThreadIds, threads],

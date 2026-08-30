@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  getMobileRecentAncestorIds,
   getMobileRecentThreads,
   RootComposeMobileRecents,
 } from "./RootComposeMobileRecents";
@@ -183,6 +184,50 @@ describe("getMobileRecentThreads", () => {
   });
 });
 
+describe("getMobileRecentAncestorIds", () => {
+  const tree = [
+    makeThread({ id: "thr_root" }),
+    makeThread({ id: "thr_mid", parentThreadId: "thr_root" }),
+    makeThread({ id: "thr_leaf", parentThreadId: "thr_mid" }),
+  ];
+
+  it("walks the whole ancestor chain of a nested thread", () => {
+    expect(
+      getMobileRecentAncestorIds({ threadId: "thr_leaf", threads: tree }),
+    ).toEqual(["thr_mid", "thr_root"]);
+  });
+
+  it("returns nothing for a root thread or an unknown id", () => {
+    expect(
+      getMobileRecentAncestorIds({ threadId: "thr_root", threads: tree }),
+    ).toEqual([]);
+    expect(
+      getMobileRecentAncestorIds({ threadId: "thr_missing", threads: tree }),
+    ).toEqual([]);
+  });
+
+  it("stops at an absent parent instead of looping", () => {
+    expect(
+      getMobileRecentAncestorIds({
+        threadId: "thr_orphan",
+        threads: [makeThread({ id: "thr_orphan", parentThreadId: "thr_gone" })],
+      }),
+    ).toEqual([]);
+  });
+
+  it("terminates on a parent cycle", () => {
+    expect(
+      getMobileRecentAncestorIds({
+        threadId: "thr_a",
+        threads: [
+          makeThread({ id: "thr_a", parentThreadId: "thr_b" }),
+          makeThread({ id: "thr_b", parentThreadId: "thr_a" }),
+        ],
+      }).length,
+    ).toBeLessThanOrEqual(2);
+  });
+});
+
 describe("mobile recents hierarchy interaction", () => {
   function renderTree() {
     return render(
@@ -231,6 +276,42 @@ describe("mobile recents hierarchy interaction", () => {
 
     fireEvent.click(expand);
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
+  });
+
+  it("reveals a highlighted thread whose parent is collapsed", () => {
+    window.localStorage.setItem(
+      "bb.sidebar.collapsedThreads",
+      JSON.stringify(["thr_parent"]),
+    );
+
+    render(
+      <MemoryRouter>
+        <RootComposeMobileRecents
+          highlightedThreadId="thr_child"
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={[
+            makeThread({
+              id: "thr_parent",
+              title: "Rework folder model",
+              titleFallback: "Rework folder model",
+            }),
+            makeThread({
+              id: "thr_child",
+              title: "Audit folder query paths",
+              titleFallback: "Audit folder query paths",
+              parentThreadId: "thr_parent",
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Audit folder query paths")).not.toBeNull();
+    expect(window.localStorage.getItem("bb.sidebar.collapsedThreads")).toBe(
+      "[]",
+    );
   });
 
   it("anchors the provider tile to the title line, not the text block", () => {
