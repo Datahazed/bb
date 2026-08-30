@@ -265,7 +265,14 @@ function MobileRecentThreadRow({
           highlighted && "bg-surface-selected",
         )}
       >
-        <span className="mt-1 flex size-7 shrink-0 items-center justify-center self-start rounded-md border border-border-seam bg-surface-raised">
+        <span
+          className={cn(
+            "mt-1 flex size-7 shrink-0 items-center justify-center self-start rounded-md border",
+            depth === 0
+              ? "border-border-seam bg-surface-raised"
+              : "border-transparent bg-transparent opacity-70",
+          )}
+        >
           {ProviderMark === undefined ? null : provider === null ? (
             <ProviderMark className="size-4" />
           ) : (

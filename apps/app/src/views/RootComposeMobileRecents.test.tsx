@@ -314,6 +314,36 @@ describe("mobile recents hierarchy interaction", () => {
     );
   });
 
+  it("de-emphasizes the provider tile on child rows only", () => {
+    renderTree();
+
+    const [parentRow, childRow] = screen.getAllByRole("link");
+    const parentTile = parentRow?.firstElementChild;
+    const childTile = childRow?.firstElementChild;
+    if (
+      !(parentTile instanceof HTMLElement) ||
+      !(childTile instanceof HTMLElement)
+    ) {
+      throw new Error("Expected a tile on both rows");
+    }
+
+    expect(parentTile.className).toContain("border-border-seam");
+    expect(parentTile.className).toContain("bg-surface-raised");
+    expect(parentTile.className).not.toContain("opacity-70");
+
+    expect(childTile.className).toContain("opacity-70");
+    expect(childTile.className).toContain("border-transparent");
+    expect(childTile.className).not.toContain("bg-surface-raised");
+
+    // Footprint, alignment and hit target must be identical on both.
+    for (const tile of [parentTile, childTile]) {
+      expect(tile.className).toContain("size-7");
+      expect(tile.className).toContain("self-start");
+      expect(tile.className).toContain("mt-1");
+      expect(tile.className).toContain("border");
+    }
+  });
+
   it("anchors the provider tile to the title line, not the text block", () => {
     renderTree();
 
