@@ -328,7 +328,7 @@ export function EnvironmentRow({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="Rename worktree"
+                aria-label={`Rename worktree: ${worktreeTitle}`}
                 disabled={renameWorktreePending}
                 onClick={onRenameWorktree}
                 className="group -ml-1 inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"

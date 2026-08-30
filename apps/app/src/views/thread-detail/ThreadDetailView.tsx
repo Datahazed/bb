@@ -2584,6 +2584,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
+      environmentCheckout={threadCheckoutDisplay}
       environmentCompactLabel={composerEnvironmentSummary?.compactLabel}
       environmentIcon={composerEnvironmentSummary?.icon}
       environmentLabel={composerEnvironmentSummary?.label}

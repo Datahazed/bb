@@ -26,6 +26,10 @@ import {
 } from "@/components/promptbox/follow-up-placeholder";
 import { getEnvironmentWorkspaceSummaryDisplay } from "@/lib/environment-workspace-display";
 import {
+  formatWorkspaceCheckoutDisplay,
+  type WorkspaceCheckoutDisplay,
+} from "@/lib/workspace-checkout-display";
+import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
   type PromptBoxAction,
@@ -77,6 +81,13 @@ const STORY_BRANCH_NAME = "bb/design-system-polish";
 const STORY_WORKTREE_NAME = "Design system polish";
 const STORY_LONG_WORKTREE_NAME =
   "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout";
+const STORY_CHECKOUT_DISPLAY = formatWorkspaceCheckoutDisplay({
+  checkout: {
+    kind: "branch",
+    branchName: STORY_BRANCH_NAME,
+    headSha: null,
+  },
+});
 
 const baseExecution = makeExecutionControlsProps({
   provider: {
@@ -175,6 +186,7 @@ interface EnvironmentSummaryArgs {
   host: EnvironmentDisplayHostContext;
   projectName?: string;
   machineName?: string;
+  environmentCheckout?: WorkspaceCheckoutDisplay;
   onRenameWorktree?: () => void;
   onCreateNewThreadInWorktree?: () => void;
 }
@@ -184,6 +196,7 @@ function makeEnvironmentSummary({
   host,
   projectName,
   machineName,
+  environmentCheckout,
   onRenameWorktree,
   onCreateNewThreadInWorktree,
 }: EnvironmentSummaryArgs): ReactNode {
@@ -203,6 +216,7 @@ function makeEnvironmentSummary({
       environmentCompactLabel={summaryDisplay.compactLabel}
       environmentIcon={summaryDisplay.icon}
       environmentTypeLabel={summaryDisplay.typeLabel}
+      environmentCheckout={environmentCheckout}
       machineName={machineName}
       onRenameWorktree={onRenameWorktree}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
@@ -262,6 +276,7 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   machineName: "Bersabel's MacBook Pro",
+  environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -273,6 +288,7 @@ const remoteWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: remoteEnvironmentDisplayHost,
   machineName: "Build Mac mini",
+  environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -286,6 +302,7 @@ const unmanagedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   machineName: "Bersabel's MacBook Pro",
+  environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -298,6 +315,7 @@ const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   machineName: "Bersabel's MacBook Pro",
+  environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -309,6 +327,12 @@ const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   machineName: "Bersabel's MacBook Pro",
+  environmentCheckout: formatWorkspaceCheckoutDisplay({
+    checkout: {
+      kind: "detached",
+      headSha: "abcdef1234567890",
+    },
+  }),
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -1247,6 +1271,7 @@ function WorktreeNameEditingFixture({
           host: localEnvironmentDisplayHost,
           projectName: "bb UI QA",
           machineName: "Bersabel's MacBook Pro",
+          environmentCheckout: STORY_CHECKOUT_DISPLAY,
           onRenameWorktree: openRename,
           onCreateNewThreadInWorktree: noop,
         })}
@@ -1280,7 +1305,7 @@ export function WorktreeNameEditing() {
       </StoryRow>
       <StoryRow
         label="long name"
-        hint="long visible name truncates before machine and thread controls"
+        hint="long visible name truncates before machine, branch, and thread controls"
       >
         <WorktreeNameEditingFixture
           fixtureId="long"
@@ -1315,7 +1340,7 @@ export function WorktreeNamingContract() {
       </StoryRow>
       <StoryRow
         label="after clear"
-        hint="worktree and machine remain separate; branch lives in Diff"
+        hint="worktree, machine, and branch remain separate context"
       >
         <div className="w-full max-w-xl rounded-md border bg-background p-3">
           {worktreeEnvironmentSummary}

@@ -64,6 +64,7 @@ import {
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
+import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
@@ -144,6 +145,7 @@ interface ThreadDetailPromptAreaProps {
   activeBackgroundAgentCount: number;
   canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
+  environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
   environmentGoneStatus: Extract<
     EnvironmentStatus,
@@ -342,6 +344,7 @@ export function ThreadDetailPromptArea({
   activeBackgroundAgentCount,
   canUseGitUi,
   contextWindowUsage,
+  environmentCheckout,
   environmentCompactLabel,
   environmentGoneStatus,
   environmentHostId,
@@ -1183,6 +1186,7 @@ export function ThreadDetailPromptArea({
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
           environmentTypeLabel={environmentTypeLabel}
+          environmentCheckout={environmentCheckout}
           machineName={environmentMachineName}
           machineConnected={environmentMachineConnected}
           onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
@@ -1191,6 +1195,7 @@ export function ThreadDetailPromptArea({
         />
       ) : null,
     [
+      environmentCheckout,
       environmentCompactLabel,
       environmentIcon,
       environmentLabel,

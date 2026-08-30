@@ -401,13 +401,15 @@
 
   @container promptbox-shell (max-width: 22rem) {
     [data-promptbox-shell] [data-promptbox-secondary-context],
+    [data-promptbox-shell] [data-promptbox-hide-branch-compact],
     [data-promptbox-shell] [data-promptbox-hide-tiny] {
       display: none !important;
     }
   }
 
   @container promptbox (max-width: 22rem) {
-    [data-promptbox] [data-promptbox-secondary-context] {
+    [data-promptbox] [data-promptbox-secondary-context],
+    [data-promptbox] [data-promptbox-hide-branch-compact] {
       display: none !important;
     }
   }

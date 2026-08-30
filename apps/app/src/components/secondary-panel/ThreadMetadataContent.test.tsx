@@ -140,7 +140,7 @@ describe("EnvironmentRow", () => {
     expect(screen.queryByText("Bersabel's MacBook Pro")).toBeNull();
     expect(screen.queryByText("env_obfuscated")).toBeNull();
     const renameButton = screen.getByRole("button", {
-      name: "Rename worktree",
+      name: "Rename worktree: Design system polish",
     });
     expect(renameButton.textContent).toContain("Design system polish");
     expect(
@@ -159,7 +159,7 @@ describe("EnvironmentRow", () => {
         <MemoryRouter>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({ name: "Design system polish" })}
+            environment={makeEnvironment({ name: "Release coordination" })}
             environmentDisplayHost={localHost}
             onRenameWorktree={onRenameWorktree}
             renameWorktreePending
@@ -168,9 +168,12 @@ describe("EnvironmentRow", () => {
       </TooltipProvider>,
     );
 
-    expect(renameButton.hasAttribute("disabled")).toBe(true);
+    const pendingRenameButton = screen.getByRole("button", {
+      name: "Rename worktree: Release coordination",
+    });
+    expect(pendingRenameButton.hasAttribute("disabled")).toBe(true);
     expect(
-      renameButton
+      pendingRenameButton
         .querySelector('[data-icon="Loading"]')
         ?.getAttribute("class"),
     ).toContain("opacity-100");

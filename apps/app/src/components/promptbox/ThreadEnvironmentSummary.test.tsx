@@ -68,7 +68,7 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it("does not render Git checkout context in the composer summary", () => {
+  it("renders Git checkout context in the composer summary", () => {
     render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
@@ -76,11 +76,27 @@ describe("ThreadEnvironmentSummary", () => {
           environmentCompactLabel="Design system polish"
           environmentIcon="FolderGit"
           environmentTypeLabel="Local worktree"
+          environmentCheckout={{
+            copyErrorMessage: "Failed to copy branch name",
+            copyLabel: "Copy branch name",
+            copySuccessMessage: "Branch name copied",
+            copyValue: "bb/design-system-polish",
+            label: "bb/design-system-polish",
+            rowLabel: "Branch",
+            title: "Copy branch name: bb/design-system-polish",
+          }}
         />
       </TooltipProvider>,
     );
 
-    expect(document.querySelector('[data-icon="GitBranch"]')).toBeNull();
+    const copyButton = screen.getByRole("button", {
+      name: "bb/design-system-polish",
+    });
+    expect(copyButton.textContent).toBe("bb/design-system-polish");
+    expect(copyButton.querySelector('[data-icon="GitBranch"]')).not.toBeNull();
+    expect(
+      copyButton.getAttribute("data-promptbox-hide-branch-compact"),
+    ).toBe("");
   });
 
   it.each(["Local worktree", "Remote worktree", "Local", "Remote"] as const)(
@@ -165,7 +181,7 @@ describe("ThreadEnvironmentSummary", () => {
     ).toBe("Design system polish");
     expect(screen.getAllByText("Bersabel's MacBook Pro")).toHaveLength(2);
     const renameButton = screen.getByRole("button", {
-      name: "Rename worktree",
+      name: "Rename worktree: Design system polish",
     });
     expect(renameButton.textContent).toContain("Design system polish");
     expect(
@@ -182,8 +198,8 @@ describe("ThreadEnvironmentSummary", () => {
     result.rerender(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
-          environmentLabel="Design system polish"
-          environmentCompactLabel="Design system polish"
+          environmentLabel="Release coordination"
+          environmentCompactLabel="Release coordination"
           environmentIcon="FolderGit"
           environmentTypeLabel="Local worktree"
           machineName="Bersabel's MacBook Pro"
@@ -193,9 +209,12 @@ describe("ThreadEnvironmentSummary", () => {
       </TooltipProvider>,
     );
 
-    expect(renameButton.hasAttribute("disabled")).toBe(true);
+    const pendingRenameButton = screen.getByRole("button", {
+      name: "Rename worktree: Release coordination",
+    });
+    expect(pendingRenameButton.hasAttribute("disabled")).toBe(true);
     expect(
-      renameButton
+      pendingRenameButton
         .querySelector('[data-icon="Loading"]')
         ?.getAttribute("class"),
     ).toContain("opacity-100");
@@ -218,7 +237,7 @@ describe("ThreadEnvironmentSummary", () => {
     );
 
     const renameButton = screen.getByRole("button", {
-      name: "Rename worktree",
+      name: `Rename worktree: ${longName}`,
     });
     expect(renameButton.className).toContain("min-w-0");
     expect(renameButton.textContent).toContain(longName);
