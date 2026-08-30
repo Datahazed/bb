@@ -262,7 +262,7 @@ describe("ModelReasoningPicker", () => {
       name: "Provider, model and reasoning",
     });
     expect(trigger.querySelector("[title]")?.getAttribute("title")).toBe(
-      "Codex: GPT-5.5 · Medium reasoning · Fast mode",
+      "Codex: 5.5 · Medium reasoning · Fast mode",
     );
   });
 

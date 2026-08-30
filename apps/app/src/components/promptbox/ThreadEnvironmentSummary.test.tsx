@@ -43,7 +43,7 @@ describe("ThreadEnvironmentSummary", () => {
     expect(
       container.querySelector('[data-promptbox-compact-label=""]')?.textContent,
     ).toBe("Design system polish");
-    expect(screen.getByText("Build Mac mini")).toBeTruthy();
+    expect(screen.getAllByText("Build Mac mini")).toHaveLength(2);
     expect(
       screen.queryByText(/Build Mac mini · Design system polish/u),
     ).toBeNull();
@@ -155,14 +155,23 @@ describe("ThreadEnvironmentSummary", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Design system polish")).toBeTruthy();
-    expect(screen.getByText("Bersabel's MacBook Pro")).toBeTruthy();
+    expect(
+      result.container.querySelector('[data-promptbox-full-label=""]')
+        ?.textContent,
+    ).toBe("Design system polish");
+    expect(
+      result.container.querySelector('[data-promptbox-compact-label=""]')
+        ?.textContent,
+    ).toBe("Design system polish");
+    expect(screen.getAllByText("Bersabel's MacBook Pro")).toHaveLength(2);
     const renameButton = screen.getByRole("button", {
       name: "Rename worktree",
     });
     expect(renameButton.textContent).toContain("Design system polish");
     expect(
-      renameButton.querySelector('[data-icon="Edit"]')?.className,
+      renameButton
+        .querySelector('[data-icon="Edit"]')
+        ?.getAttribute("class"),
     ).toContain("opacity-0");
     renameButton.focus();
     expect(document.activeElement).toBe(renameButton);
@@ -186,7 +195,9 @@ describe("ThreadEnvironmentSummary", () => {
 
     expect(renameButton.hasAttribute("disabled")).toBe(true);
     expect(
-      renameButton.querySelector('[data-icon="Loading"]')?.className,
+      renameButton
+        .querySelector('[data-icon="Loading"]')
+        ?.getAttribute("class"),
     ).toContain("opacity-100");
   });
 
@@ -217,7 +228,9 @@ describe("ThreadEnvironmentSummary", () => {
     renameButton.focus();
     expect((await screen.findByRole("tooltip")).textContent).toBe("Rename");
     expect(
-      renameButton.querySelector('[data-icon="Edit"]')?.className,
+      renameButton
+        .querySelector('[data-icon="Edit"]')
+        ?.getAttribute("class"),
     ).toContain("shrink-0");
   });
 });

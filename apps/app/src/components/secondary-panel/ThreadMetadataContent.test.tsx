@@ -144,7 +144,9 @@ describe("EnvironmentRow", () => {
     });
     expect(renameButton.textContent).toContain("Design system polish");
     expect(
-      renameButton.querySelector('[data-icon="Edit"]')?.className,
+      renameButton
+        .querySelector('[data-icon="Edit"]')
+        ?.getAttribute("class"),
     ).toContain("opacity-0");
     renameButton.focus();
     expect(document.activeElement).toBe(renameButton);
@@ -168,7 +170,9 @@ describe("EnvironmentRow", () => {
 
     expect(renameButton.hasAttribute("disabled")).toBe(true);
     expect(
-      renameButton.querySelector('[data-icon="Loading"]')?.className,
+      renameButton
+        .querySelector('[data-icon="Loading"]')
+        ?.getAttribute("class"),
     ).toContain("opacity-100");
   });
 
