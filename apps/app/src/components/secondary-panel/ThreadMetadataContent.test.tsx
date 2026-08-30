@@ -135,9 +135,15 @@ describe("EnvironmentRow", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Name")).toBeTruthy();
-    expect(screen.queryByText("Worktree")).toBeNull();
-    expect(screen.getByText("Design system polish")).toBeTruthy();
+    const worktreeName = screen.getByText("Design system polish");
+    const worktreeValue = worktreeName.closest("dd");
+    expect(worktreeValue).not.toBeNull();
+    expect(
+      worktreeValue?.previousElementSibling?.querySelector(
+        '[data-icon="FolderGit"]',
+      ),
+    ).not.toBeNull();
+    expect(screen.queryByText("Name")).toBeNull();
     expect(screen.queryByText("Bersabel's MacBook Pro")).toBeNull();
     expect(screen.queryByText("env_obfuscated")).toBeNull();
     const renameButton = screen.getByRole("button", {
@@ -192,11 +198,46 @@ describe("EnvironmentRow", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Name")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Name worktree" }).textContent,
     ).toContain("Add name");
-    expect(screen.queryByText("Worktree")).toBeNull();
+    expect(screen.queryByText("Name")).toBeNull();
+  });
+
+  it("places direct and provisioning state beside the workspace icon", () => {
+    const result = render(
+      <MemoryRouter>
+        <EnvironmentRow
+          thread={makeThread()}
+          environment={makeEnvironment({
+            isWorktree: false,
+            workspaceProvisionType: "unmanaged",
+          })}
+          environmentDisplayHost={localHost}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Local").closest("dd")).not.toBeNull();
+    expect(screen.queryByText("Environment")).toBeNull();
+
+    result.rerender(
+      <MemoryRouter>
+        <EnvironmentRow
+          thread={makeThread()}
+          environment={makeEnvironment({
+            status: "provisioning",
+            path: null,
+            isWorktree: false,
+            workspaceProvisionType: "managed-worktree",
+          })}
+          environmentDisplayHost={localHost}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Provisioning").closest("dd")).not.toBeNull();
+    expect(screen.queryByText("Environment")).toBeNull();
   });
 
   it("shows machine identity as a separate row", () => {

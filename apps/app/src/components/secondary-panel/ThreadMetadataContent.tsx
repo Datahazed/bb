@@ -317,68 +317,71 @@ export function EnvironmentRow({
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel
-          icon={getEnvironmentWorkspaceLabelIconName(
+        <Icon
+          name={getEnvironmentWorkspaceLabelIconName(
             display.workspaceDisplayKind,
           )}
-        >
-          {isWorktree && display.lifecycle === null ? "Name" : "Environment"}
-        </DetailRowIconLabel>
+          aria-label={isWorktree ? "Worktree" : "Environment"}
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
       }
-      valueClassName="min-w-0"
+      className="grid-cols-[1rem_minmax(0,1fr)] gap-x-1.5"
+      labelClassName="flex items-center"
+      valueClassName="flex min-w-0 items-center gap-1"
     >
-      <span className="flex min-w-0 items-center gap-1">
-        {isWorktree && onRenameWorktree ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={
-                  environment.name
-                    ? `Rename worktree: ${environment.name}`
-                    : "Name worktree"
-                }
-                disabled={renameWorktreePending}
-                onClick={onRenameWorktree}
-                className="group -ml-1 inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
-              >
-                <span className="min-w-0 truncate">{worktreeTitle}</span>
-                <Icon
-                  name={renameWorktreePending ? "Loading" : "Edit"}
-                  className={cn(
-                    "size-3.5 shrink-0 text-muted-foreground transition-opacity",
-                    renameWorktreePending
-                      ? "animate-spin opacity-100"
-                      : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
-                  )}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Rename</TooltipContent>
-          </Tooltip>
-        ) : (
-          <span className="min-w-0 truncate" title={environmentTitle}>
-            {isWorktree && display.lifecycle === null
-              ? worktreeTitle
-              : display.compactModeLabel}
-          </span>
-        )}
-        {showCreateThreadButton ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="Create thread in worktree"
-                onClick={createThreadInWorktree}
-                className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-              >
-                <Icon name="MessageSquarePlus" className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Create thread in worktree</TooltipContent>
-          </Tooltip>
-        ) : null}
-      </span>
+      {isWorktree && onRenameWorktree ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={
+                environment.name
+                  ? `Rename worktree: ${environment.name}`
+                  : "Name worktree"
+              }
+              disabled={renameWorktreePending}
+              onClick={onRenameWorktree}
+              className="group -ml-1 inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1 py-0.5 text-left text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
+            >
+              <span className="min-w-0 truncate">{worktreeTitle}</span>
+              <Icon
+                name={renameWorktreePending ? "Loading" : "Edit"}
+                className={cn(
+                  "size-3.5 shrink-0 text-muted-foreground transition-opacity",
+                  renameWorktreePending
+                    ? "animate-spin opacity-100"
+                    : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+                )}
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Rename</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span
+          className="min-w-0 truncate text-foreground"
+          title={environmentTitle}
+        >
+          {isWorktree && display.lifecycle === null
+            ? worktreeTitle
+            : display.compactModeLabel}
+        </span>
+      )}
+      {showCreateThreadButton ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Create thread in worktree"
+              onClick={createThreadInWorktree}
+              className="ml-auto inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <Icon name="MessageSquarePlus" className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Create thread in worktree</TooltipContent>
+        </Tooltip>
+      ) : null}
     </DetailRow>
   );
 }

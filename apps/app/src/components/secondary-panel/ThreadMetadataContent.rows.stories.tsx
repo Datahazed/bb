@@ -134,7 +134,7 @@ export function Environment() {
     <StoryCard>
       <StoryRow
         label="typical name"
-        hint="custom worktree name is primary; rename appears on interaction"
+        hint="worktree icon and custom name form one identity row"
       >
         <RowStage>
           <EnvironmentRow
@@ -147,7 +147,7 @@ export function Environment() {
       </StoryRow>
       <StoryRow
         label="long name"
-        hint="long worktree name truncates before trailing controls"
+        hint="long identity truncates before the trailing thread control"
       >
         <RowStage>
           <EnvironmentRow
@@ -160,7 +160,7 @@ export function Environment() {
           />
         </RowStage>
       </StoryRow>
-      <StoryRow label="direct">
+      <StoryRow label="direct" hint="local state sits directly beside its icon">
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
@@ -172,7 +172,10 @@ export function Environment() {
           />
         </RowStage>
       </StoryRow>
-      <StoryRow label="remote direct">
+      <StoryRow
+        label="remote direct"
+        hint="remote state sits directly beside its icon"
+      >
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
@@ -184,7 +187,10 @@ export function Environment() {
           />
         </RowStage>
       </StoryRow>
-      <StoryRow label="provisioning">
+      <StoryRow
+        label="provisioning"
+        hint="provisioning state replaces the identity in place"
+      >
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
