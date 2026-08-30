@@ -15,6 +15,10 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
+import {
+  isCompactSecondaryPanelShelfShowing,
+  subscribeCompactSecondaryPanelShelfShowing,
+} from "./secondary-panel-shelf-visibility.js";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.76;
@@ -1887,17 +1891,29 @@ const SidebarInset = React.forwardRef<
     }
   }, [clearSwipeSession, isCompactViewport, openMobile]);
 
+  const secondaryPanelShelfShowing = React.useSyncExternalStore(
+    subscribeCompactSecondaryPanelShelfShowing,
+    isCompactSecondaryPanelShelfShowing,
+    () => false,
+  );
   const shelfState = isCompactViewport
     ? openMobile
       ? "open"
       : "closed"
     : undefined;
+  const panelShelfState =
+    isCompactViewport && !openMobile
+      ? secondaryPanelShelfShowing
+        ? "open"
+        : "closed"
+      : undefined;
 
   return (
     <main
       ref={ref}
       data-sidebar="inset"
       data-sidebar-shelf={shelfState}
+      data-panel-shelf={panelShelfState}
       style={
         openMobile && suppressMobileOpenAnimation
           ? { transition: "none" }
@@ -1907,6 +1923,7 @@ const SidebarInset = React.forwardRef<
         "relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background max-md:z-30",
         SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS,
         "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf=open]:rounded-l-xl data-[sidebar-shelf=open]:shadow-2xl data-[sidebar-shelf]:will-change-[translate]",
+        "data-[panel-shelf=open]:-translate-x-(--secondary-panel-width-mobile) data-[panel-shelf=open]:rounded-r-xl data-[panel-shelf=open]:shadow-2xl data-[panel-shelf]:will-change-[translate]",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className,
       )}

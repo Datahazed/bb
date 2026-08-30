@@ -28,6 +28,9 @@
    */
   :root {
     --bb-shell-height: 100dvh;
+    /* Width of the compact right-panel shelf. Mirrors --sidebar-width-mobile
+       so the page displaces by the same amount whichever side opens. */
+    --secondary-panel-width-mobile: min(76vw, 320px);
   }
 
   html.bb-app-shell-root {
