@@ -135,7 +135,8 @@ describe("EnvironmentRow", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Worktree")).toBeTruthy();
+    expect(screen.getByText("Name")).toBeTruthy();
+    expect(screen.queryByText("Worktree")).toBeNull();
     expect(screen.getByText("Design system polish")).toBeTruthy();
     expect(screen.queryByText("Bersabel's MacBook Pro")).toBeNull();
     expect(screen.queryByText("env_obfuscated")).toBeNull();
@@ -144,9 +145,7 @@ describe("EnvironmentRow", () => {
     });
     expect(renameButton.textContent).toContain("Design system polish");
     expect(
-      renameButton
-        .querySelector('[data-icon="Edit"]')
-        ?.getAttribute("class"),
+      renameButton.querySelector('[data-icon="Edit"]')?.getAttribute("class"),
     ).toContain("opacity-0");
     renameButton.focus();
     expect(document.activeElement).toBe(renameButton);
@@ -177,6 +176,27 @@ describe("EnvironmentRow", () => {
         .querySelector('[data-icon="Loading"]')
         ?.getAttribute("class"),
     ).toContain("opacity-100");
+  });
+
+  it("offers naming without using the worktree type as a row label", () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <MemoryRouter>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({ name: null })}
+            environmentDisplayHost={localHost}
+            onRenameWorktree={vi.fn()}
+          />
+        </MemoryRouter>
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByText("Name")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Name worktree" }).textContent,
+    ).toContain("Add name");
+    expect(screen.queryByText("Worktree")).toBeNull();
   });
 
   it("shows machine identity as a separate row", () => {

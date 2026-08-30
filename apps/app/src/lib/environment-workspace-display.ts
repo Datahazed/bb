@@ -50,13 +50,11 @@ export function getEnvironmentWorkspaceSummaryDisplay({
     };
   }
 
-  const isWorktree = display.mode === "worktree";
+  const environmentSummaryLabel = environmentName ?? undefined;
 
   return {
-    label: isWorktree ? display.modeLabel : (environmentName ?? undefined),
-    compactLabel: isWorktree
-      ? display.compactModeLabel
-      : (environmentName ?? undefined),
+    label: environmentSummaryLabel,
+    compactLabel: environmentSummaryLabel,
     icon: getEnvironmentWorkspaceLabelIconName(display.workspaceDisplayKind),
     typeLabel: getEnvironmentWorkspaceTypeLabel(
       display.workspaceDisplayKind,

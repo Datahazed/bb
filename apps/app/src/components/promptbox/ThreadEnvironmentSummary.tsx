@@ -45,12 +45,14 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
     !environmentLabel &&
     !environmentCheckout &&
     !machineName &&
+    !onRenameWorktree &&
     !onCreateNewThreadInWorktree
   ) {
     return null;
   }
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
+  const worktreeName = environmentLabel ?? "Add name";
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
       {projectName ? (
@@ -66,7 +68,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           />
         </span>
       ) : null}
-      {environmentLabel ? (
+      {environmentLabel || (isWorktree && onRenameWorktree) ? (
         <div
           data-promptbox-worktree-context={isWorktree ? "" : undefined}
           className="inline-flex h-6 w-fit max-w-full min-w-0 shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
@@ -99,17 +101,20 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  aria-label={`Rename worktree: ${environmentLabel}`}
+                  aria-label={
+                    environmentLabel
+                      ? `Rename worktree: ${environmentLabel}`
+                      : "Name worktree"
+                  }
                   disabled={renameWorktreePending}
                   onClick={onRenameWorktree}
                   className="group -ml-1 inline-flex h-6 min-w-0 shrink items-center gap-1 rounded-md px-1 text-xs leading-tight text-muted-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
                 >
-                  <span className="sr-only">Worktree: </span>
                   <span
                     className="min-w-0 truncate"
                     data-promptbox-full-label=""
                   >
-                    {environmentLabel}
+                    {worktreeName}
                   </span>
                   {environmentCompactLabel ? (
                     <span
@@ -134,7 +139,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             </Tooltip>
           ) : (
             <OptionDisplay
-              label={isWorktree ? "Worktree" : "Environment"}
+              label={isWorktree ? "Name" : "Environment"}
               value={environmentLabel}
               compactValue={environmentCompactLabel}
               className="h-6 min-w-0 shrink px-0"
@@ -155,9 +160,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             leading={<Icon name="Laptop" className="size-4 shrink-0" />}
             className="h-6 min-w-0 max-w-[10rem] shrink"
             tooltip={
-              machineConnected
-                ? machineName
-                : `${machineName} · Offline`
+              machineConnected ? machineName : `${machineName} · Offline`
             }
             muted
           />

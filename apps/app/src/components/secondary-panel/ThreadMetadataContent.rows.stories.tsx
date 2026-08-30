@@ -133,7 +133,7 @@ export function Environment() {
   return (
     <StoryCard>
       <StoryRow
-        label="worktree · typical name"
+        label="typical name"
         hint="custom worktree name is primary; rename appears on interaction"
       >
         <RowStage>
@@ -146,7 +146,7 @@ export function Environment() {
         </RowStage>
       </StoryRow>
       <StoryRow
-        label="worktree · long name"
+        label="long name"
         hint="long worktree name truncates before trailing controls"
       >
         <RowStage>

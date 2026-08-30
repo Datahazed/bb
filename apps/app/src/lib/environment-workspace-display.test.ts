@@ -39,7 +39,7 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     });
   });
 
-  it("keeps an unnamed worktree distinct from its host", () => {
+  it("does not use the worktree type as an unnamed worktree label", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -54,8 +54,8 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
         locality: "remote",
       }),
     ).toMatchObject({
-      label: "Worktree",
-      compactLabel: "Worktree",
+      label: undefined,
+      compactLabel: undefined,
       icon: "FolderGit",
       typeLabel: "Remote worktree",
     });

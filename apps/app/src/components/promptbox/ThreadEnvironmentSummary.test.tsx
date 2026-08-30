@@ -94,9 +94,9 @@ describe("ThreadEnvironmentSummary", () => {
     });
     expect(copyButton.textContent).toBe("bb/design-system-polish");
     expect(copyButton.querySelector('[data-icon="GitBranch"]')).not.toBeNull();
-    expect(
-      copyButton.getAttribute("data-promptbox-hide-branch-compact"),
-    ).toBe("");
+    expect(copyButton.getAttribute("data-promptbox-hide-branch-compact")).toBe(
+      "",
+    );
   });
 
   it.each(["Local worktree", "Remote worktree", "Local", "Remote"] as const)(
@@ -132,10 +132,7 @@ describe("ThreadEnvironmentSummary", () => {
   it("explains the create-thread action in a tooltip", async () => {
     const { container } = render(
       <TooltipProvider delayDuration={0}>
-        <ThreadEnvironmentSummary
-          environmentLabel="Worktree"
-          onCreateNewThreadInWorktree={vi.fn()}
-        />
+        <ThreadEnvironmentSummary onCreateNewThreadInWorktree={vi.fn()} />
       </TooltipProvider>,
     );
 
@@ -154,6 +151,23 @@ describe("ThreadEnvironmentSummary", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Create thread in worktree",
     );
+  });
+
+  it("offers naming without using the worktree type as a visible label", () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          environmentIcon="FolderGit"
+          environmentTypeLabel="Local worktree"
+          onRenameWorktree={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Name worktree" }).textContent,
+    ).toContain("Add name");
+    expect(screen.queryByText("Worktree")).toBeNull();
   });
 
   it("keeps the worktree name primary and exposes the rename action", async () => {
@@ -185,9 +199,7 @@ describe("ThreadEnvironmentSummary", () => {
     });
     expect(renameButton.textContent).toContain("Design system polish");
     expect(
-      renameButton
-        .querySelector('[data-icon="Edit"]')
-        ?.getAttribute("class"),
+      renameButton.querySelector('[data-icon="Edit"]')?.getAttribute("class"),
     ).toContain("opacity-0");
     renameButton.focus();
     expect(document.activeElement).toBe(renameButton);
@@ -247,9 +259,7 @@ describe("ThreadEnvironmentSummary", () => {
     renameButton.focus();
     expect((await screen.findByRole("tooltip")).textContent).toBe("Rename");
     expect(
-      renameButton
-        .querySelector('[data-icon="Edit"]')
-        ?.getAttribute("class"),
+      renameButton.querySelector('[data-icon="Edit"]')?.getAttribute("class"),
     ).toContain("shrink-0");
   });
 });

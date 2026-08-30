@@ -1239,17 +1239,30 @@ function WorktreeNameEditingFixture({
   initialName,
 }: {
   fixtureId: string;
-  initialName: string;
+  initialName: string | null;
 }) {
   const [name, setName] = useState<string | null>(initialName);
   const [renameTarget, setRenameTarget] =
     useState<EnvironmentRenameDialogTarget | null>(null);
+  const renameTriggerRef = useRef<HTMLElement | null>(null);
   const openRename = () => {
+    renameTriggerRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     setRenameTarget({
       id: `env_${fixtureId}`,
       currentName: name ?? "",
       branchName: STORY_BRANCH_NAME,
       canClearName: name !== null,
+    });
+  };
+  const closeRename = () => {
+    const renameTrigger = renameTriggerRef.current;
+    renameTriggerRef.current = null;
+    setRenameTarget(null);
+    requestAnimationFrame(() => {
+      if (renameTrigger?.isConnected) renameTrigger.focus();
     });
   };
 
@@ -1280,11 +1293,11 @@ function WorktreeNameEditingFixture({
         target={renameTarget}
         pending={false}
         onOpenChange={(open) => {
-          if (!open) setRenameTarget(null);
+          if (!open) closeRename();
         }}
         onRename={(_environmentId, nextName) => {
           setName(nextName);
-          setRenameTarget(null);
+          closeRename();
         }}
       />
     </>
@@ -1322,7 +1335,7 @@ export function WorktreeNamingContract() {
     <StoryCard>
       <StoryRow
         label="custom name"
-        hint="clearing the name restores the generic Worktree fallback"
+        hint="clearing the name returns to the concise naming affordance"
       >
         <DialogStage>
           <EnvironmentRenameDialogContent
@@ -1339,12 +1352,10 @@ export function WorktreeNamingContract() {
         </DialogStage>
       </StoryRow>
       <StoryRow
-        label="after clear"
-        hint="worktree, machine, and branch remain separate context"
+        label="unnamed"
+        hint="the type stays in the icon tooltip instead of becoming a label"
       >
-        <div className="w-full max-w-xl rounded-md border bg-background p-3">
-          {worktreeEnvironmentSummary}
-        </div>
+        <WorktreeNameEditingFixture fixtureId="unnamed" initialName={null} />
       </StoryRow>
     </StoryCard>
   );
