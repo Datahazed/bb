@@ -267,10 +267,8 @@ function MobileRecentThreadRow({
       >
         <span
           className={cn(
-            "mt-1 flex size-7 shrink-0 items-center justify-center self-start rounded-md border",
-            depth === 0
-              ? "border-border-seam bg-surface-raised"
-              : "border-transparent bg-transparent opacity-70",
+            "mt-1 flex size-7 shrink-0 items-center justify-center self-start rounded-md border border-border-seam bg-surface-raised",
+            depth > 0 && "opacity-60",
           )}
         >
           {ProviderMark === undefined ? null : provider === null ? (

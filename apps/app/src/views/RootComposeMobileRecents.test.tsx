@@ -327,13 +327,13 @@ describe("mobile recents hierarchy interaction", () => {
       throw new Error("Expected a tile on both rows");
     }
 
-    expect(parentTile.className).toContain("border-border-seam");
-    expect(parentTile.className).toContain("bg-surface-raised");
-    expect(parentTile.className).not.toContain("opacity-70");
+    expect(parentTile.className).not.toContain("opacity-60");
+    expect(childTile.className).toContain("opacity-60");
 
-    expect(childTile.className).toContain("opacity-70");
-    expect(childTile.className).toContain("border-transparent");
-    expect(childTile.className).not.toContain("bg-surface-raised");
+    for (const tile of [parentTile, childTile]) {
+      expect(tile.className).toContain("border-border-seam");
+      expect(tile.className).toContain("bg-surface-raised");
+    }
 
     for (const tile of [parentTile, childTile]) {
       expect(tile.className).toContain("size-7");
