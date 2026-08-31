@@ -168,9 +168,7 @@ describe("BrowsePluginsTab", () => {
       queryKey: ["plugin-catalog-search"],
     });
     const retry = await screen.findByRole("button", { name: "Retry" });
-    expect(
-      screen.getByText(/Showing cached catalog results/u),
-    ).toBeTruthy();
+    expect(screen.getByText(/Showing cached catalog results/u)).toBeTruthy();
     expect(
       screen.getAllByRole("button", { name: "Open Memory details" }).length,
     ).toBeGreaterThan(0);
@@ -312,7 +310,9 @@ describe("BrowsePluginsTab", () => {
     expect(
       notableCategory.parentElement?.classList.contains("row-start-3"),
     ).toBe(true);
-    expect(notableShelf.querySelector("[data-plugin-category-accent]")).toBeNull();
+    expect(
+      notableShelf.querySelector("[data-plugin-category-accent]"),
+    ).toBeNull();
     expect(
       screen.getAllByRole("button", { name: "Open Memory details" }),
     ).toHaveLength(2);
@@ -681,9 +681,9 @@ describe("BrowsePluginsTab", () => {
       true,
     );
     expect(shelfTitle.classList.contains("hover:underline")).toBe(false);
-    expect(
-      shelfTitle.classList.contains("focus-visible:bg-state-hover"),
-    ).toBe(false);
+    expect(shelfTitle.classList.contains("focus-visible:bg-state-hover")).toBe(
+      false,
+    );
     expect(shelfTitle.classList.contains("focus-visible:ring-1")).toBe(false);
     const focusAccent = shelfTitle.querySelector(
       "[data-plugin-category-accent] > span",
@@ -973,9 +973,7 @@ describe("BrowsePluginsTab", () => {
     ).toBeTruthy();
 
     fireEvent.change(categorySearch, { target: { value: "memory" } });
-    fireEvent.click(
-      screen.getByRole("option", { name: /Memory & Context/u }),
-    );
+    fireEvent.click(screen.getByRole("option", { name: /Memory & Context/u }));
     expect(screen.getByTestId("location").textContent).toBe(
       "?category=security&category=memory-and-context",
     );
@@ -983,13 +981,13 @@ describe("BrowsePluginsTab", () => {
       name: "Filter plugins by category: Security, Memory & Context",
     });
     expect(multiCategoryTrigger.textContent).toContain("2 categories");
-    expect(
-      screen.queryByRole("heading", { name: "2 categories" }),
-    ).toBeNull();
+    expect(screen.queryByRole("heading", { name: "2 categories" })).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Memory & Context" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open Memory details" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Open Memory details" }),
+    ).toBeTruthy();
   });
 
   it("uses selected-category shelves until sorting flattens the results", async () => {
@@ -1038,14 +1036,13 @@ describe("BrowsePluginsTab", () => {
         .closest('[class~="px-[var(--resource-source-shelf-inset)]"]'),
     ).not.toBeNull();
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Sort plugins" }),
-    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(0);
     expect(screen.getAllByText("Memory & Context")).toHaveLength(1);
     expect(screen.getAllByText("Code & Reviews")).toHaveLength(1);
 
+    fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.pointerDown(
       screen.getByRole("button", {
         name: /^Sort: Name,/u,
@@ -1115,7 +1112,7 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    await screen.findByRole("button", { name: "Open Memory details" });
+    await screen.findAllByRole("button", { name: "Open Memory details" });
     fireEvent.click(
       screen.getByRole("button", {
         name: "Filter plugins by category: All categories",

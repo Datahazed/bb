@@ -173,19 +173,17 @@ describe("plugin discovery detail panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Full Screen" }));
     await waitFor(() => {
       expect(
-        browseViewport.closest("[data-conversation-collapsed]")?.getAttribute(
-          "data-conversation-collapsed",
-        ),
+        browseViewport
+          .closest("[data-conversation-collapsed]")
+          ?.getAttribute("data-conversation-collapsed"),
       ).toBe("true");
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Exit Full Screen" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Exit Full Screen" }));
     await waitFor(() => {
       expect(
-        browseViewport.closest("[data-conversation-collapsed]")?.getAttribute(
-          "data-conversation-collapsed",
-        ),
+        browseViewport
+          .closest("[data-conversation-collapsed]")
+          ?.getAttribute("data-conversation-collapsed"),
       ).toBe("false");
     });
 
@@ -211,9 +209,7 @@ describe("plugin discovery detail panel", () => {
       "/extensions/plugins/memory?sort=name",
     );
 
-    const splitLayout = document.querySelector(
-      "[data-split-resize-grid-root]",
-    );
+    const splitLayout = document.querySelector("[data-split-resize-grid-root]");
     const githubTab = screen.getByRole("button", { name: "GitHub" });
     const memoryTab = screen.getByRole("button", { name: "Memory" });
     const memoryDetailHeading = screen.getByRole("heading", {
@@ -227,7 +223,7 @@ describe("plugin discovery detail panel", () => {
       );
     });
     expect(
-      await screen.findByRole("heading", { name: "Pat Lee" }),
+      await screen.findByRole("heading", { name: /^Pat Lee/u }),
     ).toBeTruthy();
     expect(document.querySelector("[data-split-resize-grid-root]")).toBe(
       splitLayout,
@@ -341,7 +337,7 @@ describe("plugin discovery detail panel", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: "Pat Lee" }),
+      await screen.findByRole("heading", { name: /^Pat Lee/u }),
     ).toBeTruthy();
     expect(screen.getByText(/2 plugins/u)).toBeTruthy();
     expect(screen.queryByText("Author not found.")).toBeNull();

@@ -817,6 +817,7 @@ describe("PluginsOverview", () => {
         "plugin-row-direct-one",
       ]);
     });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
     expect(screen.queryByText("No plugins match these filters.")).toBeNull();
   });

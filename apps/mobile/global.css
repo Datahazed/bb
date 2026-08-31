@@ -81,6 +81,21 @@
   --color-pill-icon: var(--pill-icon);
   --color-pill-surface-border: var(--pill-surface-border);
   --color-pill-surface-selected-border: var(--pill-surface-selected-border);
+  --color-plugin-category-family-agent-work: var(
+    --plugin-category-family-agent-work
+  );
+  --color-plugin-category-family-development: var(
+    --plugin-category-family-development
+  );
+  --color-plugin-category-family-environment: var(
+    --plugin-category-family-environment
+  );
+  --color-plugin-category-family-experience: var(
+    --plugin-category-family-experience
+  );
+  --color-plugin-category-family-oversight: var(
+    --plugin-category-family-oversight
+  );
   --color-sidebar-search-match: var(--sidebar-search-match);
   --color-sidebar-search-match-border: var(--sidebar-search-match-border);
   --color-shadow-color: var(--shadow-color);
