@@ -81,6 +81,8 @@ const INSTALLED_PLUGIN_RESPONSE = {
     logoDarkUrl: null,
     providerIds: [],
     icons: {},
+    lastProblem: null,
+    screenshots: [],
   },
 };
 
