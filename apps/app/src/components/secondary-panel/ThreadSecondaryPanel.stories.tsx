@@ -14,6 +14,7 @@ import {
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   createGitDiffFixedPanelTab,
@@ -42,6 +43,8 @@ import {
 } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
+import { FilePreview } from "./FilePreview";
+import { threadListQueryKey } from "@/hooks/queries/query-keys";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -229,8 +232,27 @@ function RepresentativeInfoContent() {
     },
     onCommitClick: noop,
   };
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(
+      threadListQueryKey({
+        projectId: props.thread.projectId,
+        sourceThreadId: props.thread.id,
+        originKind: "fork",
+        archived: false,
+      }),
+      [],
+    );
+    return client;
+  });
 
-  return <ThreadMetadataContent {...props} />;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThreadMetadataContent {...props} />
+    </QueryClientProvider>
+  );
 }
 
 interface ShellArgs {
@@ -274,14 +296,27 @@ function ShellRow({
   );
 }
 
-const representativeFileContent = (
-  <div className="space-y-3 px-4 py-3 font-mono text-xs text-foreground">
-    <p className="text-muted-foreground">ThreadSecondaryPanel.tsx</p>
-    <pre className="whitespace-pre-wrap">{`export function ThreadSecondaryPanel() {
+const REPRESENTATIVE_FILE_SOURCE = `export function ThreadSecondaryPanel() {
   return <Panel className="bg-sidebar">…</Panel>;
-}`}</pre>
-  </div>
-);
+}`;
+
+function RepresentativeFileContent({ path }: { path: string }) {
+  return (
+    <FilePreview
+      path={path}
+      state={{
+        kind: "ready",
+        lineRange: null,
+        textPreviewKind: null,
+        file: {
+          cacheKey: `thread-secondary-panel-story:${path}`,
+          name: path.split("/").at(-1) ?? path,
+          contents: REPRESENTATIVE_FILE_SOURCE,
+        },
+      }}
+    />
+  );
+}
 
 interface TerminalTabFixture {
   terminalId: string;
@@ -384,7 +419,7 @@ function FileTabsShellInner({
           statusLabel: null,
           onSelect: () => setActiveFilename(filename),
           onClose: () => handleCloseFile(filename),
-          renderContent: () => representativeFileContent,
+          renderContent: () => <RepresentativeFileContent path={filename} />,
           tab,
         };
       }),
@@ -599,7 +634,7 @@ function ProductionSplitPanesStory() {
           tab.kind === "terminal" ? (
             <RepresentativeTerminalContent title="pnpm dev" />
           ) : (
-            representativeFileContent
+            <RepresentativeFileContent path="ThreadSecondaryPanel.tsx" />
           ),
         tab,
       })),

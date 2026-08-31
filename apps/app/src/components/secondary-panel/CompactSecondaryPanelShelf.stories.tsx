@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createGitDiffFixedPanelTab,
   createThreadInfoFixedPanelTab,
@@ -18,6 +19,9 @@ import {
 } from "./ThreadSecondaryPanel";
 import { ThreadMetadataContent } from "./ThreadMetadataContent";
 import { baseProps as baseMetadataProps } from "./ThreadMetadataContent.fixtures";
+import { FilePreview } from "./FilePreview";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { threadListQueryKey } from "@/hooks/queries/query-keys";
 
 export default {
   title: "right-panel/Compact shelf",
@@ -26,6 +30,18 @@ export default {
 const noop = () => {};
 
 const STORY_FILE_PATH = "apps/app/src/views/RootComposeCompactHome.tsx";
+const STORY_FILE_SOURCE = `export function RootComposeCompactHome({
+  children,
+  composer,
+}: RootComposeCompactHomeProps) {
+  const { regionRef, composerRef } = useCompactHomeMetrics();
+  return (
+    <div ref={regionRef} className="relative min-h-0 flex-1">
+      {children}
+      <div ref={composerRef}>{composer}</div>
+    </div>
+  );
+}`;
 
 function createStoryFileTab(path: string): HostFilePreviewFixedPanelTab {
   return {
@@ -55,50 +71,52 @@ const MANY_TAB_PATHS: string[] = [
   "an-unusually-long-component-filename-that-must-truncate.tsx",
 ]
 
-function StoryFileContent() {
+function StoryFileContent({ path }: { path: string }) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-auto p-3 font-mono text-xs">
-      <p className="text-muted-foreground">{STORY_FILE_PATH}</p>
-      <pre className="pt-2 whitespace-pre-wrap">{`export function RootComposeCompactHome({
-  children,
-  composer,
-}: RootComposeCompactHomeProps) {
-  const { regionRef, composerRef } = useCompactHomeMetrics();
-  return (
-    <div ref={regionRef} className="relative min-h-0 flex-1">
-      …
-    </div>
-  );
-}`}</pre>
-    </div>
+    <FilePreview
+      path={path}
+      state={{
+        kind: "ready",
+        lineRange: null,
+        textPreviewKind: null,
+        file: {
+          cacheKey: `compact-shelf-story:${path}`,
+          name: path.split("/").at(-1) ?? path,
+          contents: STORY_FILE_SOURCE,
+        },
+      }}
+    />
   );
 }
 
 interface ShelfPanelProps {
   activeTab: SecondaryFixedPanelTab;
-  onSelectInfo: () => void;
-  onSelectFile: () => void;
+  onSelectTab: (tab: SecondaryFixedPanelTab) => void;
   onClose: () => void;
   filePaths?: string[];
 }
 
 function ShelfPanel({
   activeTab,
-  onSelectInfo,
-  onSelectFile,
+  onSelectTab,
   onClose,
   filePaths = [STORY_FILE_PATH],
 }: ShelfPanelProps) {
-  const tabs: SecondaryPanelRenderableTab[] = filePaths.map((path, index) => ({
-    label: path.split("/").at(-1) ?? path,
-    isPinned: index === 0 && filePaths.length > 1,
-    leadingVisual: <Icon name="File" className="size-3.5" aria-hidden />,
-    statusLabel: null,
-    onSelect: onSelectFile,
-    onClose: noop,
-    renderContent: () => <StoryFileContent />,
-    tab: path === STORY_FILE_PATH ? fileTab : createStoryFileTab(path),
-  }));
+  const tabs: SecondaryPanelRenderableTab[] = filePaths.map((path, index) => {
+    const tab = path === STORY_FILE_PATH ? fileTab : createStoryFileTab(path);
+    return {
+      label: path.split("/").at(-1) ?? path,
+      isPinned: index === 0 && filePaths.length > 1,
+      leadingVisual: <Icon name="File" className="size-3.5" aria-hidden />,
+      statusLabel: null,
+      onSelect: () => onSelectTab(tab),
+      onClose: noop,
+      renderContent: () => <StoryFileContent path={path} />,
+      tab,
+    };
+  });
+  const infoTab = createThreadInfoFixedPanelTab();
+  const diffTab = createGitDiffFixedPanelTab();
 
   return (
     <ThreadSecondaryPanel
@@ -114,16 +132,16 @@ function ShelfPanel({
           ariaLabel: "Show thread info panel",
           label: "Info",
           leadingVisual: <Icon name="Info" />,
-          onSelect: onSelectInfo,
-          tab: createThreadInfoFixedPanelTab(),
+          onSelect: () => onSelectTab(infoTab),
+          tab: infoTab,
           title: "Thread info",
         },
         {
           ariaLabel: "Show diff panel",
           label: "Diff",
           leadingVisual: <Icon name="FileDiff" />,
-          onSelect: onSelectInfo,
-          tab: createGitDiffFixedPanelTab(),
+          onSelect: () => onSelectTab(diffTab),
+          tab: diffTab,
           title: "Diff",
         },
       ]}
@@ -131,7 +149,7 @@ function ShelfPanel({
       onCollapse={noop}
       onClose={onClose}
       onTabReorder={noop}
-      onOpenNewTab={onSelectFile}
+      onOpenNewTab={noop}
       isConversationCollapsed={false}
       onToggleConversationCollapse={noop}
       renderAsDrawer
@@ -142,14 +160,35 @@ function ShelfPanel({
 }
 
 function Stage({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(
+      threadListQueryKey({
+        projectId: baseMetadataProps.thread.projectId,
+        sourceThreadId: baseMetadataProps.thread.id,
+        originKind: "fork",
+        archived: false,
+      }),
+      [],
+    );
+    return client;
+  });
   return (
-    <div
-      className={`${MOBILE_RECENTS_VISIBILITY_CLASS} fixed inset-0 flex flex-col bg-background`}
-    >
-      <MobileRecentsVisibilityStyle />
-      <CompactHomePage />
-      {children}
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <div
+        className={`${MOBILE_RECENTS_VISIBILITY_CLASS} fixed inset-0 flex flex-col bg-background`}
+      >
+        <MobileRecentsVisibilityStyle />
+        <SidebarProvider defaultOpen={false} className="min-h-0">
+          <SidebarInset className="min-h-0 overflow-hidden">
+            <CompactHomePage />
+          </SidebarInset>
+          {children}
+        </SidebarProvider>
+      </div>
+    </QueryClientProvider>
   );
 }
 
@@ -174,8 +213,7 @@ function ShelfStory({
       >
         <ShelfPanel
           activeTab={activeTab}
-          onSelectInfo={() => setActiveTab(createThreadInfoFixedPanelTab())}
-          onSelectFile={() => setActiveTab(fileTab)}
+          onSelectTab={setActiveTab}
           onClose={() => setOpen(false)}
         />
       </CompactSecondaryPanelShelf>
@@ -205,8 +243,7 @@ export function ManyTabs() {
         <ShelfPanel
           activeTab={activeTab}
           filePaths={MANY_TAB_PATHS}
-          onSelectInfo={() => setActiveTab(createThreadInfoFixedPanelTab())}
-          onSelectFile={() => setActiveTab(fileTab)}
+          onSelectTab={setActiveTab}
           onClose={noop}
         />
       </CompactSecondaryPanelShelf>
@@ -225,8 +262,7 @@ export function Closed() {
       >
         <ShelfPanel
           activeTab={createThreadInfoFixedPanelTab()}
-          onSelectInfo={noop}
-          onSelectFile={noop}
+          onSelectTab={noop}
           onClose={noop}
         />
       </CompactSecondaryPanelShelf>
