@@ -68,7 +68,12 @@ export function findPaneByContent(
     listPanes(root).find((pane) => {
       const candidate = pane.content;
       if (candidate.kind !== content.kind) return false;
-      if (content.kind === "new-thread") return true;
+      if (content.kind === "new-thread") {
+        return (
+          candidate.kind === "new-thread" &&
+          candidate.draftSlotId === content.draftSlotId
+        );
+      }
       if (content.kind === "thread") {
         return (
           candidate.kind === "thread" &&

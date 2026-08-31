@@ -771,13 +771,14 @@ describe("PluginNewThreadComposer seeding", () => {
   });
 
   it("renders the root composer with a loading project picker before the sidebar bootstrap settles", () => {
+    const draftSlotId = "root-loading-project-slot";
     mocks.sidebarNavigationSettled = false;
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
     const router = createMemoryRouter(
-      [{ path: "/", element: <RootComposeView /> }],
+      [{ path: "/", element: <RootComposeView draftSlotId={draftSlotId} /> }],
       { initialEntries: ["/"] },
     );
     render(
@@ -864,12 +865,13 @@ describe("PluginNewThreadComposer seeding", () => {
   });
 
   it("enables the project picker and prompt-history query once the sidebar bootstrap settles", () => {
+    const draftSlotId = "root-settled-project-slot";
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
     const router = createMemoryRouter(
-      [{ path: "/", element: <RootComposeView /> }],
+      [{ path: "/", element: <RootComposeView draftSlotId={draftSlotId} /> }],
       { initialEntries: ["/"] },
     );
     render(
@@ -885,11 +887,16 @@ describe("PluginNewThreadComposer seeding", () => {
   });
 
   it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
+    const draftSlotId = "root-handoff-slot";
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
-    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+    getPromptDraftAccessor({
+      kind: "new-thread",
+      slotId: draftSlotId,
+      destination: { projectId: "proj_1", sectionId: null },
+    }).setDraft({
       text: "unrelated draft",
       mentions: [],
       attachments: [
@@ -903,7 +910,7 @@ describe("PluginNewThreadComposer seeding", () => {
       ],
     });
     const router = createMemoryRouter(
-      [{ path: "/", element: <RootComposeView /> }],
+      [{ path: "/", element: <RootComposeView draftSlotId={draftSlotId} /> }],
       {
         initialEntries: [
           {
@@ -937,7 +944,7 @@ describe("PluginNewThreadComposer seeding", () => {
       );
     });
     await waitFor(() => {
-      expect(router.state.location.state).toBeNull();
+      expect(router.state.location.state).toEqual({ draftSlotId });
     });
     expect(
       mocks.promptBoxProps.some(
@@ -950,11 +957,16 @@ describe("PluginNewThreadComposer seeding", () => {
   });
 
   it("applies a replacing initial prompt from location state exactly once", async () => {
+    const draftSlotId = "root-replacing-prompt-slot";
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
-    const rootDraft = getPromptDraftAccessor({ kind: "new-thread" });
+    const rootDraft = getPromptDraftAccessor({
+      kind: "new-thread",
+      slotId: draftSlotId,
+      destination: { projectId: "proj_1", sectionId: null },
+    });
     rootDraft.setDraft({
       text: "leftover draft",
       mentions: [],
@@ -964,7 +976,7 @@ describe("PluginNewThreadComposer seeding", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
     const router = createMemoryRouter(
-      [{ path: "/", element: <RootComposeView /> }],
+      [{ path: "/", element: <RootComposeView draftSlotId={draftSlotId} /> }],
       {
         initialEntries: [
           {
@@ -990,7 +1002,7 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(latestPromptBoxProps().value).toBe("Create a kanban plugin");
     });
     await waitFor(() => {
-      expect(router.state.location.state).toBeNull();
+      expect(router.state.location.state).toEqual({ draftSlotId });
     });
     expect(rootDraft.getCurrent().text).toBe("Create a kanban plugin");
     const updateDepthErrors = consoleError.mock.calls.filter((call) =>

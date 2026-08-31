@@ -6,6 +6,7 @@ export type PaneContent =
     }
   | {
       kind: "new-thread";
+      draftSlotId: string;
     }
   | {
       kind: "plugin-panel";

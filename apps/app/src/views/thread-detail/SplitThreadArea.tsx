@@ -93,7 +93,8 @@ import { getAdjacentPaneId } from "./splitPaneCommands";
 import {
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
-  focusedPaneRoute,
+  focusedPaneNavigationTarget,
+  paneContentNavigationTarget,
   paneContentRoute,
   reconcileLayoutForContent,
   threadPaneContent,
@@ -320,6 +321,22 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     },
     [captureVisibleScrollPositions, setMaximizedPaneIdAtom],
   );
+  const replaceNavigateToContent = useCallback(
+    (content: PaneContent) => {
+      const target = paneContentNavigationTarget(content);
+      void navigate(target.to, { replace: true, state: target.state });
+    },
+    [navigate],
+  );
+  const replaceNavigateToFocusedPane = useCallback(
+    (nextLayout: SplitLayout) => {
+      const target = focusedPaneNavigationTarget(nextLayout);
+      if (target !== null) {
+        void navigate(target.to, { replace: true, state: target.state });
+      }
+    },
+    [navigate],
+  );
 
   useEffect(
     () =>
@@ -337,10 +354,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         );
         if (next.layout !== current) {
           store.set(splitLayoutAtom, next.layout);
-          const route = focusedPaneRoute(next.layout);
-          if (route !== null) {
-            navigate(route, { replace: true });
-          }
+          replaceNavigateToFocusedPane(next.layout);
         }
         if (next.maximizedPaneId !== previousMaximizedPaneId) {
           setMaximizedPaneId(next.maximizedPaneId);
@@ -349,7 +363,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           store.set(dimInactiveSplitsAtom, next.dimInactiveSplits);
         }
       }),
-    [navigate, setMaximizedPaneId, store],
+    [replaceNavigateToFocusedPane, setMaximizedPaneId, store],
   );
 
   useEffect(() => {
@@ -390,10 +404,16 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         setMaximizedPaneId(paneId);
       }
       if (pane !== null) {
-        navigate(paneContentRoute(pane.content), { replace: true });
+        replaceNavigateToContent(pane.content);
       }
     },
-    [layout, maximizedPaneId, navigate, setLayout, setMaximizedPaneId],
+    [
+      layout,
+      maximizedPaneId,
+      replaceNavigateToContent,
+      setLayout,
+      setMaximizedPaneId,
+    ],
   );
 
   const closePane = useCallback(
@@ -410,13 +430,16 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         setMaximizedPaneId(null);
       }
       if (next.focusedPaneId !== layout.focusedPaneId) {
-        const route = focusedPaneRoute(next);
-        if (route !== null) {
-          navigate(route, { replace: true });
-        }
+        replaceNavigateToFocusedPane(next);
       }
     },
-    [layout, maximizedPaneId, navigate, setLayout, setMaximizedPaneId],
+    [
+      layout,
+      maximizedPaneId,
+      replaceNavigateToFocusedPane,
+      setLayout,
+      setMaximizedPaneId,
+    ],
   );
 
   const toggleMaximizePane = useCallback(
@@ -429,12 +452,11 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       if (current.focusedPaneId !== paneId) {
         const next = setFocus(current, paneId);
         store.set(splitLayoutAtom, next);
-        const route = focusedPaneRoute(next);
-        if (route !== null) navigate(route, { replace: true });
+        replaceNavigateToFocusedPane(next);
       }
       setMaximizedPaneId((previous) => (previous === paneId ? null : paneId));
     },
-    [navigate, setMaximizedPaneId, store],
+    [replaceNavigateToFocusedPane, setMaximizedPaneId, store],
   );
 
   const movePaneToSide = useCallback(
@@ -469,10 +491,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       const next = movePane(current, paneId, target.paneId, side);
       if (next === current) return;
       store.set(splitLayoutAtom, next);
-      const route = focusedPaneRoute(next);
-      if (route !== null) navigate(route, { replace: true });
+      replaceNavigateToFocusedPane(next);
     },
-    [navigate, store],
+    [replaceNavigateToFocusedPane, store],
   );
 
   const resize = useCallback(
@@ -501,13 +522,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         setMaximizedPaneId(null);
       }
       if (next.focusedPaneId !== current.focusedPaneId) {
-        const route = focusedPaneRoute(next);
-        if (route !== null) {
-          navigate(route, { replace: true });
-        }
+        replaceNavigateToFocusedPane(next);
       }
     },
-    [maximizedPaneId, navigate, setMaximizedPaneId, store],
+    [maximizedPaneId, replaceNavigateToFocusedPane, setMaximizedPaneId, store],
   );
 
   const beginPaneDrag = useCallback<BeginPaneDrag>(
@@ -560,14 +578,11 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
             return;
           }
           store.set(splitLayoutAtom, next);
-          const route = focusedPaneRoute(next);
-          if (route !== null) {
-            navigate(route, { replace: true });
-          }
+          replaceNavigateToFocusedPane(next);
         },
       });
     },
-    [navigate, setMaximizedPaneId, store],
+    [replaceNavigateToFocusedPane, setMaximizedPaneId, store],
   );
 
   if (!splitWorkspaceActive || layout === null || currentContent === null) {
@@ -964,7 +979,7 @@ function StandalonePaneContent({
     return <ThreadDetailView surface="page" />;
   }
   if (content.kind === "new-thread") {
-    return <RootComposeView />;
+    return <RootComposeView draftSlotId={content.draftSlotId} />;
   }
   if (content.kind === "plugin-detail") {
     return <PluginDetailPaneView pluginId={content.pluginId} />;
@@ -1168,7 +1183,7 @@ function NonThreadPaneContent({
         )}
       >
         {content.kind === "new-thread" ? (
-          <RootComposeView />
+          <RootComposeView draftSlotId={content.draftSlotId} />
         ) : content.kind === "plugin-detail" ? (
           <PluginDetailPaneView pluginId={content.pluginId} />
         ) : (

@@ -3,6 +3,7 @@ import {
   MAX_PANES,
   countPanes,
   findPane,
+  findPaneByContent,
   findPaneByThread,
   listPanes,
   movePane,
@@ -18,6 +19,10 @@ import type { PaneContent, PaneNode, SplitLayout } from "./types";
 
 function threadContent(threadId: string, projectId = "project-1"): PaneContent {
   return { kind: "thread", projectId, threadId };
+}
+
+function newThreadContent(draftSlotId: string): PaneContent {
+  return { kind: "new-thread", draftSlotId };
 }
 
 function pane(paneId: string, threadId = paneId): PaneNode {
@@ -63,6 +68,34 @@ function expectNormalizedSizes(layout: SplitLayout): void {
 }
 
 describe("split layout operations", () => {
+  it("keeps independent new-thread slots distinct and finds the exact binding", () => {
+    const withFirstDraft = splitPane(
+      singlePaneLayout(),
+      "pane-1",
+      "right",
+      newThreadContent("draft-slot-1"),
+    );
+    const withBothDrafts = splitPane(
+      withFirstDraft,
+      "pane-2",
+      "bottom",
+      newThreadContent("draft-slot-2"),
+    );
+
+    expect(listPanes(withBothDrafts.root)).toHaveLength(3);
+    expect(
+      findPaneByContent(withBothDrafts.root, newThreadContent("draft-slot-1"))
+        ?.paneId,
+    ).toBe("pane-2");
+    expect(
+      findPaneByContent(withBothDrafts.root, newThreadContent("draft-slot-2"))
+        ?.paneId,
+    ).toBe("pane-3");
+    expect(
+      findPaneByContent(withBothDrafts.root, newThreadContent("missing-slot")),
+    ).toBeNull();
+  });
+
   it("rebalances seven successive default-right opens into eight equal usable panes", () => {
     const eight = layoutAtPaneCount(MAX_PANES);
 

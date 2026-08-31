@@ -97,6 +97,29 @@ export function usePaneContentSplitIndicator(
   }, [content, enabled, isCompact, layout]);
 }
 
+export function useNewThreadSplitIndicator(
+  enabled: boolean,
+): PaneContentSplitIndicator {
+  const { layout, isCompact } = useSplitLayoutForIndicator(enabled);
+
+  return useMemo<PaneContentSplitIndicator>(() => {
+    if (
+      !enabled ||
+      layout === null ||
+      isCompact ||
+      countPanes(layout.root) < 2
+    ) {
+      return NO_INDICATOR;
+    }
+    const matchingPaneIds = new Set(
+      listPanes(layout.root)
+        .filter((pane) => pane.content.kind === "new-thread")
+        .map((pane) => pane.paneId),
+    );
+    return buildSplitIndicator(layout, matchingPaneIds);
+  }, [enabled, isCompact, layout]);
+}
+
 export function useThreadGroupSplitIndicator(
   threads: readonly ThreadSplitIndicatorTarget[],
   enabled: boolean,

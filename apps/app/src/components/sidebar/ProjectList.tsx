@@ -135,7 +135,7 @@ import {
   useAppCommandRunner,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
+import { useNewThreadSplitIndicator } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import {
   renderBuiltInSidebarSection,
@@ -764,10 +764,7 @@ export function ProjectListActionButtons({
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
   const threadSearchShortcut = useAppCommandShortcut("thread.search");
-  const newThreadSplitIndicator = usePaneContentSplitIndicator(
-    { kind: "new-thread" },
-    splitEnabled,
-  );
+  const newThreadSplitIndicator = useNewThreadSplitIndicator(splitEnabled);
 
   return (
     <div className="space-y-1">
