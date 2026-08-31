@@ -59,24 +59,14 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
+import {
+  pluginIsLocalSource,
+  pluginRemovalLabel,
+} from "@/lib/plugin-removal";
 
 export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
   const label = plugin.publisherLabel;
   return label === null ? null : <ProvenancePill label={label} />;
-}
-
-export function pluginIsLocalSource(plugin: PluginListItem): boolean {
-  return plugin.source.startsWith("path:");
-}
-
-export function pluginRemovalLabel(plugin: PluginListItem): string {
-  return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
-}
-
-export function pluginRemovalDescription(plugin: PluginListItem): string {
-  return pluginIsLocalSource(plugin)
-    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
-    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
 }
 
 function PluginPath({ path }: { path: string }) {

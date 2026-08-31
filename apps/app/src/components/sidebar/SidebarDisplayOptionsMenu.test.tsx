@@ -6,15 +6,21 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { SidebarDisplayOptionsMenu } from "./ProjectList";
+import {
+  getSidebarThreadListLabel,
+  SidebarFilterSortMenu,
+  SidebarOrganizeMenu,
+} from "./ProjectList";
 import {
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
+  sidebarSortDirectionAtom,
 } from "./sidebarCollapsedAtoms";
 import { sidebarThreadLifecycleSelectionAtom } from "./sidebarThreadLifecycle";
 
@@ -23,36 +29,92 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-function renderMenu() {
+function renderMenus() {
   const store = createStore();
   render(
     <Provider store={store}>
       <TooltipProvider>
-        <SidebarDisplayOptionsMenu />
+        <SidebarOrganizeMenu />
+        <SidebarFilterSortMenu />
       </TooltipProvider>
     </Provider>,
   );
   return store;
 }
 
-function openMenu() {
-  fireEvent.pointerDown(
-    screen.getByRole("button", { name: /^Sidebar display options/ }),
-    { button: 0 },
-  );
+function openMenu(name: RegExp) {
+  fireEvent.pointerDown(screen.getByRole("button", { name }), { button: 0 });
 }
 
-function getStatusItem(name: string) {
-  return within(screen.getByRole("group", { name: "Thread status" })).getByRole(
-    "menuitemcheckbox",
-    { name: new RegExp(`^${name}`) },
+describe("sidebar thread-list menus", () => {
+  it.each([
+    {
+      expected: "Machines",
+      hasProjects: false,
+      hasSections: false,
+      mode: "machine",
+    },
+    {
+      expected: "Projects",
+      hasProjects: true,
+      hasSections: false,
+      mode: "project",
+    },
+    {
+      expected: "Threads",
+      hasProjects: false,
+      hasSections: false,
+      mode: "project",
+    },
+    {
+      expected: "Sections",
+      hasProjects: false,
+      hasSections: true,
+      mode: "manual",
+    },
+    {
+      expected: "Threads",
+      hasProjects: false,
+      hasSections: false,
+      mode: "manual",
+    },
+  ] as const)(
+    "uses $expected for $mode mode with projects=$hasProjects and sections=$hasSections",
+    ({ expected, hasProjects, hasSections, mode }) => {
+      expect(
+        getSidebarThreadListLabel({ hasProjects, hasSections, mode }),
+      ).toBe(expected);
+    },
   );
-}
 
-describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
-  it("renders count-free Thread status below Organize and Sort by", async () => {
-    renderMenu();
-    openMenu();
+  it("separates organization from filtering and uses the approved labels", async () => {
+    const store = renderMenus();
+    openMenu(/^Organize:/);
+
+    const group = await screen.findByRole("group", { name: "Organize" });
+    expect(
+      within(group)
+        .getAllByRole("menuitemradio")
+        .map((item) => item.textContent),
+    ).toEqual(["By project", "By machine", "Custom"]);
+    expect(
+      within(group)
+        .getAllByRole("menuitemradio")
+        .map((item) => item.getAttribute("aria-checked")),
+    ).toEqual(["true", "false", "false"]);
+
+    fireEvent.click(
+      within(group).getByRole("menuitemradio", { name: "Custom" }),
+    );
+    expect(store.get(sidebarOrganizationModeAtom)).toBe("manual");
+    await waitFor(() =>
+      expect(screen.queryByRole("group", { name: "Organize" })).toBeNull(),
+    );
+  });
+
+  it("orders status above sort, keeps changes open, and toggles sort direction", async () => {
+    const store = renderMenus();
+    openMenu(/^Filter and sort$/);
 
     await screen.findByRole("group", { name: "Thread status" });
     expect(
@@ -60,75 +122,96 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
         .getAllByRole("group")
         .map((group) => group.getAttribute("aria-label"))
         .filter(Boolean),
-    ).toEqual(["Organize", "Sort by", "Thread status"]);
-    expect(getStatusItem("Active").textContent).toBe("Active");
-    expect(getStatusItem("Drafts").textContent).toBe("Drafts");
-    expect(getStatusItem("Archived").textContent).toBe("Archived");
+    ).toEqual(["Thread status", "Sort by"]);
     expect(
-      within(screen.getByRole("group", { name: "Organize" }))
+      within(screen.getByRole("group", { name: "Thread status" }))
         .getAllByRole("menuitemcheckbox")
         .map((item) => item.textContent),
-    ).toEqual(["By project", "By machine", "Manual"]);
-    for (const item of screen.getAllByRole("menuitemcheckbox")) {
-      expect(item.querySelector("svg")).not.toBeNull();
-      expect(item.querySelector(".absolute.right-2")).not.toBeNull();
-    }
-    expect(
-      document.querySelector("[data-sidebar-display-filter-dot]"),
-    ).toBeNull();
-  });
+    ).toEqual(["Active", "Archived", "Drafts"]);
 
-  it("builds unions, keeps one state selected, and marks an off-default filter", async () => {
-    const store = renderMenu();
-    openMenu();
-    await screen.findByRole("group", { name: "Thread status" });
-
-    fireEvent.click(getStatusItem("Drafts"));
-    openMenu();
-    fireEvent.click(getStatusItem("Active"));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Drafts" }));
     expect([...store.get(sidebarThreadLifecycleSelectionAtom)]).toEqual([
+      "active",
       "drafts",
     ]);
-    openMenu();
-    fireEvent.click(getStatusItem("Drafts"));
-    expect([...store.get(sidebarThreadLifecycleSelectionAtom)]).toEqual([
-      "drafts",
-    ]);
+    expect(screen.getByRole("group", { name: "Sort by" })).not.toBeNull();
+
+    const updated = screen.getByRole("menuitemradio", { name: "Updated at" });
+    expect(updated.querySelector('[data-icon="ArrowDown"]')).not.toBeNull();
+    fireEvent.click(updated);
     expect(
-      screen.getByRole("button", {
-        name: "Sidebar display options (filtered)",
-      }),
-    ).toBeDefined();
-    expect(
-      document.querySelector("[data-sidebar-display-filter-dot]"),
+      screen
+        .getByRole("menuitemradio", { name: "Updated at" })
+        .querySelector('[data-icon="ArrowUp"]'),
     ).not.toBeNull();
+    expect(store.get(sidebarSortDirectionAtom)).toBe("asc");
+    expect(screen.getByRole("group", { name: "Sort by" })).not.toBeNull();
+
+    cleanup();
+    const restoredStore = renderMenus();
+    expect(restoredStore.get(sidebarSortDirectionAtom)).toBe("asc");
   });
 
-  it("marks an off-default organization choice", () => {
-    const store = renderMenu();
-    act(() => store.set(sidebarOrganizationModeAtom, "manual"));
-
+  it("fills and presses the filter control only for off-default status state", () => {
+    const store = renderMenus();
+    const defaultTrigger = screen.getByRole("button", {
+      name: "Filter and sort",
+    });
+    expect(defaultTrigger.getAttribute("aria-pressed")).toBe("false");
     expect(
-      screen.getByRole("button", {
-        name: "Sidebar display options (filtered)",
-      }),
-    ).toBeDefined();
-    expect(
-      document.querySelector("[data-sidebar-display-filter-dot]"),
-    ).not.toBeNull();
-  });
+      defaultTrigger
+        .querySelector('[data-icon="Filter"]')
+        ?.classList.contains("[&_path]:fill-current"),
+    ).toBe(false);
 
-  it("marks an off-default sort choice", () => {
-    const store = renderMenu();
     act(() => store.set(sidebarChronologicalSortAtom, "created"));
+    expect(defaultTrigger.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      defaultTrigger
+        .querySelector('[data-icon="Filter"]')
+        ?.classList.contains("[&_path]:fill-current"),
+    ).toBe(false);
 
+    act(() =>
+      store.set(
+        sidebarThreadLifecycleSelectionAtom,
+        new Set(["active", "drafts"]),
+      ),
+    );
+    const modifiedTrigger = screen.getByRole("button", {
+      name: "Filter and sort (filtered)",
+    });
+    expect(modifiedTrigger.getAttribute("aria-pressed")).toBe("true");
     expect(
-      screen.getByRole("button", {
-        name: "Sidebar display options (filtered)",
-      }),
-    ).toBeDefined();
+      modifiedTrigger
+        .querySelector('[data-icon="Filter"]')
+        ?.classList.contains("[&_path]:fill-current"),
+    ).toBe(true);
     expect(
-      document.querySelector("[data-sidebar-display-filter-dot]"),
-    ).not.toBeNull();
+      modifiedTrigger.querySelector('[data-icon="FilterEdit"]'),
+    ).toBeNull();
+
+    act(() =>
+      store.set(sidebarThreadLifecycleSelectionAtom, new Set(["drafts"])),
+    );
+    expect(modifiedTrigger.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      modifiedTrigger
+        .querySelector('[data-icon="Filter"]')
+        ?.classList.contains("[&_path]:fill-current"),
+    ).toBe(true);
+
+    act(() =>
+      store.set(sidebarThreadLifecycleSelectionAtom, new Set(["active"])),
+    );
+    const resetTrigger = screen.getByRole("button", {
+      name: "Filter and sort",
+    });
+    expect(resetTrigger.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      resetTrigger
+        .querySelector('[data-icon="Filter"]')
+        ?.classList.contains("[&_path]:fill-current"),
+    ).toBe(false);
   });
 });

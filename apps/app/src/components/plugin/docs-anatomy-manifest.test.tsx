@@ -183,7 +183,7 @@ describe("docs anatomy manifest", () => {
       "top-reserve": '[data-testid="app-sidebar-top-reserve-row"]',
       "primary-actions": '[data-testid="app-sidebar-primary-actions"]',
       "plugin-nav": '[data-testid="plugin-nav-sidebar-items"]',
-      "thread-list": '[data-sidebar="content"]',
+      "thread-list": '[data-sidebar-region="threads"]',
       footer: '[data-sidebar="footer"]',
     };
     expect(Object.keys(sectionSelectors).sort()).toEqual(

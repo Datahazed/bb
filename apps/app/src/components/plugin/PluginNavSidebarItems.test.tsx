@@ -6,11 +6,13 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { useEffect, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AUTOMATIONS_PLUGIN_ID } from "@/lib/route-paths";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
@@ -28,6 +30,54 @@ import {
   PluginNavSidebarItems,
 } from "./PluginNavSidebarItems";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
+import { appToast } from "@/components/ui/app-toast";
+
+vi.mock("@/components/ui/app-toast", () => ({
+  appToast: {
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
+function disabledPluginMutationResponse(id: string) {
+  return {
+    ok: true,
+    plugin: {
+      id,
+      source: `npm:${id}`,
+      rootDir: `/managed/plugins/${id}`,
+      version: "1.0.0",
+      provenance: "catalog",
+      isOrphanedBuiltin: false,
+      catalogEntryId: id,
+      publisherLabel: "BB Community",
+      sourceDisplay: `BB Community · ${id}`,
+      updateState: {},
+      enabled: false,
+      description: null,
+      name: id,
+      icon: "Puzzle",
+      iconUrl: null,
+      status: "disabled",
+      statusDetail: null,
+      handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+      services: [],
+      schedules: [],
+      cliCommand: null,
+      capabilities: [],
+      hasSettings: false,
+      app: { hasApp: true, bundle: null },
+      logoUrl: null,
+      logoDarkUrl: null,
+      providerIds: [],
+      icons: {},
+    },
+  };
+}
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -74,25 +124,36 @@ function renderSidebarItems(
   options: {
     storedOrder?: string[];
     compactViewport?: boolean;
+    initialEntry?: string;
+    splitEnabled?: boolean;
   } = {},
 ) {
   const store = createStore();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   if (options.storedOrder) {
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
   }
-  return render(
+  const view = render(
     <CompactViewportOverrideProvider
       isCompactViewport={options.compactViewport ?? false}
     >
-      <Provider store={store}>
-        <MemoryRouter initialEntries={["/"]}>
-          <SidebarProvider>
-            <PluginNavSidebarItems />
-          </SidebarProvider>
-        </MemoryRouter>
-      </Provider>
+      <QueryClientProvider client={queryClient}>
+        <Provider store={store}>
+          <MemoryRouter initialEntries={[options.initialEntry ?? "/"]}>
+            <SidebarProvider>
+              <PluginNavSidebarItems
+                splitEnabled={options.splitEnabled ?? false}
+              />
+              <LocationPath />
+            </SidebarProvider>
+          </MemoryRouter>
+        </Provider>
+      </QueryClientProvider>
     </CompactViewportOverrideProvider>,
   );
+  return { ...view, queryClient };
 }
 
 function panelRowNames(labels: readonly string[]): string[] {
@@ -104,6 +165,7 @@ function panelRowNames(labels: readonly string[]): string[] {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   window.localStorage.clear();
   resetAllCrashedPluginSlotsForTest();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -115,6 +177,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 
@@ -224,6 +287,135 @@ describe("PluginNavSidebarItems", () => {
     expect(unmounts).toBe(0);
   });
 
+  it("uses one complete icon-labelled menu for the options button and right-click", async () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems({
+      splitEnabled: true,
+    });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    const dropdownMenu = await screen.findByRole("menu");
+    const expected = [
+      ["Open in split", "Columns2"],
+      ["Detail page", "Info"],
+      ["Move to top", "ArrowUp"],
+      ["Move to overflow", "ArrowDown"],
+      ["Disable", "Unavailable"],
+    ] as const;
+    const expectCompleteMenu = (menu: HTMLElement) => {
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent?.trim()),
+      ).toEqual(expected.map(([label]) => label));
+      expect(within(menu).getAllByRole("separator")).toHaveLength(2);
+      for (const [label, icon] of expected) {
+        expect(
+          within(menu)
+            .getByRole("menuitem", { name: label })
+            .querySelector(`[data-icon="${icon}"]`),
+        ).not.toBeNull();
+      }
+    };
+    expectCompleteMenu(dropdownMenu);
+    fireEvent.keyDown(dropdownMenu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+    const contextMenu = await screen.findByRole("menu");
+    expectCompleteMenu(contextMenu);
+
+    expect(
+      screen.queryByRole("menuitem", { name: /uninstall|remove/i }),
+    ).toBeNull();
+  });
+
+  it("opens plugin details and omits split when the layout cannot split", async () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "Open in split" }),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Detail page" }),
+    );
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/extensions/plugins/docs",
+    );
+  });
+
+  it("disables a plugin, refreshes the plugin list, and leaves its active panel", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify(disabledPluginMutationResponse("docs")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    registerPanel("docs", "Docs");
+    const { queryClient } = renderSidebarItems({
+      initialEntry: "/plugins/docs/main",
+    });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [input, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(input)).toBe("/api/v1/plugins/docs/disable");
+    expect(init).toMatchObject({ method: "POST", body: "{}" });
+    await waitFor(() =>
+      expect(screen.getByTestId("location-path").textContent).toBe(
+        "/extensions/plugins",
+      ),
+    );
+    expect(appToast.success).toHaveBeenCalledWith("Docs disabled");
+    expect(invalidateQueries).toHaveBeenCalled();
+  });
+
+  it("reports a disable failure without leaving the active panel", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: false, error: "disable failed" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    registerPanel("docs", "Docs");
+    renderSidebarItems({ initialEntry: "/plugins/docs/main" });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+
+    await waitFor(() =>
+      expect(appToast.error).toHaveBeenCalledWith("Failed to disable Docs", {
+        description: "HTTP 500: disable failed",
+      }),
+    );
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs/main",
+    );
+  });
+
   it("does not mount sidebar accessories on compact viewports", () => {
     let mounts = 0;
     registerPanel("tasks", "Tasks", () => {
@@ -317,6 +509,34 @@ describe("PluginNavSidebarItems", () => {
     await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
     expect(toggle.textContent).toBe("Show fewer");
     expect(toggle.lastElementChild?.classList.contains("rotate-90")).toBe(true);
+  });
+
+  it("keeps every overflow row in the same order when a long list is toggled", async () => {
+    const labels = [
+      "One",
+      "Two",
+      "Three",
+      "Four",
+      "Five",
+      "Six",
+      "Seven",
+      "Eight",
+    ];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    renderSidebarItems({
+      storedOrder: labels.map((_, index) => `plugin-${index}/main`),
+    });
+
+    const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
+    expect(panelRowNames(labels)).toEqual(labels.slice(0, 5));
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(panelRowNames(labels)).toEqual(labels.slice(0, 5)),
+    );
   });
 
   it("moves a visible row to positional overflow and back to top", async () => {

@@ -142,6 +142,35 @@ describe("reorderPluginNavPanels", () => {
     ).toEqual(["tasks/board", "docs/vault", "github/pulls"]);
   });
 
+  it("moves a row across the five-row overflow boundary", () => {
+    const order = [
+      "one/main",
+      "two/main",
+      "three/main",
+      "four/main",
+      "five/main",
+      "six/main",
+      "seven/main",
+    ];
+
+    expect(
+      reorderPluginNavPanels({
+        activeKey: "one/main",
+        overKey: "six/main",
+        order,
+        visibleKeys: order,
+      }),
+    ).toEqual([
+      "two/main",
+      "three/main",
+      "four/main",
+      "five/main",
+      "six/main",
+      "one/main",
+      "seven/main",
+    ]);
+  });
+
   it("returns null when the drag lands where it started", () => {
     expect(
       reorderPluginNavPanels({

@@ -19,6 +19,7 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import {
   ProjectListSectionIconButton,
+  SidebarThreadListToolbar,
   TopLevelSidebarSection,
 } from "./ProjectList";
 
@@ -76,6 +77,33 @@ describe("ProjectListSectionIconButton", () => {
   });
 });
 
+describe("SidebarThreadListToolbar", () => {
+  it("renders a lone new-project action inline instead of behind overflow", () => {
+    const onNewProject = vi.fn();
+
+    render(
+      <Provider>
+        <TooltipProvider>
+          <SidebarThreadListToolbar
+            label="Projects"
+            isCreatingSection={false}
+            isCreatingProject={false}
+            onNewProject={onNewProject}
+            onNewThread={vi.fn()}
+          />
+        </TooltipProvider>
+      </Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("button", { name: "More thread actions" }),
+    ).toBeNull();
+  });
+});
+
 describe("TopLevelSidebarSection", () => {
   it("exposes stable identity only for persisted sections", () => {
     const result = render(
@@ -123,10 +151,11 @@ describe("TopLevelSidebarSection", () => {
     ).not.toBeNull();
   });
 
-  it("renders the disclosure after the section label without a leading icon", () => {
+  it("keeps the disclosure in the fixed final slot after section actions", () => {
     const result = render(
       <TopLevelSidebarSection
         label="Pinned"
+        actions={<button type="button">Section action</button>}
         collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
       >
         <div>Pinned thread</div>
@@ -138,10 +167,34 @@ describe("TopLevelSidebarSection", () => {
     });
     const icon = result.container.querySelector('[data-icon="Pin"]');
     const label = screen.getByTitle("Pinned");
+    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
+    const row = caretSlot?.parentElement;
+    const trailingControls = row?.querySelector(
+      "[data-sidebar-collapsible-trailing-controls]",
+    );
+    const mobileStatusSlot = trailingControls?.querySelector(
+      "[data-sidebar-mobile-status-slot]",
+    );
+    const action = screen.getByRole("button", { name: "Section action" });
 
     expect(icon).toBeNull();
     expect(
       label.compareDocumentPosition(disclosure) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(disclosure.classList.contains("text-subtle-foreground/75")).toBe(
+      true,
+    );
+    expect(disclosure.classList.contains("text-subtle-foreground")).toBe(false);
+    expect(
+      disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
+    ).toBe(true);
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(row?.lastElementChild).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+    expect(mobileStatusSlot).not.toBeNull();
+    expect(
+      mobileStatusSlot!.compareDocumentPosition(action) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
   });

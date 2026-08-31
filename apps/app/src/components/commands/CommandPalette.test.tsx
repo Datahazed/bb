@@ -94,6 +94,7 @@ const modeState = vi.hoisted(() => ({
   drafts: [] as NewThreadDraftRow[],
   searchResponse: undefined as ThreadSearchResponse | undefined,
 }));
+const openPaneContentInSplitMock = vi.hoisted(() => vi.fn());
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
 const routeNavigateMock = vi.hoisted(() => vi.fn());
 
@@ -129,6 +130,10 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 
 vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
   openThreadInSplit: openThreadInSplitMock,
+}));
+
+vi.mock("@/lib/split-layout/openPaneContentInSplit", () => ({
+  openPaneContentInSplit: openPaneContentInSplitMock,
 }));
 
 vi.mock("@/components/ui/app-route-anchor", () => ({
@@ -290,6 +295,7 @@ afterEach(() => {
   modeState.archivedRecents = [];
   modeState.drafts = [];
   modeState.searchResponse = undefined;
+  openPaneContentInSplitMock.mockReset();
   openThreadInSplitMock.mockReset();
   routeNavigateMock.mockReset();
   window.localStorage.clear();
@@ -426,6 +432,32 @@ describe("CommandPalette", () => {
         screen.getByRole("button", { name: "Thread scope" }).textContent,
       ).toContain("All"),
     );
+  });
+
+  it("opens the closed thread scope with Enter and returns to the input on the next Enter", async () => {
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    const scope = screen.getByRole("button", { name: "Thread scope" });
+
+    scope.focus();
+    fireEvent.keyDown(scope, { key: "Enter" });
+
+    expect(scope.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByRole("listbox", { name: "Thread scope options" }),
+    ).toBeTruthy();
+    expect(document.activeElement).toBe(scope);
+
+    fireEvent.keyDown(scope, { key: "Enter" });
+
+    expect(scope.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByRole("listbox", { name: "Thread scope options" }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(input);
   });
 
   it("makes scope the input's only sibling tab stop and applies every keyboard choice immediately", async () => {
@@ -633,6 +665,68 @@ describe("CommandPalette", () => {
       expect.objectContaining({
         projectId: "project-1",
         threadId: "matching-split",
+      }),
+    );
+  });
+
+  it("opens a persisted draft result in a split with its exact slot id", async () => {
+    modeState.drafts = [
+      {
+        id: "draft-slot-exact",
+        title: "split this draft",
+        draft: { ...emptyPromptDraftState(), text: "split this draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+        delete: vi.fn(),
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    await screen.findByRole("option", { name: /split this draft/i });
+
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+
+    await waitFor(() =>
+      expect(openPaneContentInSplitMock).toHaveBeenCalledTimes(1),
+    );
+    expect(openPaneContentInSplitMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: { kind: "new-thread", draftSlotId: "draft-slot-exact" },
+        enabled: true,
+      }),
+    );
+    expect(routeNavigateMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary Enter on a persisted draft as normal navigation", async () => {
+    modeState.drafts = [
+      {
+        id: "draft-slot-normal",
+        title: "open this draft",
+        draft: { ...emptyPromptDraftState(), text: "open this draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+        delete: vi.fn(),
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    await screen.findByRole("option", { name: /open this draft/i });
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(routeNavigateMock).toHaveBeenCalledTimes(1));
+    expect(openPaneContentInSplitMock).not.toHaveBeenCalled();
+    expect(routeNavigateMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        state: expect.objectContaining({ draftSlotId: "draft-slot-normal" }),
       }),
     );
   });

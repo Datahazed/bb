@@ -137,9 +137,12 @@ import {
 } from "@/lib/root-compose-selection";
 import {
   readNewThreadDraftSlots,
-  type NewThreadDraftDestination,
+  resolveNewThreadDraftDestination,
 } from "@/lib/prompt-draft-slots";
-import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
+import {
+  readRootComposeSectionId,
+  withRootComposeDraftSlotId,
+} from "@/lib/root-compose-location-state";
 import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
@@ -201,17 +204,6 @@ interface LegacyProjectComposeRedirectProps {
   projectId: string;
 }
 
-export function readSectionIdFromLocationState(state: unknown): string | null {
-  if (typeof state !== "object" || state === null) {
-    return null;
-  }
-  if (!("sectionId" in state) || typeof state.sectionId !== "string") {
-    return null;
-  }
-  const sectionId = state.sectionId.trim();
-  return sectionId.length > 0 ? sectionId : null;
-}
-
 type RootComposeSectionTarget =
   | { kind: "clear" }
   | { sectionId: string; kind: "set" };
@@ -224,7 +216,7 @@ export function readRootComposeSectionTargetFromLocationState(
   }
 
   if ("sectionId" in state) {
-    const sectionId = readSectionIdFromLocationState(state);
+    const sectionId = readRootComposeSectionId(state);
     return sectionId ? { sectionId, kind: "set" } : { kind: "clear" };
   }
 
@@ -240,25 +232,6 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
     return false;
   }
   return "focusPrompt" in state && state.focusPrompt === true;
-}
-
-interface ResolveRootComposeInitialDestinationArgs {
-  currentProjectId: string;
-  routeSectionId: string | null;
-  storedDestination: NewThreadDraftDestination | null;
-}
-
-export function resolveRootComposeInitialDestination({
-  currentProjectId,
-  routeSectionId,
-  storedDestination,
-}: ResolveRootComposeInitialDestinationArgs): NewThreadDraftDestination {
-  return (
-    storedDestination ?? {
-      projectId: currentProjectId,
-      sectionId: routeSectionId,
-    }
-  );
 }
 
 export function resolveRootComposeSelectionScope(
@@ -569,9 +542,10 @@ function RootComposeSlotView({ draftSlotId }: RootComposeViewProps) {
         ?.destination ?? null,
   );
   const [initialDestination] = useState(() =>
-    resolveRootComposeInitialDestination({
-      currentProjectId: globalRootComposeProjectId,
-      routeSectionId: readSectionIdFromLocationState(location.state),
+    resolveNewThreadDraftDestination({
+      fallbackProjectId: globalRootComposeProjectId,
+      routeProjectId: null,
+      routeSectionId: readRootComposeSectionId(location.state),
       storedDestination,
     }),
   );

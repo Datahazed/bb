@@ -11,10 +11,13 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { UnavailableIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
@@ -22,12 +25,14 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -37,7 +42,10 @@ import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import {
   AUTOMATIONS_PLUGIN_ID,
+  getPluginDetailRoutePath,
   getPluginPanelRoutePath,
+  getPluginPanelRoutePluginId,
+  getPluginsRoutePath,
 } from "@/lib/route-paths";
 import {
   usePluginNavPanelChrome,
@@ -59,6 +67,9 @@ import {
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
 import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import type { SidebarSortableDragBindings } from "@/components/sidebar/sortableMotion";
+import { appToast } from "@/components/ui/app-toast";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
+import { setPluginEnabled } from "@/hooks/queries/plugin-settings-queries";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 import {
   arrangePluginNavPanels,
@@ -114,8 +125,27 @@ function PluginNavSidebarItemList({
   splitEnabled?: boolean;
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [storedOrder, setStoredOrder] = useAtom(pluginNavPanelOrderAtom);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+  const disable = useMutation({
+    mutationFn: (row: SidebarNavRow) =>
+      setPluginEnabled(fetch, row.pluginId, false),
+    onSuccess: (_result, row) => {
+      appToast.success(`${row.title} disabled`);
+      if (getPluginPanelRoutePluginId(location.pathname) === row.pluginId) {
+        onNavigate?.();
+        void navigate(getPluginsRoutePath());
+      }
+    },
+    onError: (error, row) => {
+      appToast.error(`Failed to disable ${row.title}`, {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+    onSettled: () => invalidatePluginList({ queryClient }),
+  });
   const traditionalStoredOrder = useMemo(
     () =>
       storedOrder.filter((key) => !key.startsWith(`${AUTOMATIONS_PLUGIN_ID}/`)),
@@ -193,6 +223,8 @@ function PluginNavSidebarItemList({
     orderedKeys,
     onMoveToTop: handleMoveToTop,
     onMoveToOverflow: handleMoveToOverflow,
+    disablePending: disable.isPending,
+    onDisable: (row: SidebarNavRow) => disable.mutate(row),
   };
 
   return (
@@ -302,6 +334,8 @@ interface SidebarNavRowItemProps {
   orderedKeys: readonly string[];
   onMoveToTop: (key: string) => void;
   onMoveToOverflow: (key: string) => void;
+  disablePending: boolean;
+  onDisable: (row: SidebarNavRow) => void;
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
   rowStyle?: CSSProperties;
@@ -319,30 +353,126 @@ function SidebarNavRowItem({
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
 
-function PluginNavRowPositionMenuItems({
+function PluginNavRowMenuItem({
+  children,
+  disabled = false,
+  icon,
+  onSelect,
+  surface,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  icon: "ArrowDown" | "ArrowUp" | "Columns2" | "Info" | "Unavailable";
+  onSelect: () => void;
+  surface: PluginNavRowMenuSurface;
+}) {
+  const content = (
+    <>
+      {icon === "Unavailable" ? (
+        <HugeiconsIcon
+          icon={UnavailableIcon}
+          data-icon="Unavailable"
+          aria-hidden="true"
+        />
+      ) : (
+        <Icon name={icon} aria-hidden="true" />
+      )}
+      {children}
+    </>
+  );
+  if (surface === "context") {
+    return (
+      <ContextMenuItem disabled={disabled} onSelect={onSelect}>
+        {content}
+      </ContextMenuItem>
+    );
+  }
+  return (
+    <DropdownMenuItem disabled={disabled} onSelect={onSelect}>
+      {content}
+    </DropdownMenuItem>
+  );
+}
+
+function PluginNavRowMenuSeparator({
+  surface,
+}: {
+  surface: PluginNavRowMenuSurface;
+}) {
+  return surface === "context" ? (
+    <ContextMenuSeparator />
+  ) : (
+    <DropdownMenuSeparator />
+  );
+}
+
+function PluginNavRowMenuItems({
   canMoveToTop,
   canMoveToOverflow,
+  canOpenInSplit,
+  disablePending,
+  onDisable,
+  onOpenInSplit,
+  onOpenDetails,
   onMoveToTop,
   onMoveToOverflow,
   surface,
 }: {
   canMoveToTop: boolean;
   canMoveToOverflow: boolean;
+  canOpenInSplit: boolean;
+  disablePending: boolean;
+  onDisable: () => void;
+  onOpenInSplit: () => void;
+  onOpenDetails: () => void;
   onMoveToTop: () => void;
   onMoveToOverflow: () => void;
   surface: PluginNavRowMenuSurface;
 }) {
-  const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
   return (
     <>
-      <Item disabled={!canMoveToTop} onSelect={onMoveToTop}>
-        <Icon name="ArrowUp" aria-hidden="true" />
+      {canOpenInSplit ? (
+        <PluginNavRowMenuItem
+          surface={surface}
+          icon="Columns2"
+          onSelect={onOpenInSplit}
+        >
+          Open in split
+        </PluginNavRowMenuItem>
+      ) : null}
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="Info"
+        onSelect={onOpenDetails}
+      >
+        Detail page
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuSeparator surface={surface} />
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="ArrowUp"
+        disabled={!canMoveToTop}
+        onSelect={onMoveToTop}
+      >
         Move to top
-      </Item>
-      <Item disabled={!canMoveToOverflow} onSelect={onMoveToOverflow}>
-        <Icon name="ArrowDown" aria-hidden="true" />
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="ArrowDown"
+        disabled={!canMoveToOverflow}
+        onSelect={onMoveToOverflow}
+      >
         Move to overflow
-      </Item>
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuSeparator surface={surface} />
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="Unavailable"
+        disabled={disablePending}
+        onSelect={onDisable}
+      >
+        Disable
+      </PluginNavRowMenuItem>
     </>
   );
 }
@@ -423,6 +553,7 @@ function PluginNavSidebarItem({
   row,
   pathname,
   onNavigate,
+  onDisable,
   splitEnabled,
   ...props
 }: Omit<SidebarNavRowItemProps, "row"> & {
@@ -471,6 +602,12 @@ function PluginNavSidebarItem({
       splitMiniMap={splitIndicator.miniMap}
       accessory={sidebarAccessory}
       onPointerDown={onPointerDown}
+      onOpenInSplit={splitEnabled ? openInSplit : undefined}
+      onOpenDetails={() => {
+        onNavigate?.();
+        void navigate(getPluginDetailRoutePath({ pluginId: chrome.pluginId }));
+      }}
+      onDisable={() => onDisable(row)}
       onSelect={(event) => {
         onNavigate?.();
         if (event.metaKey || event.ctrlKey) {
@@ -490,6 +627,10 @@ interface SidebarNavRowChromeProps {
   isActive: boolean;
   onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown?: PointerEventHandler<HTMLElement>;
+  onOpenInSplit?: () => void;
+  onOpenDetails: () => void;
+  onDisable: () => void;
+  disablePending: boolean;
   splitMiniMap?: MiniMapSlot[] | null;
   accessory?: ReactNode;
   orderedKeys: readonly string[];
@@ -507,6 +648,10 @@ function SidebarNavRowChrome({
   isActive,
   onSelect,
   onPointerDown,
+  onOpenInSplit,
+  onOpenDetails,
+  onDisable,
+  disablePending,
   splitMiniMap = null,
   accessory,
   orderedKeys,
@@ -520,8 +665,8 @@ function SidebarNavRowChrome({
   const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
     dragBindings?.listeners ?? {};
   const rowIndex = orderedKeys.indexOf(rowKey);
-  const positionItems = (surface: PluginNavRowMenuSurface): ReactNode => (
-    <PluginNavRowPositionMenuItems
+  const menuItems = (surface: PluginNavRowMenuSurface): ReactNode => (
+    <PluginNavRowMenuItems
       surface={surface}
       canMoveToTop={rowIndex > 0}
       canMoveToOverflow={
@@ -529,6 +674,11 @@ function SidebarNavRowChrome({
         rowIndex >= 0 &&
         rowIndex < PLUGIN_NAV_VISIBLE_LIMIT
       }
+      canOpenInSplit={onOpenInSplit !== undefined}
+      disablePending={disablePending}
+      onDisable={onDisable}
+      onOpenInSplit={() => onOpenInSplit?.()}
+      onOpenDetails={onOpenDetails}
       onMoveToTop={() => onMoveToTop(rowKey)}
       onMoveToOverflow={() => onMoveToOverflow(rowKey)}
     />
@@ -614,14 +764,14 @@ function SidebarNavRowChrome({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {positionItems("dropdown")}
+                {menuItems("dropdown")}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${title} panel options`}>
-        {positionItems("context")}
+        {menuItems("context")}
       </ContextMenuContent>
     </ContextMenu>
   );

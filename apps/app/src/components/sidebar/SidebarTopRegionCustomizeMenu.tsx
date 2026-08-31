@@ -3,6 +3,7 @@ import { useAtom } from "jotai";
 import {
   closestCenter,
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -11,18 +12,24 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+  COARSE_POINTER_ICON_SIZE_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
@@ -34,12 +41,28 @@ import {
   sidebarTopRegionItemPreferencesAtom,
   type SidebarTopRegionItemId,
 } from "./sidebarTopRegionItemPreferences";
+import {
+  reorderSidebarRegions,
+  sidebarRegionOrderAtom,
+  type SidebarRegionId,
+} from "./sidebarRegionOrderPreferences";
 
 const ITEM_LABELS: Record<SidebarTopRegionItemId, string> = {
   "new-thread": "New thread",
   extensions: "Extensions",
   automations: "Automations",
 };
+
+const REGION_LABELS: Record<SidebarRegionId, string> = {
+  "bb-controls": "BB controls",
+  plugins: "Plugins",
+  threads: "Threads",
+};
+
+const COMPACT_MENU_CONTENT_CLASS =
+  "w-44 min-w-44 p-1 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=separator]]:!my-0.5";
+const COMPACT_MENU_LABEL_CLASS = "!px-2 !py-1";
+const SORTABLE_ITEM_CLASS = "gap-2 !px-2 !py-1";
 
 const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
   ...transform,
@@ -53,6 +76,7 @@ function SortableTopRegionItem({ id }: { id: SidebarTopRegionItemId }) {
     sidebarTopRegionItemPreferencesAtom,
   );
   const {
+    attributes,
     isDragging,
     listeners,
     setActivatorNodeRef,
@@ -82,22 +106,97 @@ function SortableTopRegionItem({ id }: { id: SidebarTopRegionItemId }) {
         )
       }
       className={cn(
-        "gap-2",
+        SORTABLE_ITEM_CLASS,
+        "!pr-2 [&>span.absolute]:hidden",
         isDragging && "relative z-10 bg-state-hover opacity-90 shadow-sm",
       )}
       data-sidebar-customize-item={id}
     >
       <span
         ref={setActivatorNodeRef}
+        {...attributes}
         {...listeners}
-        aria-hidden="true"
-        className="flex shrink-0 cursor-grab touch-none items-center text-muted-foreground active:cursor-grabbing"
+        aria-label={`Reorder ${ITEM_LABELS[id]}`}
+        className={cn(
+          "flex size-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 active:cursor-grabbing",
+          "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        )}
+        onClick={(event) => event.stopPropagation()}
         data-sidebar-customize-drag-handle={id}
       >
-        <Icon name="DragDropVertical" className="size-3.5" />
+        <Icon
+          name="DragDropVertical"
+          className={COARSE_POINTER_ICON_SIZE_CLASS}
+        />
       </span>
       <span className="min-w-0 flex-1 truncate">{ITEM_LABELS[id]}</span>
+      <span
+        aria-hidden="true"
+        data-sidebar-customize-checkbox={id}
+        data-state={visible ? "checked" : "unchecked"}
+        className={cn(
+          "flex size-4 shrink-0 items-center justify-center rounded-sm border border-input shadow-xs",
+          visible && "border-primary text-primary",
+        )}
+      >
+        {visible ? <Icon name="Check" className="size-3.5" /> : null}
+      </span>
     </DropdownMenuCheckboxItem>
+  );
+}
+
+function SortableSidebarRegionItem({ id }: { id: SidebarRegionId }) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id });
+  const style = useMemo<CSSProperties>(
+    () => ({
+      transform: CSS.Translate.toString(transform),
+      transition,
+    }),
+    [transform, transition],
+  );
+  const label = REGION_LABELS[id];
+
+  return (
+    <DropdownMenuItem
+      ref={setNodeRef}
+      style={style}
+      textValue={label}
+      onSelect={(event) => event.preventDefault()}
+      className={cn(
+        SORTABLE_ITEM_CLASS,
+        isDragging && "relative z-10 bg-state-hover opacity-90 shadow-sm",
+      )}
+      data-sidebar-customize-region={id}
+    >
+      <span
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`Reorder ${label}`}
+        className={cn(
+          "flex size-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 active:cursor-grabbing",
+          "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        )}
+        onClick={(event) => event.stopPropagation()}
+        data-sidebar-customize-region-drag-handle={id}
+      >
+        <Icon
+          name="DragDropVertical"
+          className={COARSE_POINTER_ICON_SIZE_CLASS}
+        />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </DropdownMenuItem>
   );
 }
 
@@ -109,10 +208,14 @@ export function SidebarTopRegionCustomizeMenu({
   const [preferences, setPreferences] = useAtom(
     sidebarTopRegionItemPreferencesAtom,
   );
+  const [regionOrder, setRegionOrder] = useAtom(sidebarRegionOrderAtom);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleTopRegionItemDragEnd = (event: DragEndEvent) => {
     if (
       typeof event.active.id !== "string" ||
       typeof event.over?.id !== "string"
@@ -123,6 +226,19 @@ export function SidebarTopRegionCustomizeMenu({
     const overId = event.over.id as SidebarTopRegionItemId;
     setPreferences((current) =>
       reorderSidebarTopRegionItems(current, activeId, overId),
+    );
+  };
+  const handleRegionDragEnd = (event: DragEndEvent) => {
+    if (
+      typeof event.active.id !== "string" ||
+      typeof event.over?.id !== "string"
+    ) {
+      return;
+    }
+    const activeId = event.active.id as SidebarRegionId;
+    const overId = event.over.id as SidebarRegionId;
+    setRegionOrder((current) =>
+      reorderSidebarRegions(current, activeId, overId),
     );
   };
 
@@ -151,28 +267,55 @@ export function SidebarTopRegionCustomizeMenu({
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent
-        align="end"
-        className="min-w-52"
-        mobileTitle="Sidebar items"
+        side="right"
+        align="start"
+        sideOffset={8}
+        className={COMPACT_MENU_CONTENT_CLASS}
+        mobileTitle="Customize"
       >
-        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Sidebar items
+        <DropdownMenuLabel
+          className={cn(CHROME_SECTION_LABEL_CLASS, COMPACT_MENU_LABEL_CLASS)}
+        >
+          Customize
         </DropdownMenuLabel>
-        <p className="px-2 pb-2 text-xs text-muted-foreground">
-          Drag to reorder. Uncheck to hide.
-        </p>
+        <div role="group" aria-label="BB controls">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={dragModifiers}
+            onDragEnd={handleTopRegionItemDragEnd}
+          >
+            <SortableContext
+              items={preferences.order}
+              strategy={verticalListSortingStrategy}
+            >
+              {preferences.order.map((id) => (
+                <SortableTopRegionItem key={id} id={id} />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel
+          className={cn(
+            "text-xs font-medium text-muted-foreground",
+            COMPACT_MENU_LABEL_CLASS,
+          )}
+        >
+          Sidebar order
+        </DropdownMenuLabel>
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           modifiers={dragModifiers}
-          onDragEnd={handleDragEnd}
+          onDragEnd={handleRegionDragEnd}
         >
           <SortableContext
-            items={preferences.order}
+            items={regionOrder}
             strategy={verticalListSortingStrategy}
           >
-            {preferences.order.map((id) => (
-              <SortableTopRegionItem key={id} id={id} />
+            {regionOrder.map((id) => (
+              <SortableSidebarRegionItem key={id} id={id} />
             ))}
           </SortableContext>
         </DndContext>

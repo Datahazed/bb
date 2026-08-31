@@ -21,6 +21,7 @@ import { ProviderCliVersionBanner } from "@/components/promptbox/banner/Provider
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
+import { getSettingsRoutePath } from "@/lib/route-paths";
 import {
   HOST_IDS,
   PROJECT_IDS,
@@ -58,6 +59,12 @@ const baseEnvironment: NewThreadEnvironmentConfig = {
   host: makeHost({ id: HOST_IDS.local }),
   isLocal: true,
 };
+
+const projectlessHosts = [
+  makeHost({ id: HOST_IDS.local }),
+  makeHost({ id: HOST_IDS.remote, name: "michael-build-box" }),
+] as const;
+const MACHINES_SETTINGS_PATH = getSettingsRoutePath("machines");
 
 const baseBranch: NewThreadBranchConfig = {
   value: null,
@@ -532,6 +539,10 @@ function FullAccessRow() {
 
 function ProjectlessThreadRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
+  const [environmentValue, setEnvironmentValue] = useState(
+    `host:${HOST_IDS.local}:local`,
+  );
+  const [lastNavigation, setLastNavigation] = useState<string | null>(null);
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
@@ -545,7 +556,20 @@ function ProjectlessThreadRow() {
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={baseModeConfig}
+        modeConfig={{
+          ...baseModeConfig,
+          environment: {
+            ...baseEnvironment,
+            value: environmentValue,
+            onChange: setEnvironmentValue,
+            machines: {
+              hosts: projectlessHosts,
+              localDaemonHostId: HOST_IDS.local,
+              primaryHostId: HOST_IDS.local,
+            },
+            onNewMachine: () => setLastNavigation(MACHINES_SETTINGS_PATH),
+          },
+        }}
         project={{
           ...baseProject,
           value: null,
@@ -553,6 +577,14 @@ function ProjectlessThreadRow() {
         }}
         execution={baseExecution}
       />
+      {lastNavigation ? (
+        <div
+          aria-live="polite"
+          className="mt-3 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
+        >
+          Navigation target: <code>{lastNavigation}</code>
+        </div>
+      ) : null}
     </PromptStage>
   );
 }
@@ -638,6 +670,21 @@ export function UnsupportedCodexCli() {
           hint="Codex is installed but below bb's minimum supported version"
         >
           <UnsupportedCodexCliRow />
+        </StoryRow>
+      </StoryCard>
+    </ModelPickerStoryQueryProvider>
+  );
+}
+
+export function ProjectlessMachine() {
+  return (
+    <ModelPickerStoryQueryProvider>
+      <StoryCard>
+        <StoryRow
+          label="projectless machine"
+          hint="machine picker includes the Machines settings action"
+        >
+          <ProjectlessThreadRow />
         </StoryRow>
       </StoryCard>
     </ModelPickerStoryQueryProvider>

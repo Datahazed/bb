@@ -25,6 +25,8 @@ export interface BuiltInSidebarSectionOptions {
   content: ReactNode;
   isDropTargetActive?: boolean;
   label: string;
+  presentation?: "section" | "loose";
+  showLooseHeading?: boolean;
 }
 
 interface BuiltInSidebarSectionProps extends BuiltInSidebarSectionOptions {
@@ -88,13 +90,34 @@ function BuiltInSidebarSection({
   isCollapsed,
   label,
   onToggleCollapsed,
+  presentation = "section",
+  showLooseHeading = false,
 }: BuiltInSidebarSectionProps) {
+  if (presentation === "loose") {
+    return (
+      <div
+        data-sidebar-loose-thread-group=""
+        className={
+          showLooseHeading ? "mt-1 border-t border-border/70 pt-1" : "mt-1"
+        }
+      >
+        {showLooseHeading ? (
+          <div className="flex h-8 items-center px-3 text-xs font-medium text-subtle-foreground">
+            {label}
+          </div>
+        ) : null}
+        {content}
+      </div>
+    );
+  }
+
   return (
     <SortableSidebarSection
       id={id}
       label={label}
       disabled={disabled}
       actions={actions}
+      actionsAlwaysVisible={id === "threads"}
       actionsOpen={actionsOpen}
       collapsedActivity={activity}
       collapsedThreads={collapsedThreads}

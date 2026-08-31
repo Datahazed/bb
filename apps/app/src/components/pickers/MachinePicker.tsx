@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import {
@@ -36,6 +37,7 @@ interface MachinePickerUIProps {
   primaryHostId: string | null;
   selectedHostId: string | null;
   onChange: (hostId: string) => void;
+  onNewMachine?: () => void;
   muted?: boolean;
   disabled?: boolean;
   className?: string;
@@ -48,6 +50,7 @@ export function MachinePickerUI({
   primaryHostId,
   selectedHostId,
   onChange,
+  onNewMachine,
   muted,
   disabled = false,
   className,
@@ -157,6 +160,15 @@ export function MachinePickerUI({
             </DropdownMenuItem>
           );
         })}
+        {onNewMachine ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onNewMachine}>
+              <Icon name="LaptopAdd" aria-hidden="true" />
+              New Machine
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

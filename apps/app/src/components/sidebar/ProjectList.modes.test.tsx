@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 
 import { useMemo, type ReactNode } from "react";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import {
   createStore,
   Provider as JotaiProvider,
@@ -176,13 +169,10 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
       isReady
       showPinnedSection={false}
       pinnedSection={{ label: "Pinned", content: null }}
-      threadsSection={{ label: "Threads" }}
       collapsedSectionIds={collapsedSectionIdSet}
       collapsedThreadIds={new Set()}
       collapsedEnvironmentIds={new Set()}
       compareThreads={() => 0}
-      displayOptions={<button aria-label="Display marker" />}
-      displayOptionsOpen={false}
       onToggleCollapsed={handleToggleCollapsed}
       onToggleThreadCollapsed={vi.fn()}
       onToggleEnvironmentCollapsed={vi.fn()}
@@ -202,11 +192,12 @@ describe("sidebar organization mode sections", () => {
     (mode) => {
       const { container } = render(
         <BuiltInSidebarLifecycleSections
+          toolbar={<div>Toolbar</div>}
           draftRows={<div>Drafts</div>}
           activeModeSections={
             <ActiveSidebarModeSections
               mode={mode}
-              renderManual={() => <div>Manual</div>}
+              renderManual={() => <div>Custom</div>}
               renderMachine={() => <div>Machine</div>}
               renderProject={() => <div>Project</div>}
             />
@@ -218,11 +209,11 @@ describe("sidebar organization mode sections", () => {
 
       const activeLabel =
         mode === "manual"
-          ? "Manual"
+          ? "Custom"
           : mode === "machine"
             ? "Machine"
             : "Project";
-      expect(container.textContent).toBe(`Drafts${activeLabel}Archived`);
+      expect(container.textContent).toBe(`ToolbarDrafts${activeLabel}Archived`);
     },
   );
 
@@ -288,7 +279,7 @@ describe("sidebar organization mode sections", () => {
     });
   });
 
-  it("uses a Machines fallback and one global display control when empty", () => {
+  it("does not create a loose Threads catch-all in machine mode", () => {
     const store = createStore();
     store.set(sidebarMachineSectionOrderAtom, ["threads"]);
     store.set(collapsedSidebarSectionIdsAtom, []);
@@ -299,19 +290,8 @@ describe("sidebar organization mode sections", () => {
       </JotaiProvider>,
     );
 
-    expect(screen.getByText("No threads")).not.toBeNull();
-    expect(
-      screen.getAllByRole("button", { name: "Display marker" }),
-    ).toHaveLength(1);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Collapse Machines section" }),
-    );
+    expect(screen.queryByText("Threads")).toBeNull();
     expect(screen.queryByText("No threads")).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand Machines section" }),
-    );
-    expect(screen.getByText("No threads")).not.toBeNull();
     expect(mockBuildMachineThreadGroups).toHaveBeenCalledWith([], []);
   });
 
