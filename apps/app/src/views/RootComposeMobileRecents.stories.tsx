@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
+import type { ThreadListEntry } from "@bb/domain";
 import { StoryCard, StoryRow } from "../../.ladle/story-card";
 import {
   PROJECT_IDS,
   PROJECT_NAMES,
+  STORY_PROVIDERS_BY_ID,
   makeThreadListEntry,
 } from "../../.ladle/story-fixtures";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
@@ -48,6 +49,7 @@ const recentThreads: ThreadListEntry[] = [
   makeRecentThread({
     overrides: {
       id: "thr_mobile_just_starting",
+      providerId: "claude-code",
       title: "Trace mobile thread creation feedback",
       titleFallback: "Trace mobile thread creation feedback",
       status: "starting",
@@ -186,6 +188,7 @@ const hierarchyThreads: ThreadListEntry[] = [
   makeRecentThread({
     overrides: {
       id: "thr_mobile_child_a",
+      providerId: "claude-code",
       parentThreadId: "thr_mobile_parent",
       title: "Audit folder query paths",
       titleFallback: "Audit folder query paths",
@@ -208,6 +211,7 @@ const hierarchyThreads: ThreadListEntry[] = [
   makeRecentThread({
     overrides: {
       id: "thr_mobile_grandchild",
+      providerId: "acp-cursor",
       parentThreadId: "thr_mobile_child_a",
       title: "Backfill folder migration tests",
       titleFallback: "Backfill folder migration tests",
@@ -232,7 +236,7 @@ const projectNamesById = new Map<string, string>([
   [PROJECT_IDS.pierre, PROJECT_NAMES.pierre],
 ]);
 
-const providersById = new Map<string, ProviderInfo>();
+const providersById = STORY_PROVIDERS_BY_ID;
 
 export function Overview() {
   return (

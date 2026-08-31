@@ -2,6 +2,7 @@ import type {
   Environment,
   Host,
   ProjectSource,
+  ProviderInfo,
   ReasoningLevel,
   Thread,
   ThreadListEntry,
@@ -94,6 +95,41 @@ function storyProviderIcon(providerId: string, glyph: string) {
   return getProviderIconInfo(providerId, { logoUrl: null, icon: { glyph } })
     ?.icon;
 }
+
+function makeStoryProvider(
+  id: string,
+  displayName: string,
+  glyph: string,
+): ProviderInfo {
+  return {
+    id,
+    pluginId: `provider-${id}`,
+    displayName,
+    logoUrl: null,
+    icon: { glyph },
+    available: true,
+    maintenance: { health: false, usage: false, installation: false },
+    composerActions: [],
+    capabilities: {
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
+      supportsServiceTier: false,
+      supportsNativeUserQuestion: false,
+      supportsFork: true,
+      supportsSessionRewind: false,
+      modelCatalogScope: "workspace",
+      permissionModes: ["accept-edits", "auto", "full"],
+    },
+  };
+}
+
+export const STORY_PROVIDERS_BY_ID: ReadonlyMap<string, ProviderInfo> = new Map(
+  [
+    makeStoryProvider("codex", "Codex", "Code"),
+    makeStoryProvider("claude-code", "Claude Code", "Brain"),
+    makeStoryProvider("acp-cursor", "Cursor", "Zap"),
+  ].map((provider) => [provider.id, provider]),
+);
 
 export const STORY_PROVIDER_OPTIONS: readonly PickerOption<string>[] = [
   { value: "codex", label: "Codex", icon: storyProviderIcon("codex", "Code") },
