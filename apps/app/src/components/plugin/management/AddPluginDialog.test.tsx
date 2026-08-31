@@ -194,11 +194,13 @@ describe("AddPluginDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
 
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /installing plugin/i }),
-      ).toBeTruthy();
+    const installingButton = await screen.findByRole("button", {
+      name: "Installing",
     });
+    expect(installingButton.textContent).toBe("Installing");
+    expect(
+      installingButton.querySelector('[data-icon="Loading"]'),
+    ).not.toBeNull();
     expect(screen.getByRole("progressbar")).toBeTruthy();
     expect(screen.queryByTestId("full-trust-warning")).toBeNull();
 
@@ -365,7 +367,11 @@ describe("AddPluginDialog", () => {
 
     await vi.waitFor(() => {
       expect(onInstalled).toHaveBeenCalledWith(
-        INSTALLED_PLUGIN_RESPONSE.plugin,
+        expect.objectContaining({
+          ...INSTALLED_PLUGIN_RESPONSE.plugin,
+          lastProblem: null,
+          screenshots: [],
+        }),
       );
     });
   });

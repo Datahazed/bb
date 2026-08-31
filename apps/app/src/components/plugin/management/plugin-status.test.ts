@@ -5,6 +5,7 @@ import {
   type PluginUpdateState,
 } from "@/hooks/queries/plugin-settings-queries";
 import {
+  installedPluginProblemLine,
   pluginRowSignal,
   pluginRuntimeStatusPresentation,
 } from "./plugin-status";
@@ -21,6 +22,9 @@ function plugin(
     enabled: true,
     status: "running",
     statusDetail: null,
+    lastProblem: null,
+    categoryId: null,
+    category: null,
     description: null,
     name: null,
     icon: null,
@@ -207,6 +211,126 @@ describe("pluginRuntimeStatusPresentation", () => {
       condition: "Required settings are incomplete.",
       recovery:
         "Complete the Configuration section; bb reloads the plugin after you save.",
+    });
+  });
+});
+
+describe("installedPluginProblemLine", () => {
+  const now = Date.UTC(2026, 7, 25, 12, 0, 0);
+  const at = now - 2 * 60 * 1000;
+  const lastProblem = (status: PluginListItem["status"], message: string) => ({
+    class: status,
+    message,
+    at,
+  });
+
+  it("keeps healthy running and disabled rows quiet", () => {
+    expect(installedPluginProblemLine(plugin(), now)).toBeNull();
+    expect(
+      installedPluginProblemLine(
+        plugin(
+          {},
+          {
+            enabled: false,
+            status: "disabled",
+            lastProblem: lastProblem("error", "old failure"),
+          },
+        ),
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    [
+      "incompatible",
+      "requires bb >=0.40",
+      "Not running — requires bb >=0.40 · 2m ago",
+      "error",
+    ],
+    [
+      "error",
+      "startup exploded\nprivate stack",
+      "Not running — crashed on load: startup exploded · 2m ago",
+      "error",
+    ],
+    [
+      "missing",
+      "missing artifact",
+      "Not running — source missing at /plugins/linear · 2m ago",
+      "error",
+    ],
+    [
+      "degraded",
+      "service sync did not stop",
+      "Partly running — service sync did not stop · 2m ago",
+      "warning",
+    ],
+    [
+      "needs-configuration",
+      "Set an API token",
+      "Not running — needs configuration → its Settings · 2m ago",
+      "warning",
+    ],
+  ] as const)(
+    "renders one compact %s problem clause instead of the description",
+    (status, message, text, tone) => {
+      expect(
+        installedPluginProblemLine(
+          plugin(
+            {},
+            {
+              status,
+              statusDetail: message,
+              lastProblem: lastProblem(status, message),
+            },
+          ),
+          now,
+        ),
+      ).toEqual({ text, tone, attentionCount: null });
+    },
+  );
+
+  it("reports durable handler errors on an otherwise running plugin", () => {
+    expect(
+      installedPluginProblemLine(
+        plugin(
+          {},
+          {
+            handlerStats: {
+              count: 0,
+              totalMs: 0,
+              maxMs: 0,
+              errorCount: 3,
+            },
+            lastProblem: lastProblem("error", "request failed"),
+          },
+        ),
+        now,
+      ),
+    ).toEqual({
+      text: ", last 2m ago — request failed",
+      tone: "warning",
+      attentionCount: "3 errors",
+    });
+  });
+
+  it("explains a failed reload while the previous version keeps running", () => {
+    expect(
+      installedPluginProblemLine(
+        plugin(
+          {},
+          {
+            statusDetail: "reload failed: invalid export",
+            lastProblem: lastProblem("error", "invalid export"),
+          },
+        ),
+        now,
+      ),
+    ).toEqual({
+      text: "Running the previous version — reload failed: invalid export · 2m ago",
+      tone: "error",
+      attentionCount: null,
     });
   });
 });

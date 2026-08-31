@@ -1,12 +1,18 @@
 import type {
   InstalledPlugin,
+  PluginListingListResponse,
   PluginSettingDescriptor,
   PluginSettingsResponse,
 } from "@bb/server-contract";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidatePluginListings } from "../cache-owners/plugin-listings-cache-owner";
 import { createPluginsClient } from "./plugin-client";
-import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
+import {
+  pluginListQueryKey,
+  pluginListingsQueryKey,
+  pluginSettingsViewQueryKey,
+} from "./query-keys";
 
 type FetchLike = typeof fetch;
 
@@ -35,6 +41,7 @@ export interface PluginListItem {
   enabled: boolean;
   status: InstalledPlugin["status"];
   statusDetail: string | null;
+  lastProblem: InstalledPlugin["lastProblem"];
   description: string | null;
   name: string | null;
   icon: string | null;
@@ -54,6 +61,8 @@ export interface PluginListItem {
   catalogEntryId: string | null;
   publisherLabel: string | null;
   sourceDisplay: string;
+  categoryId: InstalledPlugin["categoryId"] | null;
+  category: string | null;
   updateState: PluginUpdateState;
 }
 
@@ -91,6 +100,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     enabled: plugin.enabled,
     status: plugin.status,
     statusDetail: plugin.statusDetail,
+    lastProblem: plugin.lastProblem,
     description: plugin.description,
     name: plugin.name,
     icon: plugin.icon,
@@ -110,6 +120,8 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     catalogEntryId: plugin.catalogEntryId ?? null,
     publisherLabel: plugin.publisherLabel,
     sourceDisplay: plugin.sourceDisplay,
+    categoryId: plugin.categoryId ?? null,
+    category: plugin.category ?? null,
     updateState: {
       outcome: state.outcome ?? null,
       detail: state.detail ?? null,
@@ -200,6 +212,30 @@ export function usePluginList(args: { enabled: boolean }) {
     queryFn: () => fetchPluginList(fetch),
     enabled: args.enabled,
     staleTime: 30_000,
+  });
+}
+
+export async function fetchPluginListings(
+  fetchImpl: FetchLike,
+): Promise<PluginListingListResponse> {
+  return createPluginsClient(fetchImpl).listings.list();
+}
+
+export function usePluginListings(args: { enabled: boolean }) {
+  return useQuery({
+    queryKey: pluginListingsQueryKey(),
+    queryFn: () => fetchPluginListings(fetch),
+    enabled: args.enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useConsumePluginListingNotice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (noticeId: string) =>
+      createPluginsClient(fetch).listings.consumeNotice({ noticeId }),
+    onSuccess: () => invalidatePluginListings({ queryClient }),
   });
 }
 

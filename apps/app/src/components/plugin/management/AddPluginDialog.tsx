@@ -363,10 +363,10 @@ function AddPluginDialogContent({
           }}
         >
           {install.isPending ? (
-            <Icon name="Spinner" className="animate-spin" />
+            <Icon name="Loading" className="size-3.5 animate-spin" />
           ) : null}
           {install.isPending
-            ? `Installing ${initial?.displayName ?? "plugin"}…`
+            ? "Installing"
             : `Install ${initial?.displayName ?? "plugin"}`}
         </Button>
       </DialogFooter>

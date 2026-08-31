@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Switch } from "@bb/shared-ui/switch";
+import { Pill } from "@bb/shared-ui/pill";
 import {
   ResourceListPanel,
   ResourceRow,
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
-import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -16,20 +15,18 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
-import {
-  pluginRowSignal,
-  pluginRuntimeStatusPresentation,
-} from "./plugin-status";
+import { pluginRowSignal, installedPluginProblemLine } from "./plugin-status";
 import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo } from "./plugin-ui";
 
 export function InstalledPluginsTab({
   plugins,
+  onOpenPlugin,
 }: {
   plugins: readonly PluginListItem[];
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
@@ -38,9 +35,7 @@ export function InstalledPluginsTab({
       : (plugins.find((plugin) => plugin.id === updateTargetId) ?? null);
 
   if (plugins.length === 0) {
-    return (
-      <EmptyState message="No plugins installed. Browse the catalog, create a plugin, or run bb plugin install <source>." />
-    );
+    return null;
   }
 
   return (
@@ -52,6 +47,7 @@ export function InstalledPluginsTab({
               key={plugin.id}
               plugin={plugin}
               onUpdateClick={() => setUpdateTargetId(plugin.id)}
+              onOpenPlugin={onOpenPlugin}
             />
           ))}
         </div>
@@ -72,9 +68,11 @@ export function InstalledPluginsTab({
 export function InstalledPluginRow({
   plugin,
   onUpdateClick,
+  onOpenPlugin,
 }: {
   plugin: PluginListItem;
   onUpdateClick: () => void;
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -94,52 +92,67 @@ export function InstalledPluginRow({
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const signal = pluginRowSignal(plugin);
   const statusSignal = signal?.kind === "status" ? signal : null;
-  const updateSignal = signal?.kind === "update" ? signal : null;
-  const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
+  const updateSignal =
+    plugin.updateState.availableVersion === null
+      ? null
+      : {
+          kind: "update" as const,
+          version: plugin.updateState.availableVersion,
+        };
+  const problemLine = installedPluginProblemLine(plugin);
   const notRunning = pluginNeedsAttention({
     enabled: enabled === true,
     status: plugin.status,
   });
-  const runtimeStatusToneClass =
-    runtimeStatus?.tone === "error"
-      ? "text-destructive-text"
-      : "text-warning-text";
 
-  const openDetail = () =>
+  const openDetail = () => {
+    if (onOpenPlugin !== undefined) {
+      onOpenPlugin(plugin.id);
+      return;
+    }
     navigate(
       getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
     );
+  };
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <ResourceRow
+        className={
+          problemLine?.tone === "error"
+            ? "-mx-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 text-destructive-text"
+            : undefined
+        }
         leading={
           <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
             <PluginLogo plugin={plugin} className="size-6 shrink-0" />
           </PluginSignalLogo>
         }
         title={plugin.name ?? plugin.id}
-        titleMeta={
-          plugin.publisherLabel === null ? undefined : (
-            <ProvenancePill label={plugin.publisherLabel} />
-          )
-        }
-        status={
-          runtimeStatus === null ? undefined : (
+        description={
+          problemLine === null ? (
+            plugin.description
+          ) : (
             <span
-              data-testid={`plugin-runtime-status-${plugin.id}`}
-              className={cn(
-                "shrink-0 text-xs font-medium",
-                runtimeStatusToneClass,
-              )}
+              data-testid={`plugin-problem-line-${plugin.id}`}
+              className={`inline-flex min-w-0 items-center gap-1 ${
+                problemLine.tone === "error"
+                  ? "text-destructive-text"
+                  : "text-warning-text"
+              }`}
             >
-              {runtimeStatus.label}
+              {problemLine.attentionCount === null ? null : (
+                <Pill
+                  variant="outline"
+                  className="border-transparent bg-surface-attention text-warning-text"
+                >
+                  {problemLine.attentionCount}
+                </Pill>
+              )}
+              {problemLine.text === "" ? null : (
+                <span className="min-w-0 truncate">{problemLine.text}</span>
+              )}
             </span>
           )
-        }
-        description={
-          runtimeStatus === null
-            ? plugin.description
-            : (plugin.statusDetail ?? runtimeStatus.condition)
         }
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
@@ -156,17 +169,6 @@ export function InstalledPluginRow({
         }
         persistentActions={
           <>
-            {notRunning ? (
-              <span
-                data-testid={`plugin-not-running-${plugin.id}`}
-                className={cn(
-                  "mr-1 text-2xs font-medium",
-                  runtimeStatusToneClass,
-                )}
-              >
-                not running
-              </span>
-            ) : null}
             <Switch
               checked={enabled}
               disabled={toggle.isPending}

@@ -1,6 +1,8 @@
 import type { PluginRuntimeStatus } from "@bb/server-contract";
 import type { IconName } from "@bb/shared-ui/icon";
+import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import { formatRelativeTime } from "@/lib/relative-time";
 
 export interface PluginRuntimeStatusPresentation {
   icon: IconName;
@@ -92,6 +94,122 @@ export function pluginRuntimeStatusPresentation(
     condition: pluginRuntimeCondition(plugin),
     recovery: pluginRuntimeRecovery(plugin),
   };
+}
+
+export interface InstalledPluginProblemLine {
+  text: string;
+  tone: "error" | "warning";
+  attentionCount: string | null;
+}
+
+function oneLine(value: string): string {
+  return value.split(/\r?\n/u, 1)[0]?.trim() ?? "";
+}
+
+function problemMessage(plugin: PluginListItem): string {
+  return oneLine(plugin.lastProblem?.message ?? plugin.statusDetail ?? "");
+}
+
+function withProblemTime(
+  text: string,
+  plugin: PluginListItem,
+  now: number,
+): string {
+  return plugin.lastProblem === null
+    ? text
+    : `${text} · ${formatRelativeTime({ timestamp: plugin.lastProblem.at, now })}`;
+}
+
+export function installedPluginProblemLine(
+  plugin: PluginListItem,
+  now = Date.now(),
+): InstalledPluginProblemLine | null {
+  if (!plugin.enabled || plugin.status === "disabled") return null;
+  const message = problemMessage(plugin);
+
+  if (
+    plugin.status === "running" &&
+    plugin.statusDetail?.startsWith("reload failed:")
+  ) {
+    const detail = message || oneLine(plugin.statusDetail.slice(14));
+    return {
+      text: withProblemTime(
+        `Running the previous version — reload failed: ${detail}`,
+        plugin,
+        now,
+      ),
+      tone: "error",
+      attentionCount: null,
+    };
+  }
+  if (plugin.status === "running" && plugin.handlerStats.errorCount > 0) {
+    const count = plugin.handlerStats.errorCount;
+    const countText = `${count} ${count === 1 ? "error" : "errors"}`;
+    const last =
+      plugin.lastProblem === null
+        ? ""
+        : `, last ${formatRelativeTime({ timestamp: plugin.lastProblem.at, now })}`;
+    return {
+      text: message.length === 0 ? last : `${last} — ${message}`,
+      tone: "warning",
+      attentionCount: countText,
+    };
+  }
+
+  switch (plugin.status) {
+    case "running":
+      return null;
+    case "incompatible":
+      return {
+        text: withProblemTime(
+          `Not running — ${message || "incompatible with this version of bb"}`,
+          plugin,
+          now,
+        ),
+        tone: "error",
+        attentionCount: null,
+      };
+    case "error":
+      return {
+        text: withProblemTime(
+          `Not running — crashed on load: ${message || "unknown error"}`,
+          plugin,
+          now,
+        ),
+        tone: "error",
+        attentionCount: null,
+      };
+    case "missing":
+      return {
+        text: withProblemTime(
+          `Not running — source missing at ${formatHomePathForDisplay(plugin.rootDir)}`,
+          plugin,
+          now,
+        ),
+        tone: "error",
+        attentionCount: null,
+      };
+    case "degraded":
+      return {
+        text: withProblemTime(
+          `Partly running — ${message || "a background service did not stop"}`,
+          plugin,
+          now,
+        ),
+        tone: "warning",
+        attentionCount: null,
+      };
+    case "needs-configuration":
+      return {
+        text: withProblemTime(
+          "Not running — needs configuration → its Settings",
+          plugin,
+          now,
+        ),
+        tone: "warning",
+        attentionCount: null,
+      };
+  }
 }
 
 export type PluginRowSignal =
