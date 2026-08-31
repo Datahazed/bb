@@ -24,16 +24,20 @@ export interface EnvironmentWorkspaceSummaryDisplay {
 
 interface WorktreeMachineComposerVisibilityArgs {
   connected: boolean;
+  hasCustomName: boolean;
   locality: "local" | "remote";
   machineCount: number;
 }
 
 export function shouldShowWorktreeMachineInComposer({
   connected,
+  hasCustomName,
   locality,
   machineCount,
 }: WorktreeMachineComposerVisibilityArgs): boolean {
-  return locality === "remote" || machineCount > 1 || !connected;
+  return (
+    !hasCustomName || locality === "remote" || machineCount > 1 || !connected
+  );
 }
 
 export function getEnvironmentWorkspaceSummaryDisplay({

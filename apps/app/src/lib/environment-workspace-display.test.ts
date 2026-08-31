@@ -109,6 +109,7 @@ describe("shouldShowWorktreeMachineInComposer", () => {
     expect(
       shouldShowWorktreeMachineInComposer({
         connected: true,
+        hasCustomName: true,
         locality: "local",
         machineCount: 1,
       }),
@@ -116,9 +117,30 @@ describe("shouldShowWorktreeMachineInComposer", () => {
   });
 
   it.each([
-    { connected: true, locality: "remote", machineCount: 1 },
-    { connected: true, locality: "local", machineCount: 2 },
-    { connected: false, locality: "local", machineCount: 1 },
+    {
+      connected: true,
+      hasCustomName: false,
+      locality: "local",
+      machineCount: 1,
+    },
+    {
+      connected: true,
+      hasCustomName: true,
+      locality: "remote",
+      machineCount: 1,
+    },
+    {
+      connected: true,
+      hasCustomName: true,
+      locality: "local",
+      machineCount: 2,
+    },
+    {
+      connected: false,
+      hasCustomName: true,
+      locality: "local",
+      machineCount: 1,
+    },
   ] as const)("shows salient machine context for %o", (input) => {
     expect(shouldShowWorktreeMachineInComposer(input)).toBe(true);
   });

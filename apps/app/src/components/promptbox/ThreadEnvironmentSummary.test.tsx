@@ -93,6 +93,7 @@ describe("ThreadEnvironmentSummary", () => {
       name: "bb/design-system-polish",
     });
     expect(copyButton.textContent).toBe("bb/design-system-polish");
+    expect(copyButton.className).toContain("min-w-24");
     expect(copyButton.querySelector('[data-icon="GitBranch"]')).not.toBeNull();
     expect(copyButton.getAttribute("data-promptbox-hide-branch-compact")).toBe(
       "",
@@ -153,21 +154,21 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it("offers naming without using the worktree type as a visible label", () => {
+  it("does not add a naming affordance when the worktree has no custom name", () => {
     render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
           environmentIcon="FolderGit"
           environmentTypeLabel="Local worktree"
+          machineName="Bersabel's MacBook Pro"
           onRenameWorktree={vi.fn()}
         />
       </TooltipProvider>,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Name worktree" }).textContent,
-    ).toContain("Add name");
+    expect(screen.queryByRole("button", { name: "Name worktree" })).toBeNull();
     expect(screen.queryByText("Worktree")).toBeNull();
+    expect(screen.getAllByText("Bersabel's MacBook Pro")).toHaveLength(2);
   });
 
   it("keeps the worktree name primary and exposes the rename action", async () => {

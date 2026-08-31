@@ -2454,6 +2454,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       (threadEnvironmentDisplay?.mode === "worktree" &&
         shouldShowWorktreeMachineInComposer({
           connected: resolvedThreadEnvironmentHost.status === "connected",
+          hasCustomName: environment?.name !== null,
           locality: environmentDisplayHostContext.locality,
           machineCount: hostsQuery.data?.length ?? 0,
         })))
@@ -2598,7 +2599,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
       onRenameWorktree={
-        canRenameWorktree ? handleOpenWorktreeRename : undefined
+        canRenameWorktree && environment?.name !== null
+          ? handleOpenWorktreeRename
+          : undefined
       }
       renameWorktreePending={renameWorktreePending}
       onPullRequestMerge={handlePullRequestMerge}

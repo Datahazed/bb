@@ -196,6 +196,7 @@ function PluginThreadChatBody({
         (display.mode === "worktree" &&
           shouldShowWorktreeMachineInComposer({
             connected: environmentHost.status === "connected",
+            hasCustomName: environment.name !== null,
             locality: host.locality,
             machineCount: hostsQuery.data?.length ?? 0,
           })))

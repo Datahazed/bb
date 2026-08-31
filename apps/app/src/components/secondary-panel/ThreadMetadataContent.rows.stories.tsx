@@ -148,6 +148,19 @@ export function Environment() {
           />
         </RowStage>
       </StoryRow>
+      <StoryRow
+        label="worktree"
+        hint="unnamed · naming stays discoverable here"
+      >
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({ name: null })}
+            environmentDisplayHost={localEnvironmentDisplayHost}
+            onRenameWorktree={noop}
+          />
+        </RowStage>
+      </StoryRow>
       <StoryRow label="machine" hint="local">
         <RowStage>
           <MachineRow name="Bersabel's MacBook Pro" />

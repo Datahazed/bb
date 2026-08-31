@@ -80,7 +80,7 @@ const noop = () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 const STORY_WORKTREE_NAME = "Design system polish";
 const STORY_LONG_WORKTREE_NAME =
-  "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout";
+  "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout-observability-and-accessibility";
 const STORY_CHECKOUT_DISPLAY = formatWorkspaceCheckoutDisplay({
   checkout: {
     kind: "branch",
@@ -1282,10 +1282,9 @@ function WorktreeNameEditingFixture({
             status: "ready",
           }),
           host: localEnvironmentDisplayHost,
-          projectName: "bb UI QA",
-          machineName: "Bersabel's MacBook Pro",
+          machineName: name === null ? "Bersabel's MacBook Pro" : undefined,
           environmentCheckout: STORY_CHECKOUT_DISPLAY,
-          onRenameWorktree: openRename,
+          onRenameWorktree: name === null ? undefined : openRename,
           onCreateNewThreadInWorktree: noop,
         })}
       </div>
@@ -1318,7 +1317,7 @@ export function WorktreeNameEditing() {
       </StoryRow>
       <StoryRow
         label="long name"
-        hint="long visible name truncates before machine, branch, and thread controls"
+        hint="long visible name truncates before branch and thread controls"
       >
         <WorktreeNameEditingFixture
           fixtureId="long"
@@ -1335,7 +1334,7 @@ export function WorktreeNamingContract() {
     <StoryCard>
       <StoryRow
         label="custom name"
-        hint="clearing the name returns to the concise naming affordance"
+        hint="clearing the custom name returns the composer to machine + branch"
       >
         <DialogStage>
           <EnvironmentRenameDialogContent
@@ -1353,7 +1352,7 @@ export function WorktreeNamingContract() {
       </StoryRow>
       <StoryRow
         label="unnamed"
-        hint="the type stays in the icon tooltip instead of becoming a label"
+        hint="machine + branch remain; generated worktree identity stays hidden"
       >
         <WorktreeNameEditingFixture fixtureId="unnamed" initialName={null} />
       </StoryRow>
