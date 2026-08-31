@@ -226,19 +226,21 @@ describe("EnvironmentRow", () => {
 
   it("keeps worktree identity primary while lifecycle stays secondary", () => {
     render(
-      <MemoryRouter>
-        <EnvironmentRow
-          thread={makeThread()}
-          environment={makeEnvironment({
-            name: "Design system polish",
-            status: "provisioning",
-            path: null,
-            isWorktree: false,
-            workspaceProvisionType: "managed-worktree",
-          })}
-          environmentDisplayHost={localHost}
-        />
-      </MemoryRouter>,
+      <TooltipProvider delayDuration={0}>
+        <MemoryRouter>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({
+              name: "Design system polish",
+              status: "provisioning",
+              path: null,
+              isWorktree: false,
+              workspaceProvisionType: "managed-worktree",
+            })}
+            environmentDisplayHost={localHost}
+          />
+        </MemoryRouter>
+      </TooltipProvider>,
     );
 
     const worktreeName = screen.getByText("Design system polish");
