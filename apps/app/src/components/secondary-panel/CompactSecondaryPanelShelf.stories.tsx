@@ -41,6 +41,20 @@ function createStoryFileTab(path: string): HostFilePreviewFixedPanelTab {
 
 const fileTab = createStoryFileTab(STORY_FILE_PATH);
 
+const MANY_TAB_PATHS: string[] = [
+  STORY_FILE_PATH,
+  "apps/app/src/components/secondary-panel/SecondaryPanelTabStrip.tsx",
+  "apps/app/src/components/secondary-panel/CompactSecondaryPanelShelf.tsx",
+  "apps/app/src/hooks/queries/thread-queries.ts",
+  "apps/app/src/components/ui/sidebar.tsx",
+  "apps/app/src/components/ui/theme.css",
+  "apps/app/src/app.css",
+  "package.json",
+  "README.md",
+  "apps/server/src/services/providers/provider-registry.ts",
+  "an-unusually-long-component-filename-that-must-truncate.tsx",
+]
+
 function StoryFileContent() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto p-3 font-mono text-xs">
@@ -65,6 +79,7 @@ interface ShelfPanelProps {
   onSelectInfo: () => void;
   onSelectFile: () => void;
   onClose: () => void;
+  filePaths?: string[];
 }
 
 function ShelfPanel({
@@ -72,19 +87,18 @@ function ShelfPanel({
   onSelectInfo,
   onSelectFile,
   onClose,
+  filePaths = [STORY_FILE_PATH],
 }: ShelfPanelProps) {
-  const tabs: SecondaryPanelRenderableTab[] = [
-    {
-      label: "RootComposeCompactHome.tsx",
-      isPinned: false,
-      leadingVisual: <Icon name="File" className="size-3.5" aria-hidden />,
-      statusLabel: null,
-      onSelect: onSelectFile,
-      onClose: noop,
-      renderContent: () => <StoryFileContent />,
-      tab: fileTab,
-    },
-  ];
+  const tabs: SecondaryPanelRenderableTab[] = filePaths.map((path, index) => ({
+    label: path.split("/").at(-1) ?? path,
+    isPinned: index === 0 && filePaths.length > 1,
+    leadingVisual: <Icon name="File" className="size-3.5" aria-hidden />,
+    statusLabel: null,
+    onSelect: onSelectFile,
+    onClose: noop,
+    renderContent: () => <StoryFileContent />,
+    tab: path === STORY_FILE_PATH ? fileTab : createStoryFileTab(path),
+  }));
 
   return (
     <ThreadSecondaryPanel
@@ -175,6 +189,29 @@ export function Shelf() {
 
 export function FullPage() {
   return <ShelfStory initialPresentation="full" />;
+}
+
+export function ManyTabs() {
+  const [activeTab, setActiveTab] = useState<SecondaryFixedPanelTab>(fileTab);
+  const presentation = activeTab.kind === "thread-info" ? "shelf" : "full";
+  return (
+    <Stage>
+      <CompactSecondaryPanelShelf
+        open
+        onClose={noop}
+        presentation={presentation}
+        srLabel="Right panel"
+      >
+        <ShelfPanel
+          activeTab={activeTab}
+          filePaths={MANY_TAB_PATHS}
+          onSelectInfo={() => setActiveTab(createThreadInfoFixedPanelTab())}
+          onSelectFile={() => setActiveTab(fileTab)}
+          onClose={noop}
+        />
+      </CompactSecondaryPanelShelf>
+    </Stage>
+  );
 }
 
 export function Closed() {

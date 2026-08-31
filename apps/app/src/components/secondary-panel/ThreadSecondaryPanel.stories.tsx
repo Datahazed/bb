@@ -652,12 +652,12 @@ export function SplitPanes() {
   );
 }
 
-export function CompactShelfTabs() {
+export function PhoneWidthTabs() {
   return (
     <StoryCard>
       <StoryRow
-        label="compact shelf — many tabs"
-        hint="phone-width shelf (299px, the --secondary-panel-width-mobile value at 393px); the tab row scrolls horizontally while Info and Diff stay fixed"
+        label="phone-width panel — many tabs"
+        hint="the panel body at 299px, the --secondary-panel-width-mobile value at a 393px viewport. Shelf and full-page geometry live in right-panel/Compact shelf; this row isolates the tab strip, which scrolls horizontally while Info and Diff stay fixed"
       >
         <FileTabsShellRow
           filenames={MANY_TAB_FILENAMES}
@@ -667,7 +667,7 @@ export function CompactShelfTabs() {
         />
       </StoryRow>
       <StoryRow
-        label="compact shelf — active tab far down the row"
+        label="phone-width panel — active tab far down the row"
         hint="the strip should scroll the selected tab into view rather than leaving it offscreen"
       >
         <FileTabsShellRow
@@ -678,7 +678,7 @@ export function CompactShelfTabs() {
         />
       </StoryRow>
       <StoryRow
-        label="compact shelf — pinned first tab"
+        label="phone-width panel — pinned first tab"
         hint="pinned tab keeps its slot with no close affordance while the rest scroll past it"
       >
         <FileTabsShellRow
@@ -690,7 +690,7 @@ export function CompactShelfTabs() {
         />
       </StoryRow>
       <StoryRow
-        label="compact shelf — no file tab selected"
+        label="phone-width panel — no file tab selected"
         hint="Info stays active while the file tabs sit alongside as inactive pills"
       >
         <FileTabsShellRow
