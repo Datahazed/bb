@@ -12,10 +12,14 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyValue: "bb/thread",
+      copyAction: {
+        accessibleLabel: "Copy branch name: bb/thread",
+        label: "Copy branch name",
+        value: "bb/thread",
+      },
+      detailTooltip: null,
       label: "bb/thread",
       rowLabel: "Branch",
-      title: "Copy branch name: bb/thread",
     });
   });
 
@@ -28,10 +32,14 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyValue: "abcdef1234567890",
+      copyAction: {
+        accessibleLabel: "Copy commit SHA: abcdef1234567890",
+        label: "Copy commit SHA",
+        value: "abcdef1234567890",
+      },
+      detailTooltip: null,
       label: "detached abcdef1",
       rowLabel: "Checkout",
-      title: "Detached HEAD: abcdef1234567890",
     });
   });
 
@@ -44,10 +52,10 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyValue: null,
+      copyAction: null,
+      detailTooltip: "Detached HEAD",
       label: "detached HEAD",
       rowLabel: "Checkout",
-      title: "Detached HEAD",
     });
   });
 
@@ -60,10 +68,10 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyValue: null,
+      copyAction: null,
+      detailTooltip: "Empty branch: main",
       label: "main (empty)",
       rowLabel: "Checkout",
-      title: "Empty branch: main",
     });
   });
 
@@ -76,10 +84,10 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyValue: null,
+      copyAction: null,
+      detailTooltip: "Empty repository",
       label: "empty repo",
       rowLabel: "Checkout",
-      title: "Empty repository",
     });
   });
 
@@ -92,10 +100,10 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyValue: null,
+      copyAction: null,
+      detailTooltip: "Unknown checkout: HEAD is missing",
       label: "unknown checkout",
       rowLabel: "Checkout",
-      title: "Unknown checkout: HEAD is missing",
     });
   });
 });

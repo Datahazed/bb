@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitDiffToolbar } from "./GitDiffToolbar";
@@ -13,7 +13,7 @@ vi.mock("usehooks-ts", () => ({
 afterEach(cleanup);
 
 describe("GitDiffToolbar", () => {
-  it("shows branch context separately from the diff selection", () => {
+  it("shows branch context with a concise tooltip and complete accessible name", async () => {
     render(
       <TooltipProvider delayDuration={0}>
         <GitDiffToolbar
@@ -43,9 +43,13 @@ describe("GitDiffToolbar", () => {
 
     expect(screen.queryByText("Branch")).toBeNull();
     expect(screen.getByText("bb/design-system-polish")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Copy branch name" }),
-    ).toBeTruthy();
+    const branchButton = screen.getByRole("button", {
+      name: "Copy branch name: bb/design-system-polish",
+    });
+    fireEvent.focus(branchButton);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Copy branch name",
+    );
     expect(screen.getByRole("button", { name: "All changes" })).toBeTruthy();
   });
 });

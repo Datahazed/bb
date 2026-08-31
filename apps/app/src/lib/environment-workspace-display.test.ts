@@ -7,12 +7,11 @@ import {
 
 describe("getEnvironmentWorkspaceTypeLabel", () => {
   it.each([
-    ["managed-worktree", "local", "Local worktree"],
-    ["unmanaged-worktree", "remote", "Remote worktree"],
-    ["other", "local", "Local"],
-    ["other", "remote", "Remote"],
-  ] as const)("maps %s on a %s host to %s", (kind, locality, expected) => {
-    expect(getEnvironmentWorkspaceTypeLabel(kind, locality)).toBe(expected);
+    ["managed-worktree", "Worktree"],
+    ["unmanaged-worktree", "Worktree"],
+    ["other", "Machine"],
+  ] as const)("maps %s to %s", (kind, expected) => {
+    expect(getEnvironmentWorkspaceTypeLabel(kind)).toBe(expected);
   });
 });
 
@@ -29,13 +28,12 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
           workspaceDisplayKind: "managed-worktree",
         },
         environmentName: null,
-        locality: "remote",
       }),
     ).toEqual({
       label: "Provisioning",
       compactLabel: "Provisioning",
       icon: "Loading",
-      typeLabel: undefined,
+      typeLabel: "Worktree",
     });
   });
 
@@ -52,13 +50,12 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
         },
         environmentName: null,
         hostName: "Build Mac mini",
-        locality: "remote",
       }),
     ).toMatchObject({
       label: "Build Mac mini",
       compactLabel: "Build Mac mini",
       icon: "FolderGit",
-      typeLabel: "Remote worktree",
+      typeLabel: "Worktree",
     });
   });
 
@@ -74,7 +71,6 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
           workspaceDisplayKind: "managed-worktree",
         },
         environmentName: "Design system polish",
-        locality: "remote",
       }),
     ).toMatchObject({
       label: "Design system polish",
@@ -95,13 +91,12 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
         },
         environmentName: null,
         hostName: "Bersabel's MacBook Pro",
-        locality: "local",
       }),
     ).toMatchObject({
       label: "Bersabel's MacBook Pro",
       compactLabel: "Bersabel's MacBook Pro",
       icon: "Laptop",
-      typeLabel: "Local",
+      typeLabel: "Machine",
     });
   });
 });

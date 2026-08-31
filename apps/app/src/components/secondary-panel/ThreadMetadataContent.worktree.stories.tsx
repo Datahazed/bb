@@ -3,7 +3,10 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import { getEnvironmentWorkspaceSummaryDisplay } from "@/lib/environment-workspace-display";
+import {
+  getEnvironmentWorkspaceSummaryDisplay,
+  shouldShowWorktreeMachineInComposer,
+} from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
@@ -39,6 +42,60 @@ const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   identity: null,
 };
 
+interface WorktreeMachineVisibilityFixtureProps {
+  connected: boolean;
+  locality: "local" | "remote";
+  machineCount: number;
+  machineName: string;
+}
+
+function WorktreeMachineVisibilityFixture({
+  connected,
+  locality,
+  machineCount,
+  machineName,
+}: WorktreeMachineVisibilityFixtureProps) {
+  const environment = makeEnvironment({
+    name: STORY_WORKTREE_NAME,
+    isWorktree: true,
+    workspaceProvisionType: "managed-worktree",
+    status: "ready",
+  });
+  const host: EnvironmentDisplayHostContext = {
+    locality,
+    identity: null,
+  };
+  const display = formatEnvironmentDisplay({ environment, host });
+  const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
+    display,
+    environmentName: environment.name,
+    hostName: machineName,
+  });
+  const showMachine = shouldShowWorktreeMachineInComposer({
+    connected,
+    hasCustomName: environment.name !== null,
+    locality,
+    machineCount,
+  });
+
+  return (
+    <div
+      data-promptbox=""
+      className="w-full min-w-0 rounded-md border bg-background p-3"
+    >
+      <ThreadEnvironmentSummary
+        environmentLabel={summaryDisplay.label}
+        environmentCompactLabel={summaryDisplay.compactLabel}
+        environmentIcon={summaryDisplay.icon}
+        environmentTypeLabel={summaryDisplay.typeLabel}
+        environmentCheckout={STORY_CHECKOUT_DISPLAY}
+        machineName={showMachine ? machineName : undefined}
+        machineConnected={showMachine ? connected : undefined}
+      />
+    </div>
+  );
+}
+
 interface WorktreeNamingFixtureProps {
   fixtureId: string;
   name: string | null;
@@ -64,7 +121,6 @@ function WorktreeNamingFixture({
     display,
     environmentName: name,
     hostName: STORY_HOST_NAME,
-    locality: "local",
   });
 
   return (
@@ -128,6 +184,57 @@ export function Presentation() {
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         <WorktreeNamingFixture fixtureId="unnamed" name={null} />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function MachineVisibility() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="single local machine"
+        hint="machine hidden because it adds no new context"
+      >
+        <WorktreeMachineVisibilityFixture
+          connected
+          locality="local"
+          machineCount={1}
+          machineName={STORY_HOST_NAME}
+        />
+      </StoryRow>
+      <StoryRow
+        label="remote machine"
+        hint="machine shown because the worktree runs remotely"
+      >
+        <WorktreeMachineVisibilityFixture
+          connected
+          locality="remote"
+          machineCount={1}
+          machineName="Build Mac mini"
+        />
+      </StoryRow>
+      <StoryRow
+        label="offline machine"
+        hint="machine shown with its connection state"
+      >
+        <WorktreeMachineVisibilityFixture
+          connected={false}
+          locality="local"
+          machineCount={1}
+          machineName={STORY_HOST_NAME}
+        />
+      </StoryRow>
+      <StoryRow
+        label="multiple machines"
+        hint="machine shown to distinguish which machine owns the worktree"
+      >
+        <WorktreeMachineVisibilityFixture
+          connected
+          locality="local"
+          machineCount={2}
+          machineName={STORY_HOST_NAME}
+        />
       </StoryRow>
     </StoryCard>
   );

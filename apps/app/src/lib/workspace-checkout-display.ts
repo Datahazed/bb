@@ -2,14 +2,19 @@ import type { GitCheckoutRef } from "@bb/domain";
 
 const SHORT_SHA_LENGTH = 7;
 
+export interface WorkspaceCheckoutCopyAction {
+  accessibleLabel: string;
+  errorMessage: string;
+  label: string;
+  successMessage: string;
+  value: string;
+}
+
 export interface WorkspaceCheckoutDisplay {
-  copyErrorMessage: string | null;
-  copyLabel: string | null;
-  copySuccessMessage: string | null;
-  copyValue: string | null;
+  copyAction: WorkspaceCheckoutCopyAction | null;
+  detailTooltip: string | null;
   label: string;
   rowLabel: "Branch" | "Checkout";
-  title: string;
 }
 
 interface FormatWorkspaceCheckoutDisplayArgs {
@@ -26,60 +31,57 @@ export function formatWorkspaceCheckoutDisplay({
   switch (checkout.kind) {
     case "branch":
       return {
-        copyErrorMessage: "Failed to copy branch name",
-        copyLabel: "Copy branch name",
-        copySuccessMessage: "Branch name copied",
-        copyValue: checkout.branchName,
+        copyAction: {
+          accessibleLabel: `Copy branch name: ${checkout.branchName}`,
+          errorMessage: "Failed to copy branch name",
+          label: "Copy branch name",
+          successMessage: "Branch name copied",
+          value: checkout.branchName,
+        },
+        detailTooltip: null,
         label: checkout.branchName,
         rowLabel: "Branch",
-        title: `Copy branch name: ${checkout.branchName}`,
       };
     case "detached":
       if (checkout.headSha === null) {
         return {
-          copyErrorMessage: null,
-          copyLabel: null,
-          copySuccessMessage: null,
-          copyValue: null,
+          copyAction: null,
+          detailTooltip: "Detached HEAD",
           label: "detached HEAD",
           rowLabel: "Checkout",
-          title: "Detached HEAD",
         };
       }
       return {
-        copyErrorMessage: "Failed to copy commit SHA",
-        copyLabel: "Copy commit SHA",
-        copySuccessMessage: "Commit SHA copied",
-        copyValue: checkout.headSha,
+        copyAction: {
+          accessibleLabel: `Copy commit SHA: ${checkout.headSha}`,
+          errorMessage: "Failed to copy commit SHA",
+          label: "Copy commit SHA",
+          successMessage: "Commit SHA copied",
+          value: checkout.headSha,
+        },
+        detailTooltip: null,
         label: `detached ${shortSha(checkout.headSha)}`,
         rowLabel: "Checkout",
-        title: `Detached HEAD: ${checkout.headSha}`,
       };
     case "unborn":
       return {
-        copyErrorMessage: null,
-        copyLabel: null,
-        copySuccessMessage: null,
-        copyValue: null,
+        copyAction: null,
+        detailTooltip:
+          checkout.branchName !== null
+            ? `Empty branch: ${checkout.branchName}`
+            : "Empty repository",
         label:
           checkout.branchName !== null
             ? `${checkout.branchName} (empty)`
             : "empty repo",
         rowLabel: "Checkout",
-        title:
-          checkout.branchName !== null
-            ? `Empty branch: ${checkout.branchName}`
-            : "Empty repository",
       };
     case "unknown":
       return {
-        copyErrorMessage: null,
-        copyLabel: null,
-        copySuccessMessage: null,
-        copyValue: null,
+        copyAction: null,
+        detailTooltip: `Unknown checkout: ${checkout.reason}`,
         label: "unknown checkout",
         rowLabel: "Checkout",
-        title: `Unknown checkout: ${checkout.reason}`,
       };
   }
 }

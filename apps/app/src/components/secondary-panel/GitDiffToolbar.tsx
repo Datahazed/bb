@@ -181,7 +181,7 @@ export function GitDiffToolbar({
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
   const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
-  const checkoutCopyValue = checkout?.copyValue ?? null;
+  const checkoutCopyAction = checkout?.copyAction ?? null;
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
@@ -192,19 +192,17 @@ export function GitDiffToolbar({
               {checkout.rowLabel}
             </span>
           ) : null}
-          {checkoutCopyValue !== null ? (
+          {checkoutCopyAction !== null ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  aria-label={checkout.copyLabel ?? "Copy checkout value"}
+                  aria-label={checkoutCopyAction.accessibleLabel}
                   className="inline-flex h-6 min-w-0 items-center gap-1 rounded-md px-1 text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => {
-                    void copyToClipboardWithToast(checkoutCopyValue, {
-                      successMessage:
-                        checkout.copySuccessMessage ?? "Value copied",
-                      errorMessage:
-                        checkout.copyErrorMessage ?? "Failed to copy value",
+                    void copyToClipboardWithToast(checkoutCopyAction.value, {
+                      successMessage: checkoutCopyAction.successMessage,
+                      errorMessage: checkoutCopyAction.errorMessage,
                     });
                   }}
                 >
@@ -212,20 +210,23 @@ export function GitDiffToolbar({
                   <span className="truncate">{checkout.label}</span>
                 </button>
               </TooltipTrigger>
-              <TooltipContent>{checkout.title}</TooltipContent>
+              <TooltipContent>{checkoutCopyAction.label}</TooltipContent>
             </Tooltip>
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
                   tabIndex={0}
+                  aria-label={`${checkout.rowLabel}: ${checkout.label}`}
                   className="inline-flex h-6 min-w-0 items-center gap-1 rounded-md px-1 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <Icon name="GitBranch" className="size-3.5 shrink-0" />
                   <span className="truncate">{checkout.label}</span>
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{checkout.title}</TooltipContent>
+              <TooltipContent>
+                {checkout.detailTooltip ?? checkout.label}
+              </TooltipContent>
             </Tooltip>
           )}
         </div>

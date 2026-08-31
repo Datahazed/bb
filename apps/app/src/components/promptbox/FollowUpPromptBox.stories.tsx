@@ -198,7 +198,6 @@ function makeEnvironmentSummary({
     display,
     environmentName: environment.name,
     hostName,
-    locality: host.locality,
   });
   return (
     <ThreadEnvironmentSummary
@@ -1136,7 +1135,7 @@ export function EnvironmentMatrix() {
     <StoryCard>
       <StoryRow
         label="provisioning"
-        hint="runtime loading icon + lifecycle label; no environment-type tooltip yet"
+        hint="loading icon + Provisioning value; resource remains a Worktree"
       >
         <Row
           submitMode={{ kind: "stop-only", onStop: noop }}
@@ -1144,13 +1143,13 @@ export function EnvironmentMatrix() {
           environmentSummary={provisioningEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow label="ready · local" hint="laptop icon · Local tooltip">
+      <StoryRow label="ready · local" hint="laptop icon · Machine tooltip">
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={localEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow label="ready · remote" hint="laptop icon · Remote tooltip">
+      <StoryRow label="ready · remote" hint="laptop icon · Machine tooltip">
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
@@ -1158,7 +1157,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · local worktree"
-        hint="managed worktree · worktree icon · Local worktree tooltip"
+        hint="managed worktree · worktree icon · Worktree tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1167,7 +1166,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · remote worktree"
-        hint="managed worktree · worktree icon · Remote worktree tooltip"
+        hint="managed worktree · worktree icon · Worktree tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}

@@ -31,7 +31,7 @@ describe("ThreadEnvironmentSummary", () => {
           environmentLabel="Design system polish"
           environmentCompactLabel="Design system polish"
           environmentIcon="FolderGit"
-          environmentTypeLabel="Remote worktree"
+          environmentTypeLabel="Worktree"
           machineName="Build Mac mini"
         />
       </TooltipProvider>,
@@ -68,6 +68,20 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
+  it("uses the issue icon for an offline machine", () => {
+    const { container } = render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          machineName="Build Mac mini"
+          machineConnected={false}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(container.querySelector('[data-icon="LaptopIssue"]')).not.toBeNull();
+    expect(screen.getAllByText("Build Mac mini · Offline")).toHaveLength(2);
+  });
+
   it("renders Git checkout context in the composer summary", () => {
     render(
       <TooltipProvider delayDuration={0}>
@@ -75,22 +89,25 @@ describe("ThreadEnvironmentSummary", () => {
           environmentLabel="Design system polish"
           environmentCompactLabel="Design system polish"
           environmentIcon="FolderGit"
-          environmentTypeLabel="Local worktree"
+          environmentTypeLabel="Worktree"
           environmentCheckout={{
-            copyErrorMessage: "Failed to copy branch name",
-            copyLabel: "Copy branch name",
-            copySuccessMessage: "Branch name copied",
-            copyValue: "bb/design-system-polish",
+            copyAction: {
+              accessibleLabel: "Copy branch name: bb/design-system-polish",
+              errorMessage: "Failed to copy branch name",
+              label: "Copy branch name",
+              successMessage: "Branch name copied",
+              value: "bb/design-system-polish",
+            },
+            detailTooltip: null,
             label: "bb/design-system-polish",
             rowLabel: "Branch",
-            title: "Copy branch name: bb/design-system-polish",
           }}
         />
       </TooltipProvider>,
     );
 
     const copyButton = screen.getByRole("button", {
-      name: "bb/design-system-polish",
+      name: "Copy branch name: bb/design-system-polish",
     });
     expect(copyButton.textContent).toBe("bb/design-system-polish");
     expect(copyButton.className).toContain("min-w-24");
@@ -100,16 +117,16 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it.each(["Local worktree", "Remote worktree", "Local", "Remote"] as const)(
-    "shows the %s environment type from the environment icon",
+  it.each(["Worktree", "Machine"] as const)(
+    "identifies the %s resource from its icon",
     async (environmentTypeLabel) => {
       render(
         <TooltipProvider delayDuration={0}>
           <ThreadEnvironmentSummary
             environmentLabel={
-              environmentTypeLabel.endsWith("worktree")
+              environmentTypeLabel === "Worktree"
                 ? "Design system polish"
-                : "Review workspace"
+                : "Build Mac mini"
             }
             environmentCompactLabel="Workspace"
             environmentIcon="Laptop"
@@ -120,7 +137,7 @@ describe("ThreadEnvironmentSummary", () => {
 
       fireEvent.focus(
         screen.getByRole("img", {
-          name: `Environment type: ${environmentTypeLabel}`,
+          name: environmentTypeLabel,
         }),
       );
 
@@ -161,7 +178,7 @@ describe("ThreadEnvironmentSummary", () => {
           environmentLabel="Bersabel's MacBook Pro"
           environmentCompactLabel="Bersabel's MacBook Pro"
           environmentIcon="FolderGit"
-          environmentTypeLabel="Local worktree"
+          environmentTypeLabel="Worktree"
         />
       </TooltipProvider>,
     );
@@ -171,9 +188,7 @@ describe("ThreadEnvironmentSummary", () => {
     expect(screen.getAllByText("Bersabel's MacBook Pro")).toHaveLength(2);
     expect(container.querySelector('[data-icon="FolderGit"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="Laptop"]')).toBeNull();
-    expect(
-      screen.getByRole("img", { name: "Environment type: Local worktree" }),
-    ).not.toBeNull();
+    expect(screen.getByRole("img", { name: "Worktree" })).not.toBeNull();
   });
 
   it("keeps an existing custom worktree name primary and read-only", () => {
@@ -183,7 +198,7 @@ describe("ThreadEnvironmentSummary", () => {
           environmentLabel="Design system polish"
           environmentCompactLabel="Design system polish"
           environmentIcon="FolderGit"
-          environmentTypeLabel="Local worktree"
+          environmentTypeLabel="Worktree"
           machineName="Bersabel's MacBook Pro"
         />
       </TooltipProvider>,
@@ -217,7 +232,7 @@ describe("ThreadEnvironmentSummary", () => {
           environmentLabel={longName}
           environmentCompactLabel={longName}
           environmentIcon="FolderGit"
-          environmentTypeLabel="Local worktree"
+          environmentTypeLabel="Worktree"
           machineName="Bersabel's MacBook Pro"
         />
       </TooltipProvider>,

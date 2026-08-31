@@ -3,17 +3,12 @@ import type { EnvironmentDisplayInfo } from "@bb/core-ui";
 import type { IconName } from "@bb/shared-ui/icon";
 import { PersistentHostIconName } from "@/lib/host-display";
 
-export type EnvironmentWorkspaceTypeLabel =
-  | "Local worktree"
-  | "Remote worktree"
-  | "Local"
-  | "Remote";
+export type EnvironmentWorkspaceTypeLabel = "Worktree" | "Machine";
 
 interface EnvironmentWorkspaceSummaryDisplayArgs {
   display: EnvironmentDisplayInfo;
   environmentName: string | null;
   hostName?: string;
-  locality: "local" | "remote";
 }
 
 export interface EnvironmentWorkspaceSummaryDisplay {
@@ -45,14 +40,13 @@ export function getEnvironmentWorkspaceSummaryDisplay({
   display,
   environmentName,
   hostName,
-  locality,
 }: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentWorkspaceSummaryDisplay {
   if (display.lifecycle === "provisioning") {
     return {
       label: "Provisioning",
       compactLabel: "Provisioning",
       icon: "Loading",
-      typeLabel: undefined,
+      typeLabel: getEnvironmentWorkspaceTypeLabel(display.workspaceDisplayKind),
     };
   }
 
@@ -65,21 +59,17 @@ export function getEnvironmentWorkspaceSummaryDisplay({
     label: environmentSummaryLabel,
     compactLabel: environmentSummaryLabel,
     icon: getEnvironmentWorkspaceLabelIconName(display.workspaceDisplayKind),
-    typeLabel: getEnvironmentWorkspaceTypeLabel(
-      display.workspaceDisplayKind,
-      locality,
-    ),
+    typeLabel: getEnvironmentWorkspaceTypeLabel(display.workspaceDisplayKind),
   };
 }
 
 export function getEnvironmentWorkspaceTypeLabel(
   kind: EnvironmentWorkspaceDisplayKind,
-  locality: "local" | "remote",
 ): EnvironmentWorkspaceTypeLabel {
   if (kind === "other") {
-    return locality === "local" ? "Local" : "Remote";
+    return "Machine";
   }
-  return locality === "local" ? "Local worktree" : "Remote worktree";
+  return "Worktree";
 }
 
 export function getEnvironmentWorkspaceDisplayIconName(

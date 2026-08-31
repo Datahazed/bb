@@ -151,6 +151,25 @@ describe("EnvironmentRow", () => {
     expect(worktreeValue?.querySelector('[data-icon="Edit"]')).toBeNull();
   });
 
+  it("reveals a truncated worktree name on keyboard focus", async () => {
+    const longName =
+      "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout";
+    render(
+      <TooltipProvider delayDuration={0}>
+        <MemoryRouter>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({ name: longName })}
+            environmentDisplayHost={localHost}
+          />
+        </MemoryRouter>
+      </TooltipProvider>,
+    );
+
+    fireEvent.focus(screen.getByLabelText(`Worktree: ${longName}`));
+    expect((await screen.findByRole("tooltip")).textContent).toBe(longName);
+  });
+
   it("reports an unnamed worktree without offering a naming action", () => {
     render(
       <TooltipProvider delayDuration={0}>
@@ -236,20 +255,30 @@ describe("EnvironmentRow", () => {
     );
   });
 
-  it("places the actual machine name beside its icon and keeps state secondary", () => {
-    render(<MachineRow name="Bersabel's MacBook Pro" connected={false} />);
+  it("places the actual machine name beside its icon and keeps state secondary", async () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <MachineRow name="Bersabel's MacBook Pro" connected={false} />
+      </TooltipProvider>,
+    );
 
     const machineName = screen.getByText("Bersabel's MacBook Pro");
     const machineValue = machineName.closest("dd");
     expect(machineValue).not.toBeNull();
     expect(
       machineValue?.previousElementSibling?.querySelector(
-        '[data-icon="Laptop"]',
+        '[data-icon="LaptopIssue"]',
       ),
     ).not.toBeNull();
     expect(screen.getByText("Machine").closest("dt")).not.toBeNull();
     expect(screen.getByText("· Offline").getAttribute("class")).toContain(
       "text-muted-foreground",
+    );
+    fireEvent.focus(
+      screen.getByLabelText("Machine: Bersabel's MacBook Pro · Offline"),
+    );
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Bersabel's MacBook Pro · Offline",
     );
   });
 

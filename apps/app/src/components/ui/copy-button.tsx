@@ -7,6 +7,7 @@ import { useClipboardCopy, type ClipboardCopyOptions } from "@/lib/clipboard";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 
 interface CopyButtonProps
   extends
@@ -61,7 +62,7 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
 
 interface CopyableInlineLabelProps extends ClipboardCopyOptions {
   label: string;
-  title?: string;
+  tooltip: string;
   className?: string;
   iconClassName?: string;
   children?: ReactNode;
@@ -70,7 +71,7 @@ interface CopyableInlineLabelProps extends ClipboardCopyOptions {
 export function CopyableInlineLabel({
   text,
   label,
-  title,
+  tooltip,
   className,
   iconClassName,
   successMessage,
@@ -83,11 +84,11 @@ export function CopyableInlineLabel({
     errorMessage,
   });
 
-  return (
+  const button = (
     <button
       type="button"
       className={cn(
-        `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`,
+        `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground outline-none ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring`,
         className,
       )}
       onClick={() => {
@@ -95,13 +96,18 @@ export function CopyableInlineLabel({
       }}
       aria-label={label}
     >
-      <span className="min-w-0 truncate" title={title ?? text}>
-        {children ?? text}
-      </span>
+      <span className="min-w-0 truncate">{children ?? text}</span>
       <Icon
         name={copied ? "Check" : "Copy"}
         className={cn("size-3.5 shrink-0 text-muted-foreground", iconClassName)}
       />
     </button>
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

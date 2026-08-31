@@ -2356,7 +2356,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         display: threadEnvironmentDisplay,
         environmentName: environment?.name ?? null,
         hostName: resolvedThreadEnvironmentHost?.name,
-        locality: environmentDisplayHostContext.locality,
       })
     : undefined;
   const composerMachine =

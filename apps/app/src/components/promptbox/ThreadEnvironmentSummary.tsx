@@ -35,7 +35,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   machineConnected = true,
   onCreateNewThreadInWorktree,
 }: ThreadEnvironmentSummaryProps) {
-  const isWorktree = environmentTypeLabel?.endsWith("worktree") ?? false;
+  const isWorktree = environmentTypeLabel === "Worktree";
   if (
     !projectName &&
     !environmentLabel &&
@@ -46,7 +46,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
     return null;
   }
 
-  const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
+  const checkoutCopyAction = environmentCheckout?.copyAction ?? null;
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
       {projectName ? (
@@ -67,13 +67,15 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           data-promptbox-worktree-context={isWorktree ? "" : undefined}
           className="inline-flex h-6 w-fit max-w-full min-w-0 shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
         >
-          {environmentIcon && environmentTypeLabel ? (
+          {environmentIcon &&
+          environmentTypeLabel &&
+          environmentIcon !== "Loading" ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
                   role="img"
                   tabIndex={0}
-                  aria-label={`Environment type: ${environmentTypeLabel}`}
+                  aria-label={environmentTypeLabel}
                   className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <Icon name={environmentIcon} className="size-4" />
@@ -91,7 +93,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             />
           ) : null}
           <OptionDisplay
-            label={isWorktree ? "Worktree" : "Environment"}
+            label={environmentTypeLabel ?? "Worktree"}
             value={environmentLabel}
             compactValue={environmentCompactLabel}
             className="h-6 min-w-0 shrink px-0"
@@ -108,7 +110,12 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             compactValue={
               machineConnected ? machineName : `${machineName} · Offline`
             }
-            leading={<Icon name="Laptop" className="size-4 shrink-0" />}
+            leading={
+              <Icon
+                name={machineConnected ? "Laptop" : "LaptopIssue"}
+                className="size-4 shrink-0"
+              />
+            }
             className="h-6 min-w-0 max-w-[10rem] shrink"
             tooltip={
               machineConnected ? machineName : `${machineName} · Offline`
@@ -117,20 +124,18 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           />
         </span>
       ) : null}
-      {environmentCheckout && checkoutCopyValue !== null ? (
+      {environmentCheckout && checkoutCopyAction !== null ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
+              aria-label={checkoutCopyAction.accessibleLabel}
               data-promptbox-hide-branch-compact=""
               className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
               onClick={() => {
-                void copyToClipboardWithToast(checkoutCopyValue, {
-                  successMessage:
-                    environmentCheckout.copySuccessMessage ?? "Value copied",
-                  errorMessage:
-                    environmentCheckout.copyErrorMessage ??
-                    "Failed to copy value",
+                void copyToClipboardWithToast(checkoutCopyAction.value, {
+                  successMessage: checkoutCopyAction.successMessage,
+                  errorMessage: checkoutCopyAction.errorMessage,
                 });
               }}
             >
@@ -138,17 +143,25 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               <span className="truncate">{environmentCheckout.label}</span>
             </button>
           </TooltipTrigger>
-          <TooltipContent>{environmentCheckout.title}</TooltipContent>
+          <TooltipContent>{checkoutCopyAction.label}</TooltipContent>
         </Tooltip>
       ) : environmentCheckout ? (
-        <span
-          data-promptbox-hide-branch-compact=""
-          className={CHECKOUT_CHIP_BASE_CLASS_NAME}
-          title={environmentCheckout.title}
-        >
-          <Icon name="GitBranch" className="size-3.5 shrink-0" />
-          <span className="truncate">{environmentCheckout.label}</span>
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              tabIndex={0}
+              aria-label={`${environmentCheckout.rowLabel}: ${environmentCheckout.label}`}
+              data-promptbox-hide-branch-compact=""
+              className={`${CHECKOUT_CHIP_BASE_CLASS_NAME} outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+            >
+              <Icon name="GitBranch" className="size-3.5 shrink-0" />
+              <span className="truncate">{environmentCheckout.label}</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {environmentCheckout.detailTooltip ?? environmentCheckout.label}
+          </TooltipContent>
+        </Tooltip>
       ) : null}
       {onCreateNewThreadInWorktree ? (
         <Tooltip>

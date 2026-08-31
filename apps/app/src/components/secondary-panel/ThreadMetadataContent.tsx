@@ -288,6 +288,33 @@ interface EnvironmentRowProps {
   environmentDisplayHost: EnvironmentDisplayHostContext;
 }
 
+interface DetailValueTooltipProps {
+  accessibleLabel: string;
+  children: ReactNode;
+  tooltip: string;
+}
+
+function DetailValueTooltip({
+  accessibleLabel,
+  children,
+  tooltip,
+}: DetailValueTooltipProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          aria-label={accessibleLabel}
+          className="inline-flex min-w-0 items-center gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function EnvironmentRow({
   thread,
   environment,
@@ -330,17 +357,19 @@ export function EnvironmentRow({
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      <span
-        className="min-w-0 truncate text-foreground"
-        title={environmentTitle}
+      <DetailValueTooltip
+        accessibleLabel={`Worktree: ${environmentTitle}`}
+        tooltip={environmentTitle}
       >
-        {worktreeTitle}
-      </span>
-      {lifecycleTitle ? (
-        <span className="shrink-0 text-muted-foreground">
-          · {lifecycleTitle}
+        <span className="min-w-0 truncate text-foreground">
+          {worktreeTitle}
         </span>
-      ) : null}
+        {lifecycleTitle ? (
+          <span className="shrink-0 text-muted-foreground">
+            · {lifecycleTitle}
+          </span>
+        ) : null}
+      </DetailValueTooltip>
       {showCreateThreadButton ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -371,18 +400,20 @@ export function MachineRow({ name, connected = true }: MachineRowProps) {
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon={PersistentHostIconName}>
+        <DetailRowIconLabel
+          icon={connected ? PersistentHostIconName : "LaptopIssue"}
+        >
           Machine
         </DetailRowIconLabel>
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      <span className="min-w-0 truncate text-foreground" title={value}>
-        {name}
-      </span>
-      {connected ? null : (
-        <span className="shrink-0 text-muted-foreground">· Offline</span>
-      )}
+      <DetailValueTooltip accessibleLabel={`Machine: ${value}`} tooltip={value}>
+        <span className="min-w-0 truncate text-foreground">{name}</span>
+        {connected ? null : (
+          <span className="shrink-0 text-muted-foreground">· Offline</span>
+        )}
+      </DetailValueTooltip>
     </DetailRow>
   );
 }
@@ -416,8 +447,8 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
     >
       <CopyableInlineLabel
         text={environment.path}
-        label="Copy path"
-        title={environment.path}
+        label={`Copy path: ${environment.path}`}
+        tooltip="Copy path"
         successMessage="Path copied"
         errorMessage="Failed to copy path"
       />
@@ -443,22 +474,23 @@ export function BranchRow({ workspaceStatus }: BranchRowProps) {
       }
       valueClassName="min-w-0 truncate"
     >
-      {checkoutDisplay.copyValue !== null ? (
+      {checkoutDisplay.copyAction !== null ? (
         <CopyableInlineLabel
-          text={checkoutDisplay.copyValue}
-          label={checkoutDisplay.copyLabel ?? "Copy checkout value"}
-          title={checkoutDisplay.title}
-          successMessage={checkoutDisplay.copySuccessMessage ?? "Value copied"}
-          errorMessage={
-            checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
-          }
+          text={checkoutDisplay.copyAction.value}
+          label={checkoutDisplay.copyAction.accessibleLabel}
+          tooltip={checkoutDisplay.copyAction.label}
+          successMessage={checkoutDisplay.copyAction.successMessage}
+          errorMessage={checkoutDisplay.copyAction.errorMessage}
         >
           {checkoutDisplay.label}
         </CopyableInlineLabel>
       ) : (
-        <span className="block truncate" title={checkoutDisplay.title}>
-          {checkoutDisplay.label}
-        </span>
+        <DetailValueTooltip
+          accessibleLabel={`${checkoutDisplay.rowLabel}: ${checkoutDisplay.label}`}
+          tooltip={checkoutDisplay.detailTooltip ?? checkoutDisplay.label}
+        >
+          <span className="block truncate">{checkoutDisplay.label}</span>
+        </DetailValueTooltip>
       )}
     </DetailRow>
   );

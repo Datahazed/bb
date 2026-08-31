@@ -189,7 +189,6 @@ function PluginThreadChatBody({
       display,
       environmentName: environment.name,
       hostName: environmentHost?.name,
-      locality: host.locality,
     });
     const composerMachine =
       environmentHost !== null &&
