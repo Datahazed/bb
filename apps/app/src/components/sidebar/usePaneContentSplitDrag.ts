@@ -1,8 +1,4 @@
-import {
-  useCallback,
-  useMemo,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -48,57 +44,58 @@ function routeForContent(content: PaneContent): string {
   });
 }
 
-export function usePaneContentSplitDrag(options: PaneContentSplitOptions) {
-  const actions = usePaneContentSplitActions();
-  const openInSplit = useCallback(
-    () => actions.openInSplit(options),
-    [actions, options],
-  );
-  const onPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) =>
-      actions.beginDrag(event, options),
-    [actions, options],
-  );
-
+function navigationOptionsForContent(
+  content: PaneContent,
+  replace = false,
+): { replace?: true; state?: { draftSlotId: string } } | undefined {
+  const state =
+    content.kind === "new-thread"
+      ? { draftSlotId: content.draftSlotId }
+      : undefined;
+  if (!replace && state === undefined) return undefined;
   return {
-    onPointerDown:
-      options.enabled && !actions.isCompact ? onPointerDown : undefined,
-    openInSplit,
+    ...(replace ? { replace: true as const } : {}),
+    ...(state === undefined ? {} : { state }),
   };
 }
 
-interface PaneContentSplitOptions {
-  content: PaneContent;
+type PaneContentSplitDragSource =
+  | { content: PaneContent; createContent?: never }
+  | { content?: never; createContent: () => PaneContent };
+
+export function usePaneContentSplitDrag({
+  enabled,
+  label,
+  ...source
+}: PaneContentSplitDragSource & {
   enabled: boolean;
   label: string;
-  onNavigate?: () => void;
-}
-
-export function usePaneContentSplitActions() {
+}) {
   const store = useStore();
   const navigate = useNavigate();
   const isCompact = useIsCompactViewport();
+  const fixedContent = source.content;
+  const createContent = source.createContent;
+  const resolveContent = useCallback(() => {
+    if (fixedContent !== undefined) return fixedContent;
+    if (createContent !== undefined) return createContent();
+    throw new Error("A pane-content split source is required.");
+  }, [createContent, fixedContent]);
 
-  const openInSplit = useCallback(
-    ({ content, enabled, onNavigate }: PaneContentSplitOptions) => {
-      onNavigate?.();
-      openPaneContentInSplit({
-        store,
-        navigate,
-        content,
-        route: routeForContent(content),
-        enabled: enabled && !isCompact,
-      });
-    },
-    [isCompact, navigate, store],
-  );
+  const openInSplit = useCallback(() => {
+    const content = resolveContent();
+    openPaneContentInSplit({
+      store,
+      navigate,
+      content,
+      route: routeForContent(content),
+      enabled: enabled && !isCompact,
+    });
+  }, [enabled, isCompact, navigate, resolveContent, store]);
 
   const onPointerDown = useCallback(
-    (
-      event: ReactPointerEvent<HTMLElement>,
-      { content, enabled, label, onNavigate }: PaneContentSplitOptions,
-    ) => {
-      if (!enabled || isCompact || event.button !== 0) return;
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!enabled || event.button !== 0) return;
       const rowEl = event.currentTarget;
       const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
       const sidebarRightEdge = (sidebarEl ?? rowEl).getBoundingClientRect()
@@ -125,13 +122,16 @@ export function usePaneContentSplitActions() {
           if (layout === null) return null;
           return decideThreadDrop({
             zone,
-            threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
+            threadAlreadyOpen:
+              fixedContent !== undefined &&
+              findPaneByContent(layout.root, fixedContent) !== null,
             atMaxPanes: countPanes(layout.root) >= MAX_PANES,
           });
         },
         onDrop: (target) => {
           const layout = store.get(splitLayoutAtom);
           if (layout === null) return;
+          const content = resolveContent();
           const existing = findPaneByContent(layout.root, content);
           const next =
             existing !== null
@@ -140,21 +140,20 @@ export function usePaneContentSplitActions() {
                 ? replacePaneContent(layout, target.paneId, content)
                 : splitPane(layout, target.paneId, target.zone, content);
           if (next !== layout) store.set(splitLayoutAtom, next);
-          onNavigate?.();
           navigate(
             routeForContent(content),
-            existing !== null ? { replace: true } : undefined,
+            navigationOptionsForContent(content, existing !== null),
           );
         },
       });
     },
-    [isCompact, navigate, store],
+    [enabled, fixedContent, label, navigate, resolveContent, store],
   );
 
-  return useMemo(
-    () => ({ beginDrag: onPointerDown, isCompact, openInSplit }),
-    [isCompact, onPointerDown, openInSplit],
-  );
+  return {
+    onPointerDown: enabled && !isCompact ? onPointerDown : undefined,
+    openInSplit,
+  };
 }
 
 function singlePaneFallback(

@@ -142,6 +142,11 @@ import {
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
 import {
+  readNewThreadDraftSlots,
+  type NewThreadDraftDestination,
+} from "@/lib/prompt-draft-slots";
+import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
+import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
@@ -237,6 +242,31 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
     return false;
   }
   return "focusPrompt" in state && state.focusPrompt === true;
+}
+
+interface ResolveRootComposeInitialDestinationArgs {
+  currentProjectId: string;
+  routeSectionId: string | null;
+  storedDestination: NewThreadDraftDestination | null;
+}
+
+export function resolveRootComposeInitialDestination({
+  currentProjectId,
+  routeSectionId,
+  storedDestination,
+}: ResolveRootComposeInitialDestinationArgs): NewThreadDraftDestination {
+  return (
+    storedDestination ?? {
+      projectId: currentProjectId,
+      sectionId: routeSectionId,
+    }
+  );
+}
+
+export function resolveRootComposeSelectionScope(
+  isSplitPane: boolean,
+): "component-local" | "new-thread" {
+  return isSplitPane ? "component-local" : "new-thread";
 }
 
 interface BuildMobileRecentThreadsArgs {
@@ -499,16 +529,41 @@ export function LegacyProjectComposeRedirect({
   return <RouteLoadingSkeleton isBoundedPane={false} />;
 }
 
-export function RootComposeView() {
-  const [rootComposeProjectId, setRootComposeProjectId] =
+interface RootComposeViewProps {
+  draftSlotId: string;
+}
+
+export function RootComposeView({ draftSlotId }: RootComposeViewProps) {
+  return <RootComposeSlotView key={draftSlotId} draftSlotId={draftSlotId} />;
+}
+
+function RootComposeSlotView({ draftSlotId }: RootComposeViewProps) {
+  const paneContext = useOptionalPaneContext();
+  const isSplitPane = paneContext?.isSplitPane === true;
+  const [globalRootComposeProjectId, setGlobalRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
+  const [storedDestination] = useState(
+    () =>
+      readNewThreadDraftSlots().find((slot) => slot.id === draftSlotId)
+        ?.destination ?? null,
+  );
+  const [initialDestination] = useState(() =>
+    resolveRootComposeInitialDestination({
+      currentProjectId: globalRootComposeProjectId,
+      routeSectionId: readSectionIdFromLocationState(location.state),
+      storedDestination,
+    }),
+  );
+  const [rootComposeProjectId, setLocalRootComposeProjectId] = useState(
+    initialDestination.projectId,
+  );
   const [rootComposeSectionId, setRootComposeSectionId] = useState<
     string | null
-  >(() => readSectionIdFromLocationState(location.state));
+  >(initialDestination.sectionId);
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
@@ -519,6 +574,16 @@ export function RootComposeView() {
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
+  );
+
+  const setRootComposeProjectId = useCallback(
+    (projectId: string) => {
+      setLocalRootComposeProjectId(projectId);
+      if (!isSplitPane) {
+        setGlobalRootComposeProjectId(projectId);
+      }
+    },
+    [isSplitPane, setGlobalRootComposeProjectId],
   );
 
   const handleProjectChange = useCallback(
@@ -601,8 +666,15 @@ export function RootComposeView() {
     <NewThreadComposer
       projectId={rootComposeProjectId}
       onProjectChange={handleProjectChange}
-      draftStorage={{ kind: "new-thread" }}
-      selectionScope="new-thread"
+      draftStorage={{
+        kind: "new-thread",
+        slotId: draftSlotId,
+        destination: {
+          projectId: rootComposeProjectId,
+          sectionId: rootComposeSectionId,
+        },
+      }}
+      selectionScope={resolveRootComposeSelectionScope(isSplitPane)}
       seed={composerSeed}
       resetKey={forkSeed?.sourceThreadId ?? null}
       preferReadyProviderWhenUnset={forkSeed === null}
@@ -611,8 +683,10 @@ export function RootComposeView() {
       {(composer) => (
         <RootComposeSurface
           composer={composer}
+          draftSlotId={draftSlotId}
           forkSeed={forkSeed}
           lastCreatedThreadId={lastCreatedThreadId}
+          restoredDraftDestination={storedDestination !== null}
           rootComposeProjectId={rootComposeProjectId}
           setForkSeed={setForkSeed}
           setRootComposeProjectId={setRootComposeProjectId}
@@ -627,8 +701,10 @@ export function RootComposeView() {
 
 interface RootComposeSurfaceProps {
   composer: NewThreadComposerState;
+  draftSlotId: string;
   forkSeed: ForkThreadCreateSeed | null;
   lastCreatedThreadId: string | null;
+  restoredDraftDestination: boolean;
   rootComposeProjectId: string;
   setForkSeed: (seed: ForkThreadCreateSeed | null) => void;
   setRootComposeProjectId: (projectId: string) => void;
@@ -639,8 +715,10 @@ interface RootComposeSurfaceProps {
 
 function RootComposeSurface({
   composer,
+  draftSlotId,
   forkSeed,
   lastCreatedThreadId,
+  restoredDraftDestination,
   rootComposeProjectId,
   setForkSeed,
   setRootComposeProjectId,
@@ -751,7 +829,13 @@ function RootComposeSurface({
     }
     if (sectionTarget?.kind === "set") {
       setRootComposeSectionId(sectionTarget.sectionId);
-    } else if (sectionTarget?.kind === "clear") {
+    } else if (
+      sectionTarget?.kind === "clear" &&
+      !(
+        restoredDraftDestination &&
+        shouldStartComposingFromLocationState(location.state)
+      )
+    ) {
       setRootComposeSectionId(null);
     }
     if (reuseEnvironmentId !== null) {
@@ -780,17 +864,19 @@ function RootComposeSurface({
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
-      state: null,
+      state: withRootComposeDraftSlotId(null, draftSlotId),
     });
   }, [
     location.search,
     location.state,
     navigate,
+    draftSlotId,
     seedEnvironmentSelectionValue,
     setForkSeed,
     setPermissionMode,
     setPromptDraft,
     setProviderModelReasoning,
+    restoredDraftDestination,
     setRootComposeProjectId,
     setRootComposeSectionId,
     setServiceTier,
@@ -807,12 +893,13 @@ function RootComposeSurface({
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
-      state: { focusPrompt: true },
+      state: withRootComposeDraftSlotId({ focusPrompt: true }, draftSlotId),
     });
   }, [
     location.search,
     location.state,
     navigate,
+    draftSlotId,
     restorePromptDraftIfEmpty,
     setPromptDraft,
   ]);

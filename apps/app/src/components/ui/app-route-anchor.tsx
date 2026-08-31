@@ -110,7 +110,10 @@ export function RouteNavigationProvider({
   );
   const openInSplit = useCallback<RouteNavigation["openInSplit"]>(
     (path) => {
-      const content = paneContentForPathname(path.split(/[?#]/)[0] ?? path);
+      const content = paneContentForPathname(
+        path.split(/[?#]/)[0] ?? path,
+        true,
+      );
       if (content === null) return false;
       openPaneContentInSplit({
         store,

@@ -9,6 +9,7 @@ import {
   type PaneContent,
   type SplitLayout,
 } from "./index";
+import { withRootComposeDraftSlotId } from "../root-compose-location-state";
 
 interface SplitLayoutStore {
   get(atom: typeof splitLayoutAtom): SplitLayout | null;
@@ -19,7 +20,7 @@ export interface OpenPaneContentInSplitArgs {
   store: SplitLayoutStore;
   navigate: (
     route: string,
-    options?: { replace?: boolean },
+    options?: { replace?: boolean; state?: Record<string, unknown> },
   ) => void | Promise<void>;
   content: PaneContent;
   route: string;
@@ -33,9 +34,17 @@ export function openPaneContentInSplit({
   route,
   enabled,
 }: OpenPaneContentInSplitArgs): void {
+  const navigationState =
+    content.kind === "new-thread"
+      ? withRootComposeDraftSlotId(null, content.draftSlotId)
+      : undefined;
   const layout = store.get(splitLayoutAtom);
   if (!enabled || layout === null) {
-    void navigate(route);
+    if (navigationState === undefined) {
+      void navigate(route);
+    } else {
+      void navigate(route, { state: navigationState });
+    }
     return;
   }
   const existing = findPaneByContent(layout.root, content);
@@ -46,7 +55,14 @@ export function openPaneContentInSplit({
         ? replacePaneContent(layout, layout.focusedPaneId, content)
         : splitPane(layout, layout.focusedPaneId, "right", content);
   if (next !== layout) store.set(splitLayoutAtom, next);
-  void navigate(route, existing !== null ? { replace: true } : undefined);
+  if (existing === null && navigationState === undefined) {
+    void navigate(route);
+  } else {
+    void navigate(route, {
+      ...(existing !== null ? { replace: true as const } : {}),
+      ...(navigationState === undefined ? {} : { state: navigationState }),
+    });
+  }
 }
 
 export function holdsPluginDetailPane(
