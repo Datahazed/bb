@@ -4,6 +4,7 @@ import {
   findPaneByThread,
   listPanes,
   MAX_PANES,
+  setFocus,
   splitPane,
 } from "@/lib/split-layout";
 import type { SplitLayout } from "@/lib/split-layout";
@@ -11,7 +12,10 @@ import {
   applyThreadOpenToLayout,
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
+  focusedPaneNavigationTarget,
   focusedPaneRoute,
+  paneContentForPathname,
+  paneContentNavigationTarget,
   reconcileLayoutForContent,
 } from "./splitThreadNavigation";
 
@@ -41,19 +45,98 @@ function eightPaneLayout(): SplitLayout {
 }
 
 describe("mixed page navigation", () => {
-  it("keeps New Thread as a singleton and focuses its existing pane", () => {
-    const withCompose = splitPane(twoPaneLayout(), "pane-2", "bottom", {
+  it("allocates compose identity only when opening the root in a split", () => {
+    expect(paneContentForPathname("/")).toBeNull();
+    expect(paneContentForPathname("/", true)).toEqual({
       kind: "new-thread",
+      draftSlotId: expect.any(String),
+    });
+  });
+
+  it("carries a compose slot through internal navigation state", () => {
+    const content = {
+      kind: "new-thread",
+      draftSlotId: "draft-slot-1",
+    } as const;
+    const layout: SplitLayout = {
+      root: { type: "pane", paneId: "pane-1", content },
+      focusedPaneId: "pane-1",
+    };
+
+    expect(paneContentNavigationTarget(content)).toEqual({
+      to: "/",
+      state: { draftSlotId: "draft-slot-1" },
+    });
+    expect(focusedPaneNavigationTarget(layout)).toEqual({
+      to: "/",
+      state: { draftSlotId: "draft-slot-1" },
+    });
+    expect(
+      paneContentNavigationTarget({
+        kind: "thread",
+        projectId: "p1",
+        threadId: "thread-1",
+      }),
+    ).toEqual({ to: "/projects/p1/threads/thread-1", state: null });
+  });
+
+  it("focuses the exact new-thread slot while independent slots coexist", () => {
+    const withFirstCompose = splitPane(twoPaneLayout(), "pane-2", "bottom", {
+      kind: "new-thread",
+      draftSlotId: "draft-slot-1",
+    });
+    const withBothComposers = splitPane(withFirstCompose, "pane-1", "bottom", {
+      kind: "new-thread",
+      draftSlotId: "draft-slot-2",
     });
 
+    const after = reconcileLayoutForContent(
+      setFocus(withBothComposers, "pane-4"),
+      {
+        kind: "new-thread",
+        draftSlotId: "draft-slot-1",
+      },
+    );
+
+    expect(listPanes(after.root)).toHaveLength(4);
+    expect(after.focusedPaneId).toBe(
+      findPaneByContent(after.root, {
+        kind: "new-thread",
+        draftSlotId: "draft-slot-1",
+      })?.paneId,
+    );
+    expect(
+      findPaneByContent(after.root, {
+        kind: "new-thread",
+        draftSlotId: "draft-slot-2",
+      }),
+    ).not.toBeNull();
+    expect(focusedPaneRoute(after)).toBe("/");
+  });
+
+  it("replaces only the focused pane for a new compose slot", () => {
+    const withCompose = splitPane(twoPaneLayout(), "pane-2", "bottom", {
+      kind: "new-thread",
+      draftSlotId: "draft-slot-1",
+    });
     const after = reconcileLayoutForContent(withCompose, {
       kind: "new-thread",
+      draftSlotId: "draft-slot-2",
     });
 
     expect(listPanes(after.root)).toHaveLength(3);
     expect(after.focusedPaneId).toBe(
-      findPaneByContent(after.root, { kind: "new-thread" })?.paneId,
+      findPaneByContent(after.root, {
+        kind: "new-thread",
+        draftSlotId: "draft-slot-2",
+      })?.paneId,
     );
+    expect(
+      findPaneByContent(after.root, {
+        kind: "new-thread",
+        draftSlotId: "draft-slot-1",
+      }),
+    ).toBeNull();
     expect(focusedPaneRoute(after)).toBe("/");
   });
 

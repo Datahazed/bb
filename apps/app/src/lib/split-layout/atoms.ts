@@ -15,10 +15,27 @@ import {
 import type { SplitLayout } from "./types";
 
 function createSplitLayoutStorage(): SyncStorage<SplitLayout | null> {
-  return createTabScopedStorage<SplitLayout | null>({
-    parse: (storedValue) => deserializeSplitLayout(storedValue),
+  let needsWriteBack = false;
+  const storage = createTabScopedStorage<SplitLayout | null>({
+    parse: (storedValue) => {
+      const layout = deserializeSplitLayout(storedValue);
+      needsWriteBack =
+        layout !== null && storedValue !== serializeSplitLayout(layout);
+      return layout;
+    },
     serialize: (value) => (value === null ? "" : serializeSplitLayout(value)),
   });
+  return {
+    ...storage,
+    getItem: (key, initialValue) => {
+      needsWriteBack = false;
+      const layout = storage.getItem(key, initialValue);
+      if (layout !== null && needsWriteBack) {
+        storage.setItem(key, layout);
+      }
+      return layout;
+    },
+  };
 }
 
 export const splitLayoutAtom = atomWithStorage<SplitLayout | null>(

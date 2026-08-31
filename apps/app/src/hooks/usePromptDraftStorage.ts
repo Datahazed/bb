@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
@@ -9,6 +9,14 @@ import {
   parsePromptDraftStorage,
   serializePromptDraftStorage,
 } from "@bb/client-core";
+import {
+  getNewThreadDraftSlotIdFromStorageKey,
+  getNewThreadDraftSlotStorageKey,
+  parseNewThreadDraftSlot,
+  persistNewThreadDraftSlot,
+  type NewThreadDraftComposerSelection,
+  type NewThreadDraftDestination,
+} from "@/lib/prompt-draft-slots";
 
 const PROMPT_DRAFT_STORAGE_PREFIX = "bb.promptbox.contents";
 const PROMPT_DRAFT_STORAGE_VERSION = "3";
@@ -16,19 +24,28 @@ const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
 export type PromptDraftScope =
   | { kind: "automation-edit"; automationId: string }
-  | { kind: "new-thread" }
+  | { kind: "new-thread"; slotId?: undefined }
+  | {
+      kind: "new-thread";
+      slotId: string;
+      destination: NewThreadDraftDestination;
+    }
   | { kind: "plugin-new-thread"; key: string }
   | { kind: "thread"; projectId: string; threadId: string };
 
 interface PromptDraftCacheEntry {
   rawValue: string | null;
   draft: PromptDraftState;
+  lastEditedAt: number | null;
+  destination: NewThreadDraftDestination | null;
+  composerSelection: NewThreadDraftComposerSelection | null;
 }
 
 type PromptDraftListener = () => void;
 
 interface PromptDraftWriteOptions {
   persist: "immediate" | "deferred";
+  clearComposerSelection?: boolean;
 }
 
 const EMPTY_PROMPT_DRAFT = emptyPromptDraftState();
@@ -57,12 +74,67 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
     return cachedEntry.draft;
   }
 
-  const draft = parsePromptDraftStorage(rawValue);
+  const slotId = getNewThreadDraftSlotIdFromStorageKey(storageKey);
+  const slot =
+    slotId === null ? null : parseNewThreadDraftSlot(slotId, rawValue);
+  const draft = slot?.draft ?? parsePromptDraftStorage(rawValue);
   promptDraftCache.set(storageKey, {
     rawValue,
     draft,
+    lastEditedAt: slot?.lastEditedAt ?? null,
+    destination: slot?.destination ?? null,
+    composerSelection: slot?.composerSelection ?? null,
   });
   return draft;
+}
+
+function readPromptDraftComposerSelection(
+  storageKey: string,
+): NewThreadDraftComposerSelection | null {
+  readPromptDraft(storageKey);
+  return promptDraftCache.get(storageKey)?.composerSelection ?? null;
+}
+
+function areDraftDestinationsEqual(
+  left: NewThreadDraftDestination | null,
+  right: NewThreadDraftDestination,
+): boolean {
+  return (
+    left?.projectId === right.projectId && left.sectionId === right.sectionId
+  );
+}
+
+function seedPromptDraftDestination(
+  storageKey: string,
+  destination: NewThreadDraftDestination,
+): void {
+  readPromptDraft(storageKey);
+  const cachedEntry = promptDraftCache.get(storageKey);
+  if (
+    cachedEntry !== undefined &&
+    cachedEntry.rawValue === null &&
+    cachedEntry.destination === null
+  ) {
+    cachedEntry.destination = destination;
+  }
+}
+
+function updatePromptDraftDestination(
+  storageKey: string,
+  destination: NewThreadDraftDestination,
+): void {
+  const draft = readPromptDraft(storageKey);
+  const cachedEntry = promptDraftCache.get(storageKey);
+  if (
+    cachedEntry === undefined ||
+    areDraftDestinationsEqual(cachedEntry.destination, destination)
+  ) {
+    return;
+  }
+  cachedEntry.destination = destination;
+  if (!isPromptDraftEmpty(draft)) {
+    persistPromptDraftCache(storageKey);
+  }
 }
 
 function emitPromptDraftChange(storageKey: string): void {
@@ -94,15 +166,32 @@ function persistPromptDraftCache(storageKey: string): void {
     return;
   }
 
-  const serialized = serializePromptDraftStorage(cachedEntry.draft);
-  cachedEntry.rawValue = serialized;
-  if (serialized === null) {
-    window.localStorage.removeItem(storageKey);
-    return;
-  }
-
   try {
-    window.localStorage.setItem(storageKey, serialized);
+    const slotId = getNewThreadDraftSlotIdFromStorageKey(storageKey);
+    let serialized: string | null;
+    if (slotId === null) {
+      serialized = serializePromptDraftStorage(cachedEntry.draft);
+    } else {
+      const destination = cachedEntry.destination;
+      if (destination === null) {
+        throw new Error(`Draft slot ${slotId} has no submit destination.`);
+      }
+      serialized = persistNewThreadDraftSlot(
+        slotId,
+        cachedEntry.draft,
+        cachedEntry.lastEditedAt ?? Date.now(),
+        destination,
+        cachedEntry.composerSelection,
+      );
+    }
+    cachedEntry.rawValue = serialized;
+    if (slotId === null) {
+      if (serialized === null) {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        window.localStorage.setItem(storageKey, serialized);
+      }
+    }
   } catch (error) {
     cachedEntry.rawValue = readStoredPromptDraftValue(storageKey);
     console.warn(
@@ -192,13 +281,68 @@ function writePromptDraft(
 ): void {
   if (!storageKey || typeof window === "undefined") return;
 
+  const slotId = getNewThreadDraftSlotIdFromStorageKey(storageKey);
+  if (slotId !== null) {
+    readPromptDraft(storageKey);
+  }
+  const existingSlotEntry = promptDraftCache.get(storageKey);
+
   promptDraftCache.set(storageKey, {
     rawValue: null,
     draft: isPromptDraftEmpty(value) ? EMPTY_PROMPT_DRAFT : value,
+    lastEditedAt:
+      slotId === null || isPromptDraftEmpty(value) ? null : Date.now(),
+    destination:
+      slotId === null ? null : (existingSlotEntry?.destination ?? null),
+    composerSelection:
+      slotId === null || options.clearComposerSelection === true
+        ? null
+        : (existingSlotEntry?.composerSelection ?? null),
   });
   if (options.persist === "deferred") {
     schedulePromptDraftPersist(storageKey);
   } else {
+    persistPromptDraftCache(storageKey);
+  }
+  emitPromptDraftChange(storageKey);
+}
+
+function areDraftComposerSelectionsEqual(
+  left: NewThreadDraftComposerSelection | null,
+  right: NewThreadDraftComposerSelection,
+): boolean {
+  return (
+    left?.providerId === right.providerId &&
+    left.model === right.model &&
+    left.reasoningLevel === right.reasoningLevel &&
+    left.serviceTier === right.serviceTier &&
+    left.permissionMode === right.permissionMode &&
+    left.environmentSelectionValue === right.environmentSelectionValue
+  );
+}
+
+function writePromptDraftComposerSelection(
+  storageKey: string,
+  selection: NewThreadDraftComposerSelection,
+): void {
+  if (
+    typeof window === "undefined" ||
+    getNewThreadDraftSlotIdFromStorageKey(storageKey) === null
+  ) {
+    return;
+  }
+
+  const draft = readPromptDraft(storageKey);
+  const cachedEntry = promptDraftCache.get(storageKey);
+  if (
+    cachedEntry === undefined ||
+    areDraftComposerSelectionsEqual(cachedEntry.composerSelection, selection)
+  ) {
+    return;
+  }
+
+  cachedEntry.composerSelection = selection;
+  if (!isPromptDraftEmpty(draft)) {
     persistPromptDraftCache(storageKey);
   }
   emitPromptDraftChange(storageKey);
@@ -248,7 +392,9 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-automation-edit-${normalizedAutomationId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
   if (scope.kind === "new-thread") {
-    return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+    return scope.slotId === undefined
+      ? `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`
+      : getNewThreadDraftSlotStorageKey(scope.slotId);
   }
   if (scope.kind === "plugin-new-thread") {
     const normalizedKey = normalizeStorageSegment(scope.key);
@@ -257,6 +403,14 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   const normalizedProjectId = normalizeStorageSegment(scope.projectId);
   const normalizedThreadId = normalizeStorageSegment(scope.threadId);
   return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+}
+
+function preparePromptDraftStorage(scope: PromptDraftScope): string {
+  const storageKey = getPromptDraftStorageKey(scope);
+  if (scope.kind === "new-thread" && scope.slotId !== undefined) {
+    seedPromptDraftDestination(storageKey, scope.destination);
+  }
+  return storageKey;
 }
 
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
@@ -269,7 +423,7 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
     attachments?: readonly PromptDraftAttachment[],
   ) => void;
 } {
-  const storageKey = getPromptDraftStorageKey(scope);
+  const storageKey = preparePromptDraftStorage(scope);
   return {
     storageKey,
     getCurrent: () => readPromptDraft(storageKey),
@@ -281,7 +435,22 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
 }
 
 export function usePromptDraftStorage(scope: PromptDraftScope) {
-  const storageKey = getPromptDraftStorageKey(scope);
+  const storageKey = preparePromptDraftStorage(scope);
+  const destinationProjectId =
+    scope.kind === "new-thread" && scope.slotId !== undefined
+      ? scope.destination.projectId
+      : null;
+  const destinationSectionId =
+    scope.kind === "new-thread" && scope.slotId !== undefined
+      ? scope.destination.sectionId
+      : null;
+  useEffect(() => {
+    if (destinationProjectId === null) return;
+    updatePromptDraftDestination(storageKey, {
+      projectId: destinationProjectId,
+      sectionId: destinationSectionId,
+    });
+  }, [destinationProjectId, destinationSectionId, storageKey]);
   const draft = useSyncExternalStore(
     useCallback(
       (listener) => subscribePromptDraft(storageKey, listener),
@@ -290,10 +459,28 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     useCallback(() => readPromptDraft(storageKey), [storageKey]),
     () => EMPTY_PROMPT_DRAFT,
   );
+  const composerSelection = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribePromptDraft(storageKey, listener),
+      [storageKey],
+    ),
+    useCallback(
+      () => readPromptDraftComposerSelection(storageKey),
+      [storageKey],
+    ),
+    () => null,
+  );
 
   const setDraftAndPersist = useCallback(
     (nextDraft: PromptDraftState) => {
       writePromptDraft(storageKey, nextDraft);
+    },
+    [storageKey],
+  );
+
+  const setComposerSelection = useCallback(
+    (selection: NewThreadDraftComposerSelection) => {
+      writePromptDraftComposerSelection(storageKey, selection);
     },
     [storageKey],
   );
@@ -363,8 +550,11 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const clear = useCallback(() => {
-    setDraftAndPersist(EMPTY_PROMPT_DRAFT);
-  }, [setDraftAndPersist]);
+    writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT, {
+      persist: "immediate",
+      clearComposerSelection: true,
+    });
+  }, [storageKey]);
 
   const clearIfCurrentMatches = useCallback(
     (expectedDraft: PromptDraftState): boolean => {
@@ -374,10 +564,13 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         return false;
       }
 
-      setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+      writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT, {
+        persist: "immediate",
+        clearComposerSelection: true,
+      });
       return true;
     },
-    [setDraftAndPersist, storageKey],
+    [storageKey],
   );
 
   const setAttachments = useCallback(
@@ -402,6 +595,8 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       storageKey,
       getCurrent,
       subscribe,
+      composerSelection,
+      setComposerSelection,
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
@@ -421,6 +616,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       addQuote,
       clear,
       clearIfCurrentMatches,
+      composerSelection,
       draft.attachments,
       draft.mentions,
       draft.text,
@@ -428,6 +624,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       removeAttachment,
       restoreIfEmpty,
       setAttachments,
+      setComposerSelection,
       setDraftAndPersist,
       setTextAndMentions,
       storageKey,
@@ -437,7 +634,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
 }
 
 export function usePromptDraftHasInput(scope: PromptDraftScope): boolean {
-  const storageKey = getPromptDraftStorageKey(scope);
+  const storageKey = preparePromptDraftStorage(scope);
 
   return useSyncExternalStore(
     useCallback(

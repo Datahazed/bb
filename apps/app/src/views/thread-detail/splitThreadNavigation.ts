@@ -22,6 +22,8 @@ import {
   PLUGIN_PANEL_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
+import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
+import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 
 const FIRST_PANE_ID = "pane-1";
 const SPLITTABLE_THREAD_ROUTE_PATH = "/projects/:projectId/threads/:threadId";
@@ -71,9 +73,31 @@ export function paneContentRoute(content: PaneContent): string {
   });
 }
 
-export function paneContentForPathname(pathname: string): PaneContent | null {
+export interface PaneContentNavigationTarget {
+  state: Record<string, unknown> | null;
+  to: string;
+}
+
+export function paneContentNavigationTarget(
+  content: PaneContent,
+): PaneContentNavigationTarget {
+  return {
+    to: paneContentRoute(content),
+    state:
+      content.kind === "new-thread"
+        ? withRootComposeDraftSlotId(null, content.draftSlotId)
+        : null,
+  };
+}
+
+export function paneContentForPathname(
+  pathname: string,
+  allocateNewThread = false,
+): PaneContent | null {
   if (pathname === APP_ROOT_ROUTE_PATH) {
-    return { kind: "new-thread" };
+    return allocateNewThread
+      ? { kind: "new-thread", draftSlotId: createNewThreadDraftSlotId() }
+      : null;
   }
   const thread = matchPath(
     { path: SPLITTABLE_THREAD_ROUTE_PATH, end: false },
@@ -127,6 +151,13 @@ export function reconcileLayoutForContent(
 export function focusedPaneRoute(layout: SplitLayout): string | null {
   const focused = findPane(layout.root, layout.focusedPaneId);
   return focused === null ? null : paneContentRoute(focused.content);
+}
+
+export function focusedPaneNavigationTarget(
+  layout: SplitLayout,
+): PaneContentNavigationTarget | null {
+  const focused = findPane(layout.root, layout.focusedPaneId);
+  return focused === null ? null : paneContentNavigationTarget(focused.content);
 }
 
 function threadOpenSplitZone(split: ThreadOpenSplit): SplitZone {
