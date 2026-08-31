@@ -19,7 +19,7 @@ function renderedSectionIds(): string[] {
 }
 
 describe("SidebarTopLevelSections", () => {
-  it("renders all three sections in default order with full dividers", () => {
+  it("lets the thread toolbar own its preceding divider", () => {
     const view = render(<SidebarTopLevelSections sections={sections} />);
 
     expect(renderedSectionIds()).toEqual([
@@ -30,12 +30,15 @@ describe("SidebarTopLevelSections", () => {
     const dividers = view.container.querySelectorAll(
       "[data-sidebar-top-level-divider]",
     );
-    expect(dividers).toHaveLength(2);
+    expect(dividers).toHaveLength(1);
     for (const divider of dividers) {
       expect(divider.getAttribute("aria-hidden")).toBe("true");
       expect(divider.getAttribute("tabindex")).toBeNull();
       expect(divider.classList.contains("bg-sidebar-border")).toBe(true);
     }
+    expect(
+      view.container.querySelector('[data-sidebar-region="threads"]'),
+    ).toHaveAttribute("data-sidebar-integrated-divider", "");
     expect(
       screen.getAllByRole("button").map((button) => button.textContent),
     ).toEqual(["New thread", "Plugin page", "Thread row"]);
@@ -110,7 +113,10 @@ describe("SidebarTopLevelSections", () => {
     ]);
     expect(
       view.container.querySelectorAll("[data-sidebar-top-level-divider]"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
+    expect(
+      view.container.querySelector('[data-sidebar-region="threads"]'),
+    ).toHaveAttribute("data-sidebar-integrated-divider", "");
   });
 
   it("collapses an empty BB-controls region after reordering", () => {

@@ -52,8 +52,16 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-  ThreadActionsMenu: () => null,
-  ThreadArchiveQuickAction: () => null,
+  ThreadActionsMenu: ({ triggerClassName }: { triggerClassName?: string }) => (
+    <button
+      type="button"
+      aria-label="Thread actions"
+      className={triggerClassName}
+    />
+  ),
+  ThreadArchiveQuickAction: ({ className }: { className?: string }) => (
+    <button type="button" aria-label="Archive thread" className={className} />
+  ),
 }));
 
 function createThread(
@@ -133,7 +141,7 @@ function ThreadRowTestHarness({
 
   return (
     <MemoryRouter>
-      <TooltipProvider>
+      <TooltipProvider delayDuration={0}>
         <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
           <ThreadRow
             projectId={thread.projectId}
@@ -253,6 +261,30 @@ afterEach(() => {
 });
 
 describe("ThreadRow", () => {
+  it.each([
+    { depth: 0, paddingLeft: "8px", statusOffset: "translateX(0px)" },
+    { depth: 1, paddingLeft: "32px", statusOffset: "translateX(-24px)" },
+    { depth: 2, paddingLeft: "56px", statusOffset: "translateX(-48px)" },
+  ])(
+    "keeps the status column fixed while depth $depth indents the thread title",
+    ({ depth, paddingLeft, statusOffset }) => {
+      const { container } = renderThreadRow({
+        thread: createThread({ title: `Depth ${depth}` }),
+        options: {
+          kind: "default",
+          depth,
+          isCompact: false,
+        },
+      });
+
+      const link = screen.getByLabelText(`Open Depth ${depth}`);
+      expect(link.parentElement).toHaveStyle({ paddingLeft });
+      expect(
+        container.querySelector("[data-sidebar-thread-status-column]"),
+      ).toHaveStyle({ transform: statusOffset });
+    },
+  );
+
   const splitWorkingCases: Array<{
     label: string;
     pluginStatus?: PluginComposerThreadRowStatus;
@@ -353,7 +385,7 @@ describe("ThreadRow", () => {
       const splitMap = screen.getByRole("img", { name: /open in split/ });
       expect(Array.from(splitMap.classList)).toContain("animate-shine-icon");
       expect(
-        splitMap.closest("[data-sidebar-thread-trailing-indicator]"),
+        splitMap.closest("[data-sidebar-item-status-slot]"),
       ).not.toBeNull();
       expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
     },
@@ -419,19 +451,79 @@ describe("ThreadRow", () => {
     },
   );
 
-  it("puts the draft icon in the trailing status slot", () => {
+  it("keeps the draft icon in the fixed leading status slot with its tooltip", async () => {
     const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
     expect(
-      draftIcon?.closest("[data-sidebar-thread-trailing-indicator]"),
+      draftIcon?.closest('[data-sidebar-item-status="draft"]'),
     ).not.toBeNull();
+    fireEvent.pointerMove(screen.getByRole("img", { name: "Draft" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Draft");
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+  });
+
+  it("reserves the same fixed leading status slot for a default row", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+    });
+
+    const statusSlot = container.querySelector(
+      '[data-sidebar-item-status="none"]',
+    );
+    expect(statusSlot).not.toBeNull();
+    expect(statusSlot?.classList.contains("h-4")).toBe(true);
+    expect(statusSlot?.classList.contains("w-4")).toBe(true);
+    expect(statusSlot?.childElementCount).toBe(0);
+    const statusActionSlot = statusSlot?.closest(
+      "[data-sidebar-item-status-action-slot]",
+    );
+    expect(statusActionSlot?.nextElementSibling?.textContent).toContain(
+      "Thread",
+    );
+    expect(
+      statusSlot?.closest(".bb-sidebar-hover-actions-fade"),
+    ).not.toBeNull();
+    expect(
+      statusActionSlot?.querySelector('[aria-label="Archive thread"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-sidebar-thread-trailing-controls] [aria-label="Archive thread"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("confines the archive hover action to the leading status slot", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+    });
+
+    const archiveAction = screen.getByRole("button", {
+      name: "Archive thread",
+    });
+    const statusActionSlot = archiveAction.closest(
+      "[data-sidebar-item-status-action-slot]",
+    );
+    const trailingControls = container.querySelector(
+      "[data-sidebar-thread-trailing-controls]",
+    );
+
+    expect(statusActionSlot).not.toBeNull();
+    expect(
+      archiveAction.closest("[data-sidebar-item-status-hover-action]"),
+    ).not.toBeNull();
+    expect(statusActionSlot?.classList.contains("shrink-0")).toBe(true);
+    expect(archiveAction.classList.contains("size-4")).toBe(true);
+    expect(trailingControls?.contains(archiveAction)).toBe(false);
+    expect(
+      trailingControls?.querySelector('[aria-label="Thread actions"]'),
+    ).not.toBeNull();
   });
 
   it("replaces the draft icon with a plugin status and restores it when cleared", () => {
@@ -453,7 +545,7 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
-  it("shows a keyboard shortcut in place of a plugin status", () => {
+  it("keeps a plugin status visible beside a keyboard shortcut", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
@@ -462,14 +554,14 @@ describe("ThreadRow", () => {
     renderThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
   });
 
-  it("shows a keyboard shortcut in place of a split mini-map", () => {
+  it("keeps a split mini-map visible beside a keyboard shortcut", () => {
     renderSplitThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.queryByRole("img", { name: /open in split/ })).toBeNull();
+    expect(screen.getByRole("img", { name: /open in split/ })).not.toBeNull();
   });
 
   it("renders a plugin status with the semantic success tone", () => {
@@ -550,7 +642,7 @@ describe("ThreadRow", () => {
     expect(Array.from(runningIcon.classList)).toContain("animate-spin");
     expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
     expect(
-      container.querySelector("[data-sidebar-thread-trailing-indicator]"),
+      container.querySelector("[data-sidebar-thread-status-indicator]"),
     ).not.toBeNull();
   });
 
@@ -772,10 +864,8 @@ describe("ThreadRow", () => {
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
     expect(marker?.classList.contains("text-muted-foreground/75")).toBe(true);
     expect(marker?.classList.contains("text-muted-foreground")).toBe(false);
-    // The marker hugs the title; it never sits in the trailing status slot.
-    expect(
-      marker?.closest("[data-sidebar-thread-trailing-indicator]"),
-    ).toBeNull();
+    // The marker hugs the title; it never sits in the leading status slot.
+    expect(marker?.closest("[data-sidebar-item-status-slot]")).toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Thread" }).getAttribute("href"),
     ).toBe("/projects/proj_other/threads/thr_test");
@@ -928,24 +1018,29 @@ describe("ThreadRow", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-thread-trailing-controls]",
     );
-    const statusSlot = trailingControls?.querySelector(
-      "[data-sidebar-thread-status-slot]",
+    const statusActionSlot = row?.querySelector(
+      "[data-sidebar-item-status-action-slot]",
+    );
+    const statusSlot = statusActionSlot?.querySelector(
+      "[data-sidebar-item-status-slot]",
+    );
+    const statusHoverAction = statusActionSlot?.querySelector(
+      "[data-sidebar-item-status-hover-action]",
+    );
+    const actionSlot = trailingControls?.querySelector(
+      "[data-sidebar-thread-action-slot]",
     );
     const mobileActions = trailingControls?.querySelector(
       "[data-sidebar-mobile-row-actions]",
     );
-    const titleRegion = screen
-      .getByTitle("Parent thread")
-      .closest(".bb-sidebar-collapsible-hover-actions-inset");
-
     expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+    expect(statusSlot?.getAttribute("data-sidebar-item-status")).toBe(
+      "unread-success",
+    );
     expect(
-      statusSlot?.classList.contains("bb-sidebar-collapsible-status-slot"),
-    ).toBe(true);
-    expect(
-      statusSlot!.compareDocumentPosition(mobileActions!) &
+      actionSlot!.compareDocumentPosition(mobileActions!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
@@ -955,17 +1050,66 @@ describe("ThreadRow", () => {
       mobileActions?.querySelector('[aria-label="Thread actions"]'),
     ).not.toBeNull();
     expect(
-      mobileActions
-        ?.querySelector('[aria-label="Archive thread"]')
-        ?.classList.contains("max-md:pointer-coarse:hidden"),
+      statusHoverAction?.classList.contains("max-md:pointer-coarse:hidden"),
     ).toBe(true);
-    expect(titleRegion).not.toBeNull();
     expect(
-      titleRegion?.classList.contains("bb-sidebar-hover-actions-inset"),
-    ).toBe(false);
+      statusActionSlot
+        ?.querySelector(".bb-sidebar-hover-actions-fade")
+        ?.classList.contains("max-md:pointer-coarse:!opacity-100"),
+    ).toBe(true);
+    expect(
+      statusHoverAction?.querySelector('[aria-label="Archive thread"]'),
+    ).not.toBeNull();
+    expect(
+      trailingControls?.querySelector('[aria-label="Archive thread"]'),
+    ).toBeNull();
+    expect(
+      row?.querySelector(".bb-sidebar-collapsible-hover-actions-inset"),
+    ).toBeNull();
+    expect(row?.querySelector(".bb-sidebar-hover-actions-inset")).toBeNull();
   });
 
-  it("shows its Command shortcut in place of an active indicator", () => {
+  it("keeps a collapsed parent caret visible beside unread status", () => {
+    renderThreadRow({
+      thread: createThread({ title: "Unread parent thread" }),
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: true,
+        childCount: 1,
+        childActivity: {
+          pending: false,
+          working: false,
+          hasUnsubmittedDraft: false,
+          runtimeWorking: false,
+          workflow: false,
+          backgroundAgent: false,
+          backgroundCommand: false,
+          planMode: false,
+          goal: false,
+          unread: true,
+          unreadError: false,
+        },
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    const disclosure = screen.getByRole("button", {
+      name: "Expand Unread parent thread threads",
+    });
+
+    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+    expect(disclosure.classList.contains("bb-sidebar-hover-actions")).toBe(
+      false,
+    );
+    expect(disclosure.classList.contains("pointer-events-auto")).toBe(true);
+    expect(
+      disclosure.getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBeNull();
+  });
+
+  it("keeps its active indicator visible beside a Command shortcut", () => {
     renderThreadRow({
       shortcutKey: "3",
       thread: createThread({
@@ -981,7 +1125,7 @@ describe("ThreadRow", () => {
     expect(shortcut.className).toContain("px-1.5");
     expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
@@ -1370,6 +1514,11 @@ describe("ThreadRow", () => {
     });
 
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-sidebar-item-status="unread-success"]')
+        ?.contains(screen.getByLabelText("Unread thread succeeded")),
+    ).toBe(true);
     expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
   });
 

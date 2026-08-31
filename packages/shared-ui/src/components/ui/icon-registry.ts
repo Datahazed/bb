@@ -13,6 +13,7 @@ export const EXTENDED_ICON_NAMES = [
   "AiBrowser",
   "AiContentGenerator01",
   "AlignLeft",
+  "Alphabetical",
   "AppWindow",
   "ArchiveRestore",
   "ArrowDown",

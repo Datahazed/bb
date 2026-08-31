@@ -22,7 +22,11 @@ import {
   SidebarMenuItem,
   useCloseMobileSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import {
+  ProjectList,
+  ProjectListNewThreadAction,
+  ProjectListSearchThreadsAction,
+} from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
@@ -60,6 +64,7 @@ import {
 } from "./sidebarThreadShortcuts";
 import {
   useAppCommandHandler,
+  useAppCommandRunner,
   useAppCommandShortcut,
   useAppCommandShortcuts,
   useIsAppCommandModifierHeld,
@@ -103,8 +108,9 @@ type SidebarTopLevelSectionId =
 
 /**
  * Renders the three persistent sidebar regions and derives dividers from the
- * regions that actually contribute content. The divider is structural only:
- * it is absent beside an empty/hidden region and never joins keyboard order.
+ * regions that actually contribute content. The thread-list surface owns its
+ * own separate preceding divider; every other divider stays structural and
+ * outside keyboard order.
  */
 export function SidebarTopLevelSections({
   sections,
@@ -118,27 +124,35 @@ export function SidebarTopLevelSections({
     },
   );
 
-  return visibleSections.map(({ id, regionId, content }, index) => (
-    <Fragment key={id}>
-      {index > 0 ? (
+  return visibleSections.map(({ id, regionId, content }, index) => {
+    const integratesDivider = id === "thread-list" && index > 0;
+    return (
+      <Fragment key={id}>
+        {index > 0 && !integratesDivider ? (
+          <div
+            aria-hidden="true"
+            data-sidebar-top-level-divider=""
+            className="mx-2 h-px shrink-0 bg-sidebar-border"
+          />
+        ) : null}
         <div
-          aria-hidden="true"
-          data-sidebar-top-level-divider=""
-          className="mx-2 h-px shrink-0 bg-sidebar-border"
-        />
-      ) : null}
-      <div
-        data-sidebar-region={regionId}
-        data-sidebar-top-level-section={id}
-        className={cn(
-          "min-w-0",
-          id === "thread-list" ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
-        )}
-      >
-        {content}
-      </div>
-    </Fragment>
-  ));
+          data-sidebar-region={regionId}
+          data-sidebar-integrated-divider={
+            integratesDivider ? "" : undefined
+          }
+          data-sidebar-top-level-section={id}
+          className={cn(
+            "min-w-0",
+            id === "thread-list"
+              ? "flex min-h-0 flex-1 flex-col"
+              : "shrink-0",
+          )}
+        >
+          {content}
+        </div>
+      </Fragment>
+    );
+  });
 }
 
 interface AppSidebarProps {
@@ -171,7 +185,8 @@ export function AppSidebar({
   // replaces the chrome around it: the New-thread button, plugin nav rows, and
   // footer stay host-rendered in every sidebar.
   const threadListReplacement = useThreadListReplacement();
-  const { threadId: activeThreadId } = useRouteState();
+  const { threadId: activeThreadId, projectId: activeProjectId } =
+    useRouteState();
   const navigate = useNavigate();
   const createNewThreadPaneContent = useCallback(
     () => ({
@@ -186,6 +201,7 @@ export function AppSidebar({
     label: "New thread",
   });
   const closeOnMobile = useCloseMobileSidebar();
+  const appCommandRunner = useAppCommandRunner();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
@@ -218,6 +234,13 @@ export function AppSidebar({
       state: { focusPrompt: true },
     });
   }, [closeOnMobile, navigate]);
+  const handleSearchThreads = useCallback(
+    (target: EventTarget | null) => {
+      closeOnMobile();
+      appCommandRunner.dispatch("thread.search", target);
+    },
+    [appCommandRunner, closeOnMobile],
+  );
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
     threadShortcutTargetsRef.current = targets;
@@ -323,13 +346,21 @@ export function AppSidebar({
       isCreatingProject={quickCreateProject.isCreating}
     />
   );
-  const topRegionItemNodes: Record<SidebarTopRegionItemId, ReactNode | null> = {
+  const topRegionItemNodes: Record<
+    SidebarTopRegionItemId,
+    ReactNode | null
+  > = {
     "new-thread": (
-      <ProjectListActionButtons
+      <ProjectListNewThreadAction
         splitEnabled
         newThreadSplit={newThreadSplit}
         onNewChat={handleNewChat}
         onSplit={onSplit}
+      />
+    ),
+    search: (
+      <ProjectListSearchThreadsAction
+        onSearchThreads={handleSearchThreads}
       />
     ),
     extensions: toolsRoutePath ? (

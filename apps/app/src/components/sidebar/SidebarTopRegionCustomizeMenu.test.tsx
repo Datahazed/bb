@@ -38,10 +38,10 @@ function renderMenu() {
 }
 
 describe("SidebarTopRegionCustomizeMenu", () => {
-  it("shows exactly the three host-owned rows in stored order", async () => {
+  it("shows exactly the four host-owned rows in stored order", async () => {
     const store = createStore();
     store.set(sidebarTopRegionItemPreferencesAtom, {
-      order: ["automations", "new-thread", "extensions"],
+      order: ["automations", "new-thread", "search", "extensions"],
       hiddenIds: ["extensions"],
     });
     store.set(sidebarRegionOrderAtom, ["threads", "bb-controls", "plugins"]);
@@ -61,18 +61,19 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     expect(items.map((item) => item.textContent)).toEqual([
       "Automations",
       "New thread",
+      "Search threads",
       "Extensions",
     ]);
-    expect(items[2]?.getAttribute("data-state")).toBe("unchecked");
+    expect(items[3]?.getAttribute("data-state")).toBe("unchecked");
     expect(
       document.querySelectorAll("[data-sidebar-customize-drag-handle]"),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect(screen.getByText("Customize")).toBeDefined();
     expect(screen.queryByText("Sidebar items")).toBeNull();
     expect(screen.queryByText("Drag to reorder. Uncheck to hide.")).toBeNull();
     expect(
       document.querySelectorAll("[data-sidebar-customize-checkbox]"),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect(
       document
         .querySelector('[data-sidebar-customize-checkbox="extensions"]')
@@ -85,6 +86,7 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     expect(checkedBox?.classList.contains("border-primary")).toBe(true);
     expect(checkedBox?.classList.contains("text-primary")).toBe(true);
     expect(screen.getByRole("menu").classList.contains("w-44")).toBe(true);
+    expect(screen.getByRole("menu").classList.contains("p-2")).toBe(true);
     for (const dragIcon of document.querySelectorAll(
       "[data-sidebar-customize-drag-handle] svg",
     )) {
@@ -102,8 +104,12 @@ describe("SidebarTopRegionCustomizeMenu", () => {
       ),
     ).toHaveLength(3);
     expect(screen.getByRole("group", { name: "BB controls" })).toBeDefined();
+    expect(
+      screen.queryByRole("menuitem", { name: "Add action" }),
+    ).toBeNull();
     for (const label of [
       "New thread",
+      "Search threads",
       "Extensions",
       "Automations",
       "Threads",
@@ -119,13 +125,19 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     const store = renderMenu();
     const menu = await screen.findByRole("menu");
 
-    for (const label of ["New thread", "Extensions", "Automations"]) {
+    for (const label of [
+      "New thread",
+      "Search threads",
+      "Extensions",
+      "Automations",
+    ]) {
       fireEvent.click(
         within(menu).getByRole("menuitemcheckbox", { name: label }),
       );
     }
     expect(store.get(sidebarTopRegionItemPreferencesAtom).hiddenIds).toEqual([
       "new-thread",
+      "search",
       "extensions",
       "automations",
     ]);
@@ -135,6 +147,7 @@ describe("SidebarTopRegionCustomizeMenu", () => {
       within(menu).getByRole("menuitemcheckbox", { name: "New thread" }),
     );
     expect(store.get(sidebarTopRegionItemPreferencesAtom).hiddenIds).toEqual([
+      "search",
       "extensions",
       "automations",
     ]);

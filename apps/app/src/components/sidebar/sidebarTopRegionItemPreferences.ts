@@ -16,6 +16,7 @@ export const LEGACY_EXTENSIONS_NAV_ROW_KEY = "__builtin__/tools";
 
 export const SIDEBAR_TOP_REGION_ITEM_IDS = [
   "new-thread",
+  "search",
   "extensions",
   "automations",
 ] as const;
@@ -59,10 +60,20 @@ export function normalizeSidebarTopRegionItemPreferences(
       ? (value as { order?: unknown; hiddenIds?: unknown })
       : {};
   const presentOrder = normalizeIds(candidate.order);
-  const order = [
+  const orderWithoutNewSearch = [
     ...presentOrder,
-    ...SIDEBAR_TOP_REGION_ITEM_IDS.filter((id) => !presentOrder.includes(id)),
+    ...SIDEBAR_TOP_REGION_ITEM_IDS.filter(
+      (id) => id !== "search" && !presentOrder.includes(id),
+    ),
   ];
+  const newThreadIndex = orderWithoutNewSearch.indexOf("new-thread");
+  const order = orderWithoutNewSearch.includes("search")
+    ? orderWithoutNewSearch
+    : [
+        ...orderWithoutNewSearch.slice(0, newThreadIndex + 1),
+        "search" as const,
+        ...orderWithoutNewSearch.slice(newThreadIndex + 1),
+      ];
   const hiddenIds = normalizeIds(candidate.hiddenIds).filter((id) =>
     order.includes(id),
   );
@@ -201,6 +212,7 @@ export function setSidebarTopRegionItemVisible(
   id: SidebarTopRegionItemId,
   visible: boolean,
 ): SidebarTopRegionItemPreferences {
+  if (!current.order.includes(id)) return current;
   const hiddenIds = visible
     ? current.hiddenIds.filter((candidate) => candidate !== id)
     : [...new Set([...current.hiddenIds, id])];

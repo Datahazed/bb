@@ -46,9 +46,9 @@ import {
   sidebarRegionOrderAtom,
   type SidebarRegionId,
 } from "./sidebarRegionOrderPreferences";
-
 const ITEM_LABELS: Record<SidebarTopRegionItemId, string> = {
   "new-thread": "New thread",
+  search: "Search threads",
   extensions: "Extensions",
   automations: "Automations",
 };
@@ -60,7 +60,7 @@ const REGION_LABELS: Record<SidebarRegionId, string> = {
 };
 
 const COMPACT_MENU_CONTENT_CLASS =
-  "w-44 min-w-44 p-1 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=separator]]:!my-0.5";
+  "w-44 min-w-44 p-2 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=separator]]:!my-0.5";
 const COMPACT_MENU_LABEL_CLASS = "!px-2 !py-1";
 const SORTABLE_ITEM_CLASS = "gap-2 !px-2 !py-1";
 
@@ -71,7 +71,11 @@ const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
 
 const dragModifiers: Modifier[] = [restrictDragToVerticalAxis];
 
-function SortableTopRegionItem({ id }: { id: SidebarTopRegionItemId }) {
+function SortableTopRegionItem({
+  id,
+}: {
+  id: SidebarTopRegionItemId;
+}) {
   const [preferences, setPreferences] = useAtom(
     sidebarTopRegionItemPreferencesAtom,
   );

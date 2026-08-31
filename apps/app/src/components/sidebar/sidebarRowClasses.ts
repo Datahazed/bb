@@ -27,6 +27,9 @@ export const SIDEBAR_SUCCESS_STATUS_COLOR_CLASS = "text-success-foreground";
 export const SIDEBAR_SUCCESS_STATUS_DOT_CLASS =
   "size-[5px] rounded-full bg-muted-foreground/60 max-md:pointer-coarse:size-1.5";
 
+/** Matches the neutral gray used by the settled unread dot. */
+export const SIDEBAR_IDLE_STATUS_COLOR_CLASS = "text-muted-foreground/60";
+
 // Identity-glyph slot: the section / worktree icon box on a disclosure header.
 export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
   "inline-flex w-4 shrink-0 items-center justify-center";
@@ -42,6 +45,10 @@ export function getSidebarThreadRowPaddingLeft(depth: number): number {
     SIDEBAR_THREAD_ROW_BASE_PADDING_PX +
     depth * SIDEBAR_THREAD_ROW_DEPTH_STEP_PX
   );
+}
+
+export function getSidebarThreadStatusOffsetLeft(depth: number): number {
+  return -depth * SIDEBAR_THREAD_ROW_DEPTH_STEP_PX;
 }
 
 export function getSidebarThreadGroupLineLeft(depth: number): number {
@@ -73,17 +80,15 @@ export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =
   "relative m-1 h-5 w-5 after:absolute after:left-1/2 after:top-1/2 after:h-7 after:w-7 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] max-md:pointer-coarse:m-0 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:after:hidden";
 
 /**
- * When two `SIDEBAR_MORE_ACTION_TRIGGER_CLASS` buttons sit side by side, their
- * centered 28px pseudo-targets would overlap and the later sibling would win
- * clicks aimed at the earlier one. These variants re-anchor each target to
- * stretch 4px outward but stop 1px short of the shared edge (the midpoint of
- * a 2px gap), so every point between the glyphs belongs to exactly one button.
+ * Action geometry for the 24px tertiary label rows rendered by
+ * TopLevelSidebarSection. The standard row-action box is 28px and otherwise
+ * paints two pixels outside these compact rows.
  */
-export const SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS =
-  "after:-left-1 after:-right-px after:w-auto after:translate-x-0";
+export const SIDEBAR_TERTIARY_ROW_ACTION_SIZE_CLASS =
+  "h-6 w-6 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9";
 
-export const SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS =
-  "after:-left-px after:-right-1 after:w-auto after:translate-x-0";
+export const SIDEBAR_TERTIARY_MORE_ACTION_TRIGGER_CLASS =
+  "m-0 h-6 w-6 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9";
 
 /**
  * Hairline that runs through an expanded project's thread list, sitting

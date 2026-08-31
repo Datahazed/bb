@@ -32,11 +32,11 @@ afterEach(() => {
 });
 
 describe("top-region sidebar item preferences", () => {
-  it("defaults to all three host-owned items in approved order", () => {
+  it("defaults to all four host-owned items in approved order", () => {
     const store = createStore();
 
     expect(store.get(sidebarTopRegionItemPreferencesAtom)).toEqual({
-      order: ["new-thread", "extensions", "automations"],
+      order: ["new-thread", "search", "extensions", "automations"],
       hiddenIds: [],
     });
   });
@@ -48,7 +48,7 @@ describe("top-region sidebar item preferences", () => {
         hiddenIds: ["extensions", "unknown", "extensions"],
       }),
     ).toEqual({
-      order: ["automations", "new-thread", "extensions"],
+      order: ["automations", "new-thread", "search", "extensions"],
       hiddenIds: ["extensions"],
     });
   });
@@ -63,7 +63,7 @@ describe("top-region sidebar item preferences", () => {
     );
 
     expect(migrateLegacySidebarTopRegionItems(storage)).toEqual({
-      order: ["new-thread", "extensions", "automations"],
+      order: ["new-thread", "search", "extensions", "automations"],
       hiddenIds: ["new-thread", "extensions", "automations"],
     });
     expect(storage.getItem("bb.sidebar.hiddenPluginPanels")).toBe(
@@ -74,7 +74,7 @@ describe("top-region sidebar item preferences", () => {
     expect(
       JSON.parse(storage.getItem("bb.sidebar.topRegionItems") ?? "{}"),
     ).toEqual({
-      order: ["new-thread", "extensions", "automations"],
+      order: ["new-thread", "search", "extensions", "automations"],
       hiddenIds: ["new-thread", "extensions", "automations"],
     });
   });
@@ -94,7 +94,7 @@ describe("top-region sidebar item preferences", () => {
     );
 
     expect(migrateLegacySidebarTopRegionItems(storage)).toEqual({
-      order: ["automations", "extensions", "new-thread"],
+      order: ["automations", "extensions", "new-thread", "search"],
       hiddenIds: ["extensions"],
     });
     expect(storage.getItem("bb.sidebar.hiddenPluginPanels")).toBe(
@@ -111,6 +111,7 @@ describe("top-region sidebar item preferences", () => {
     expect(reordered.order).toEqual([
       "automations",
       "new-thread",
+      "search",
       "extensions",
     ]);
 
@@ -118,8 +119,14 @@ describe("top-region sidebar item preferences", () => {
     for (const id of reordered.order) {
       next = setSidebarTopRegionItemVisible(next, id, false);
     }
-    expect(next.hiddenIds).toEqual(["automations", "new-thread", "extensions"]);
+    expect(next.hiddenIds).toEqual([
+      "automations",
+      "new-thread",
+      "search",
+      "extensions",
+    ]);
     next = setSidebarTopRegionItemVisible(next, "new-thread", true);
-    expect(next.hiddenIds).toEqual(["automations", "extensions"]);
+    expect(next.hiddenIds).toEqual(["automations", "search", "extensions"]);
   });
+
 });

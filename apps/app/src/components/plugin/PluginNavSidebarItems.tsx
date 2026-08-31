@@ -57,7 +57,10 @@ import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSpli
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import type { MiniMapSlot } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
-import { SIDEBAR_MORE_ACTION_TRIGGER_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import {
+  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+} from "@/components/sidebar/sidebarRowClasses";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -513,9 +516,23 @@ function PluginNavRowMenuItems({
  */
 function ToolsNavSidebarItemIcon() {
   return (
-    <span className="bb-sidebar-row-icon-swap shrink-0" aria-hidden="true">
-      <Icon name="Toolbox" className="bb-sidebar-row-icon-rest" />
-      <Icon name="ToolCase" className="bb-sidebar-row-icon-hover" />
+    <span className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS} aria-hidden="true">
+      <span className="bb-sidebar-row-icon-swap shrink-0">
+        <Icon
+          name="Toolbox"
+          className={cn(
+            "bb-sidebar-row-icon-rest",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+        />
+        <Icon
+          name="ToolCase"
+          className={cn(
+            "bb-sidebar-row-icon-hover",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+        />
+      </span>
     </span>
   );
 }

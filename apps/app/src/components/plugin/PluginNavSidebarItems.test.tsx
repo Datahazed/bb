@@ -661,6 +661,7 @@ describe("ExtensionsNavSidebarItem", () => {
     expect(extensionsRow).toBeTruthy();
     const swap = extensionsRow.querySelector(".bb-sidebar-row-icon-swap");
     expect(swap).toBeTruthy();
+    expect(swap?.parentElement).toHaveClass("w-4", "justify-center");
     expect(
       swap?.querySelector('.bb-sidebar-row-icon-rest[data-icon="Toolbox"]'),
     ).toBeTruthy();

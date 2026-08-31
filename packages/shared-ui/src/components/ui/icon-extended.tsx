@@ -2,6 +2,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import {
   AiBrowserIcon,
   AiContentGenerator01Icon,
+  ArrangeByLettersAZIcon,
   ArrowDown02Icon,
   ArrowDownDoubleIcon,
   ArrowMoveDownLeftIcon,
@@ -193,6 +194,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   AiBrowser: AiBrowserIcon,
   AiContentGenerator01: AiContentGenerator01Icon,
   AlignLeft: Menu02Icon,
+  Alphabetical: ArrangeByLettersAZIcon,
   AppWindow: BrowserIcon,
   ArchiveRestore: Unarchive03Icon,
   ArrowDown: ArrowDown02Icon,

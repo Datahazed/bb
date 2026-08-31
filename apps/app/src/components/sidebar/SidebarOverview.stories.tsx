@@ -271,7 +271,10 @@ function SidebarFrame({ children }: SidebarFrameProps) {
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
           <div className="shrink-0 space-y-1 px-2 py-2">
-            <ProjectListActionButtons onNewChat={noop} />
+            <ProjectListActionButtons
+              onNewChat={noop}
+              onSearchThreads={noop}
+            />
             <ExtensionsNavSidebarItem routePath={getSkillsRoutePath()} />
           </div>
           <div aria-hidden="true" className="mx-2 h-px bg-sidebar-border" />
@@ -650,6 +653,7 @@ export function SplitPageLabels() {
                 splitEnabled
                 newThreadSplit={{ openInSplit: noop }}
                 onNewChat={noop}
+                onSearchThreads={noop}
               />
             </div>
             <PluginNavSidebarItems splitEnabled />
