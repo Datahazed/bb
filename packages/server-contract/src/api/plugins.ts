@@ -1,5 +1,25 @@
-import { jsonValueSchema } from "@bb/domain";
+import {
+  jsonValueSchema,
+  PLUGIN_CATALOG_CATEGORY_IDS,
+  pluginCatalogCategoryIdSchema,
+  pluginListingDraftEntrySchema,
+  pluginListingLifecycleSchema,
+  pluginListingMarketplacePullRequestUrlSchema,
+  pluginListingNoticeSchema,
+  pluginListingRecordSchema,
+  type PluginListingDraftEntry,
+  type PluginListingLifecycle,
+  type PluginListingNotice,
+  type PluginListingRecord,
+  type PluginCatalogCategoryId,
+} from "@bb/domain";
 import { z } from "zod";
+
+export {
+  PLUGIN_CATALOG_CATEGORY_IDS,
+  pluginCatalogCategoryIdSchema,
+  type PluginCatalogCategoryId,
+};
 
 export const pluginRuntimeStatusSchema = z.enum([
   "running",
@@ -106,6 +126,13 @@ export const pluginHandlerStatsSchema = z.object({
 });
 export type PluginHandlerStats = z.infer<typeof pluginHandlerStatsSchema>;
 
+export const pluginLastProblemSchema = z.object({
+  class: pluginRuntimeStatusSchema,
+  message: z.string(),
+  at: z.number().int().nonnegative(),
+});
+export type PluginLastProblem = z.infer<typeof pluginLastProblemSchema>;
+
 export const pluginServiceEntrySchema = z.object({
   name: z.string(),
   state: z.enum(["running", "backoff", "stopped"]),
@@ -162,10 +189,14 @@ export const installedPluginSchema = z.object({
   enabled: z.boolean(),
   description: z.string().nullable(),
   name: z.string().nullable(),
+  categoryId: pluginCatalogCategoryIdSchema.optional(),
+  category: z.string().optional(),
+  screenshots: z.array(z.string()),
   icon: z.string().nullable(),
   iconUrl: z.string().nullable(),
   status: pluginRuntimeStatusSchema,
   statusDetail: z.string().nullable(),
+  lastProblem: pluginLastProblemSchema.nullable(),
   handlerStats: pluginHandlerStatsSchema,
   services: z.array(pluginServiceEntrySchema),
   schedules: z.array(pluginScheduleEntrySchema),
@@ -184,6 +215,41 @@ export const pluginListResponseSchema = z.object({
   plugins: z.array(installedPluginSchema),
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
+
+export {
+  pluginListingDraftEntrySchema,
+  pluginListingLifecycleSchema,
+  pluginListingNoticeSchema,
+  pluginListingRecordSchema,
+  type PluginListingDraftEntry,
+  type PluginListingLifecycle,
+  type PluginListingNotice,
+  type PluginListingRecord,
+};
+
+export const pluginListingListResponseSchema = z.object({
+  records: z.array(pluginListingRecordSchema),
+  notices: z.array(pluginListingNoticeSchema),
+});
+export type PluginListingListResponse = z.infer<
+  typeof pluginListingListResponseSchema
+>;
+export const pluginListingSaveDraftRequestSchema = z
+  .object({ entry: pluginListingDraftEntrySchema })
+  .strict();
+export const pluginListingRecordSubmissionRequestSchema = z
+  .object({
+    pullRequestUrl: pluginListingMarketplacePullRequestUrlSchema,
+    openedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+export const pluginListingMutationResponseSchema = z.object({
+  ok: z.literal(true),
+  record: pluginListingRecordSchema,
+});
+export const pluginListingNoticeConsumeResponseSchema = z.object({
+  ok: z.literal(true),
+});
 
 export const pluginSourceSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("root") }).strict(),
@@ -333,7 +399,12 @@ export const pluginCatalogSearchResultSchema = z.object({
   icon: z.string().nullable(),
   iconUrl: z.string().nullable(),
   iconTinted: z.boolean().default(false),
-  category: z.string(),
+  categoryId: pluginCatalogCategoryIdSchema.optional(),
+  category: z.string().optional(),
+  screenshots: z.array(z.string()).default([]),
+  newAndNotableRank: z.number().int().nonnegative().nullable().default(null),
+  publishedAt: z.iso.datetime({ offset: true }).optional(),
+  updatedAt: z.iso.datetime({ offset: true }).optional(),
   source: z.string(),
   repositoryUrl: z.string().nullable().default(null),
   marketplace: z.string(),
