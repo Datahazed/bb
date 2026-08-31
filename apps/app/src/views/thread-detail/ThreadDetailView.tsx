@@ -2445,19 +2445,19 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     ? getEnvironmentWorkspaceSummaryDisplay({
         display: threadEnvironmentDisplay,
         environmentName: environment?.name ?? null,
+        hostName: resolvedThreadEnvironmentHost?.name,
         locality: environmentDisplayHostContext.locality,
       })
     : undefined;
   const composerMachine =
     resolvedThreadEnvironmentHost !== null &&
-    (threadEnvironmentDisplay?.mode === "direct" ||
-      (threadEnvironmentDisplay?.mode === "worktree" &&
-        shouldShowWorktreeMachineInComposer({
-          connected: resolvedThreadEnvironmentHost.status === "connected",
-          hasCustomName: environment?.name !== null,
-          locality: environmentDisplayHostContext.locality,
-          machineCount: hostsQuery.data?.length ?? 0,
-        })))
+    threadEnvironmentDisplay?.mode === "worktree" &&
+    shouldShowWorktreeMachineInComposer({
+      connected: resolvedThreadEnvironmentHost.status === "connected",
+      hasCustomName: environment?.name !== null,
+      locality: environmentDisplayHostContext.locality,
+      machineCount: hostsQuery.data?.length ?? 0,
+    })
       ? resolvedThreadEnvironmentHost
       : null;
   const isThreadOnProvisionedWorktreeEnvironment =

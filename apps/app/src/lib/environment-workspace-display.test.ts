@@ -39,7 +39,7 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     });
   });
 
-  it("does not use the worktree type as an unnamed worktree label", () => {
+  it("uses the machine name as an unnamed worktree fallback without changing its type", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -51,11 +51,12 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
           workspaceDisplayKind: "managed-worktree",
         },
         environmentName: null,
+        hostName: "Build Mac mini",
         locality: "remote",
       }),
     ).toMatchObject({
-      label: undefined,
-      compactLabel: undefined,
+      label: "Build Mac mini",
+      compactLabel: "Build Mac mini",
       icon: "FolderGit",
       typeLabel: "Remote worktree",
     });
@@ -81,7 +82,7 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     });
   });
 
-  it("does not present a machine name as an unnamed direct environment", () => {
+  it("uses the machine name and machine icon for a direct environment", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -93,11 +94,12 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
           workspaceDisplayKind: "other",
         },
         environmentName: null,
+        hostName: "Bersabel's MacBook Pro",
         locality: "local",
       }),
     ).toMatchObject({
-      label: undefined,
-      compactLabel: undefined,
+      label: "Bersabel's MacBook Pro",
+      compactLabel: "Bersabel's MacBook Pro",
       icon: "Laptop",
       typeLabel: "Local",
     });
@@ -116,13 +118,18 @@ describe("shouldShowWorktreeMachineInComposer", () => {
     ).toBe(false);
   });
 
+  it("does not render an unnamed worktree fallback as a separate machine", () => {
+    expect(
+      shouldShowWorktreeMachineInComposer({
+        connected: true,
+        hasCustomName: false,
+        locality: "remote",
+        machineCount: 2,
+      }),
+    ).toBe(false);
+  });
+
   it.each([
-    {
-      connected: true,
-      hasCustomName: false,
-      locality: "local",
-      machineCount: 1,
-    },
     {
       connected: true,
       hasCustomName: true,

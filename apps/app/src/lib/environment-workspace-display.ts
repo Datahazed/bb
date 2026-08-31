@@ -12,6 +12,7 @@ export type EnvironmentWorkspaceTypeLabel =
 interface EnvironmentWorkspaceSummaryDisplayArgs {
   display: EnvironmentDisplayInfo;
   environmentName: string | null;
+  hostName?: string;
   locality: "local" | "remote";
 }
 
@@ -36,13 +37,14 @@ export function shouldShowWorktreeMachineInComposer({
   machineCount,
 }: WorktreeMachineComposerVisibilityArgs): boolean {
   return (
-    !hasCustomName || locality === "remote" || machineCount > 1 || !connected
+    hasCustomName && (locality === "remote" || machineCount > 1 || !connected)
   );
 }
 
 export function getEnvironmentWorkspaceSummaryDisplay({
   display,
   environmentName,
+  hostName,
   locality,
 }: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentWorkspaceSummaryDisplay {
   if (display.lifecycle === "provisioning") {
@@ -54,7 +56,10 @@ export function getEnvironmentWorkspaceSummaryDisplay({
     };
   }
 
-  const environmentSummaryLabel = environmentName ?? undefined;
+  const environmentSummaryLabel =
+    display.mode === "direct" || environmentName === null
+      ? hostName
+      : environmentName;
 
   return {
     label: environmentSummaryLabel,

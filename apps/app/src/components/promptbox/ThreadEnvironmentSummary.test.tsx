@@ -154,14 +154,14 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it("does not add a naming affordance when the worktree has no custom name", () => {
-    render(
+  it("keeps unnamed worktree identity while using the machine name as its fallback", () => {
+    const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
+          environmentLabel="Bersabel's MacBook Pro"
+          environmentCompactLabel="Bersabel's MacBook Pro"
           environmentIcon="FolderGit"
           environmentTypeLabel="Local worktree"
-          machineName="Bersabel's MacBook Pro"
-          onRenameWorktree={vi.fn()}
         />
       </TooltipProvider>,
     );
@@ -169,6 +169,11 @@ describe("ThreadEnvironmentSummary", () => {
     expect(screen.queryByRole("button", { name: "Name worktree" })).toBeNull();
     expect(screen.queryByText("Worktree")).toBeNull();
     expect(screen.getAllByText("Bersabel's MacBook Pro")).toHaveLength(2);
+    expect(container.querySelector('[data-icon="FolderGit"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="Laptop"]')).toBeNull();
+    expect(
+      screen.getByRole("img", { name: "Environment type: Local worktree" }),
+    ).not.toBeNull();
   });
 
   it("keeps the worktree name primary and exposes the rename action", async () => {

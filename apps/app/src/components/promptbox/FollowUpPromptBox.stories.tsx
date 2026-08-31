@@ -185,7 +185,7 @@ interface EnvironmentSummaryArgs {
   environment: Environment;
   host: EnvironmentDisplayHostContext;
   projectName?: string;
-  machineName?: string;
+  hostName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
   onRenameWorktree?: () => void;
   onCreateNewThreadInWorktree?: () => void;
@@ -195,7 +195,7 @@ function makeEnvironmentSummary({
   environment,
   host,
   projectName,
-  machineName,
+  hostName,
   environmentCheckout,
   onRenameWorktree,
   onCreateNewThreadInWorktree,
@@ -207,6 +207,7 @@ function makeEnvironmentSummary({
   const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
     display,
     environmentName: environment.name,
+    hostName,
     locality: host.locality,
   });
   return (
@@ -217,7 +218,6 @@ function makeEnvironmentSummary({
       environmentIcon={summaryDisplay.icon}
       environmentTypeLabel={summaryDisplay.typeLabel}
       environmentCheckout={environmentCheckout}
-      machineName={machineName}
       onRenameWorktree={onRenameWorktree}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
     />
@@ -242,7 +242,7 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  machineName: "Bersabel's MacBook Pro",
+  hostName: "Bersabel's MacBook Pro",
 });
 
 const longHostEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -254,7 +254,7 @@ const longHostEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   projectName: "bb UI QA",
-  machineName: "Bersabel's MacBook Pro",
+  hostName: "Bersabel's MacBook Pro",
 });
 
 const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -265,7 +265,7 @@ const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: remoteEnvironmentDisplayHost,
-  machineName: "Build Mac mini",
+  hostName: "Build Mac mini",
 });
 
 const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -275,7 +275,7 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  machineName: "Bersabel's MacBook Pro",
+  hostName: "Bersabel's MacBook Pro",
   environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
@@ -287,7 +287,7 @@ const remoteWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: remoteEnvironmentDisplayHost,
-  machineName: "Build Mac mini",
+  hostName: "Build Mac mini",
   environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
@@ -301,7 +301,7 @@ const unmanagedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  machineName: "Bersabel's MacBook Pro",
+  hostName: "Bersabel's MacBook Pro",
   environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
@@ -314,7 +314,7 @@ const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  machineName: "Bersabel's MacBook Pro",
+  hostName: "Bersabel's MacBook Pro",
   environmentCheckout: STORY_CHECKOUT_DISPLAY,
   onCreateNewThreadInWorktree: noop,
 });
@@ -326,7 +326,7 @@ const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  machineName: "Bersabel's MacBook Pro",
+  hostName: "Bersabel's MacBook Pro",
   environmentCheckout: formatWorkspaceCheckoutDisplay({
     checkout: {
       kind: "detached",
@@ -1189,7 +1189,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · named worktree"
-        hint="visible worktree name · separate machine context"
+        hint="visible worktree name · redundant local machine hidden"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1282,7 +1282,7 @@ function WorktreeNameEditingFixture({
             status: "ready",
           }),
           host: localEnvironmentDisplayHost,
-          machineName: name === null ? "Bersabel's MacBook Pro" : undefined,
+          hostName: "Bersabel's MacBook Pro",
           environmentCheckout: STORY_CHECKOUT_DISPLAY,
           onRenameWorktree: name === null ? undefined : openRename,
           onCreateNewThreadInWorktree: noop,
@@ -1335,6 +1335,7 @@ export function WorktreeNamingContract() {
       <StoryRow
         label="custom name"
         hint="clearing the custom name returns the composer to machine + branch"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         <DialogStage>
           <EnvironmentRenameDialogContent
@@ -1352,11 +1353,47 @@ export function WorktreeNamingContract() {
       </StoryRow>
       <StoryRow
         label="unnamed"
-        hint="machine + branch remain; generated worktree identity stays hidden"
+        hint="worktree icon + machine fallback + branch; generated identity stays hidden"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         <WorktreeNameEditingFixture fixtureId="unnamed" initialName={null} />
       </StoryRow>
     </StoryCard>
+  );
+}
+
+export function WorktreeRenameResponsive() {
+  const [target, setTarget] = useState<EnvironmentRenameDialogTarget | null>({
+    id: "env_responsive",
+    currentName: STORY_WORKTREE_NAME,
+    branchName: STORY_BRANCH_NAME,
+    canClearName: true,
+  });
+  return (
+    <div className="flex min-h-[80dvh] items-center justify-center p-6">
+      <button
+        type="button"
+        className="rounded-md border px-3 py-2 text-sm"
+        onClick={() => {
+          setTarget({
+            id: "env_responsive",
+            currentName: STORY_WORKTREE_NAME,
+            branchName: STORY_BRANCH_NAME,
+            canClearName: true,
+          });
+        }}
+      >
+        Open rename dialog
+      </button>
+      <EnvironmentRenameDialog
+        target={target}
+        pending={false}
+        onOpenChange={(open) => {
+          if (!open) setTarget(null);
+        }}
+        onRename={noop}
+      />
+    </div>
   );
 }
 

@@ -133,7 +133,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             </Tooltip>
           ) : (
             <OptionDisplay
-              label={isWorktree ? "Name" : "Environment"}
+              label={isWorktree ? "Worktree" : "Environment"}
               value={environmentLabel}
               compactValue={environmentCompactLabel}
               className="h-6 min-w-0 shrink px-0"
