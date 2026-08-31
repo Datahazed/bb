@@ -83,6 +83,7 @@ import {
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 import { PersistentHostIconName } from "@/lib/host-display";
+import { useIsElementTruncated } from "@/hooks/useIsElementTruncated";
 
 interface ParentSelectorRowProps {
   thread: Thread;
@@ -395,10 +396,37 @@ interface MachineRowProps {
 }
 
 export function MachineRow({ name, connected = true }: MachineRowProps) {
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const isNameTruncated = useIsElementTruncated({
+    elementRef: nameRef,
+    measurementKey: name ?? "",
+  });
   if (!name) return null;
   const accessibleLabel = connected
     ? `Machine: ${name}`
     : `Machine: ${name}, offline`;
+  const nameDisplay = (
+    <span
+      tabIndex={isNameTruncated ? 0 : undefined}
+      aria-label={accessibleLabel}
+      className={cn(
+        "inline-flex min-w-0 items-center gap-1 rounded-sm",
+        isNameTruncated &&
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <span
+        ref={nameRef}
+        className="min-w-0 truncate text-foreground"
+        data-machine-name-text=""
+      >
+        {name}
+      </span>
+      {connected ? null : (
+        <span className="shrink-0 text-muted-foreground">· Offline</span>
+      )}
+    </span>
+  );
   return (
     <DetailRow
       label={
@@ -429,12 +457,10 @@ export function MachineRow({ name, connected = true }: MachineRowProps) {
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      <DetailValueTooltip accessibleLabel={accessibleLabel} tooltip={name}>
-        <span className="min-w-0 truncate text-foreground">{name}</span>
-        {connected ? null : (
-          <span className="shrink-0 text-muted-foreground">· Offline</span>
-        )}
-      </DetailValueTooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
+        {isNameTruncated ? <TooltipContent>{name}</TooltipContent> : null}
+      </Tooltip>
     </DetailRow>
   );
 }

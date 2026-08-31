@@ -88,7 +88,22 @@ function renderEnvironmentRow(environment: Environment): string {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
+
+function mockMachineNameTruncation(isTruncated: boolean): void {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+    function clientWidth(this: HTMLElement) {
+      return this.hasAttribute("data-machine-name-text") ? 100 : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+    function scrollWidth(this: HTMLElement) {
+      if (!this.hasAttribute("data-machine-name-text")) return 0;
+      return isTruncated ? 200 : 100;
+    },
+  );
+}
 
 describe("ThreadMetadataCard", () => {
   it("shows its scrollbar only during active scrolling", () => {
@@ -259,6 +274,7 @@ describe("EnvironmentRow", () => {
   });
 
   it("places the actual machine name beside its icon and keeps state secondary", async () => {
+    mockMachineNameTruncation(true);
     render(
       <TooltipProvider delayDuration={0}>
         <MachineRow name="Bersabel's MacBook Pro" connected={false} />
@@ -289,6 +305,20 @@ describe("EnvironmentRow", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Bersabel's MacBook Pro",
     );
+  });
+
+  it("does not add a redundant machine-name tooltip when the label fits", () => {
+    mockMachineNameTruncation(false);
+    render(
+      <TooltipProvider delayDuration={0}>
+        <MachineRow name="Build Mac mini" />
+      </TooltipProvider>,
+    );
+
+    const machineName = screen.getByLabelText("Machine: Build Mac mini");
+    expect(machineName.getAttribute("tabindex")).toBeNull();
+    fireEvent.pointerEnter(machineName);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("shows the create-thread action for a provisioned worktree", () => {

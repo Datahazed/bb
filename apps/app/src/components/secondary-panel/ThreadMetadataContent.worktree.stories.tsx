@@ -96,6 +96,41 @@ function WorktreeMachineVisibilityFixture({
   );
 }
 
+interface MachineNameOverflowFixtureProps {
+  connected: boolean;
+  machineName: string;
+}
+
+function MachineNameOverflowFixture({
+  connected,
+  machineName,
+}: MachineNameOverflowFixtureProps) {
+  return (
+    <div className="grid w-full min-w-0 gap-3 lg:grid-cols-2">
+      <section className="min-w-0 space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">Composer</p>
+        <div
+          data-promptbox=""
+          className="w-full min-w-0 rounded-md border bg-background p-3"
+        >
+          <ThreadEnvironmentSummary
+            machineName={machineName}
+            machineConnected={connected}
+          />
+        </div>
+      </section>
+      <section className="min-w-0 space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">Info</p>
+        <PanelStage>
+          <ThreadMetadataCard>
+            <MachineRow name={machineName} connected={connected} />
+          </ThreadMetadataCard>
+        </PanelStage>
+      </section>
+    </div>
+  );
+}
+
 interface WorktreeNamingFixtureProps {
   fixtureId: string;
   name: string | null;
@@ -216,7 +251,7 @@ export function MachineVisibility() {
       </StoryRow>
       <StoryRow
         label="offline machine"
-        hint="issue icon explains Offline; name tooltip reveals the full machine name"
+        hint="issue icon explains Offline; a clipped name reveals the full machine name"
       >
         <WorktreeMachineVisibilityFixture
           connected={false}
@@ -234,6 +269,33 @@ export function MachineVisibility() {
           locality="local"
           machineCount={2}
           machineName={STORY_HOST_NAME}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function MachineNameOverflow() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="name fits"
+        hint="the complete name has no redundant tooltip or focus stop"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+      >
+        <MachineNameOverflowFixture
+          connected
+          machineName="Build Mac mini"
+        />
+      </StoryRow>
+      <StoryRow
+        label="name truncates"
+        hint="the clipped name reveals its full value; Offline remains separate"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+      >
+        <MachineNameOverflowFixture
+          connected={false}
+          machineName="Bersabel's remote build MacBook Pro for design-system verification"
         />
       </StoryRow>
     </StoryCard>

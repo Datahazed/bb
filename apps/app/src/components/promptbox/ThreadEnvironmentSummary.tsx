@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { OptionDisplay } from "@bb/shared-ui/option-display";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -7,6 +7,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import { useIsElementTruncated } from "@/hooks/useIsElementTruncated";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
   "flex min-w-24 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
@@ -34,6 +35,46 @@ function MachineContext({
   const accessibleLabel = connected
     ? `Machine: ${name}`
     : `Machine: ${name}, offline`;
+  const fullNameRef = useRef<HTMLSpanElement>(null);
+  const compactNameRef = useRef<HTMLSpanElement>(null);
+  const isFullNameTruncated = useIsElementTruncated({
+    elementRef: fullNameRef,
+    measurementKey: name,
+  });
+  const isCompactNameTruncated = useIsElementTruncated({
+    elementRef: compactNameRef,
+    measurementKey: name,
+  });
+  const isNameTruncated = isFullNameTruncated || isCompactNameTruncated;
+
+  const nameDisplay = (
+    <span
+      tabIndex={isNameTruncated ? 0 : undefined}
+      aria-label={accessibleLabel}
+      className={cn(
+        "inline-flex min-w-0 rounded-md",
+        isNameTruncated &&
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
+    >
+      <span
+        ref={fullNameRef}
+        className="min-w-0 truncate"
+        data-promptbox-full-label=""
+        data-machine-name-text=""
+      >
+        {name}
+      </span>
+      <span
+        ref={compactNameRef}
+        className="min-w-0 truncate"
+        data-promptbox-compact-label=""
+        data-machine-name-text=""
+      >
+        {name}
+      </span>
+    </span>
+  );
 
   return (
     <span
@@ -58,21 +99,8 @@ function MachineContext({
         </Tooltip>
       )}
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            tabIndex={0}
-            aria-label={accessibleLabel}
-            className="inline-flex min-w-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            <span className="min-w-0 truncate" data-promptbox-full-label="">
-              {name}
-            </span>
-            <span className="min-w-0 truncate" data-promptbox-compact-label="">
-              {name}
-            </span>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{name}</TooltipContent>
+        <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
+        {isNameTruncated ? <TooltipContent>{name}</TooltipContent> : null}
       </Tooltip>
     </span>
   );

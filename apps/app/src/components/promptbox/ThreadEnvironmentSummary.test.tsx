@@ -11,7 +11,24 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadEnvironmentSummary } from "./ThreadEnvironmentSummary";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+function mockMachineNameTruncation(isTruncated: boolean): void {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+    function clientWidth(this: HTMLElement) {
+      return this.hasAttribute("data-machine-name-text") ? 100 : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+    function scrollWidth(this: HTMLElement) {
+      if (!this.hasAttribute("data-machine-name-text")) return 0;
+      return isTruncated ? 200 : 100;
+    },
+  );
+}
 
 describe("ThreadEnvironmentSummary", () => {
   it("reveals the project name without repeating its type", async () => {
@@ -56,6 +73,7 @@ describe("ThreadEnvironmentSummary", () => {
   });
 
   it("reveals the full machine name when its label is constrained", async () => {
+    mockMachineNameTruncation(true);
     const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary machineName="Bersabel's MacBook Pro" />
@@ -74,7 +92,22 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
+  it("does not add a redundant machine-name tooltip when the label fits", () => {
+    mockMachineNameTruncation(false);
+    render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary machineName="Build Mac mini" />
+      </TooltipProvider>,
+    );
+
+    const machineName = screen.getByLabelText("Machine: Build Mac mini");
+    expect(machineName.getAttribute("tabindex")).toBeNull();
+    fireEvent.pointerEnter(machineName);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   it("separates offline state from the full machine-name tooltip", async () => {
+    mockMachineNameTruncation(true);
     const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
