@@ -63,7 +63,7 @@ function StoryRecents({ count }: { count: number }) {
 
 function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-[852px] w-[393px] overflow-hidden rounded-xl border border-border bg-background">
+    <div className="flex h-[852px] w-[393px] min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-background">
       {children}
     </div>
   );
