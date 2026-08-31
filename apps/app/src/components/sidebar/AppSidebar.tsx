@@ -121,6 +121,7 @@ interface AppSidebarProps {
   showTopReserve: boolean;
   settingsRoutePath: string;
   toolsRoutePath?: string;
+  onSplit?: () => void;
   mobileHosted?: { hidden: boolean };
 }
 
@@ -130,6 +131,7 @@ export function AppSidebar({
   showTopReserve,
   settingsRoutePath,
   toolsRoutePath,
+  onSplit,
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
@@ -309,6 +311,8 @@ export function AppSidebar({
                 splitEnabled
                 newThreadSplit={newThreadSplit}
                 onNewChat={handleNewChat}
+                onSplit={onSplit}
+                onSearchThreads={closeOnMobile}
               />
               {toolsRoutePath ? (
                 <ExtensionsNavSidebarItem

@@ -7,31 +7,36 @@ import { builtInSidebarDraftRowsVisibleAtom } from "@/components/sidebar/sidebar
 export function shouldAnnounceNewThreadDraftLeave({
   draft,
   draftRowsVisible,
-  isSplitPane,
 }: {
   draft: PromptDraftState;
   draftRowsVisible: boolean;
-  isSplitPane: boolean;
 }): boolean {
-  return !isSplitPane && !draftRowsVisible && !isPromptDraftEmpty(draft);
+  return !draftRowsVisible && !isPromptDraftEmpty(draft);
+}
+
+let savedDraftToastScheduled = false;
+
+function scheduleSavedDraftToast(): void {
+  if (savedDraftToastScheduled) return;
+  savedDraftToastScheduled = true;
+  queueMicrotask(() => {
+    savedDraftToastScheduled = false;
+    appToast.message("Saved to Drafts");
+  });
 }
 
 export function useNewThreadDraftLeaveToast({
   getCurrentDraft,
-  isSplitPane,
 }: {
   getCurrentDraft: () => PromptDraftState;
-  isSplitPane: boolean;
 }): void {
   const draftRowsVisible = useAtomValue(builtInSidebarDraftRowsVisibleAtom);
   const draftRowsVisibleRef = useRef(draftRowsVisible);
   const getCurrentDraftRef = useRef(getCurrentDraft);
-  const isSplitPaneRef = useRef(isSplitPane);
   const mountedRef = useRef(false);
 
   draftRowsVisibleRef.current = draftRowsVisible;
   getCurrentDraftRef.current = getCurrentDraft;
-  isSplitPaneRef.current = isSplitPane;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -40,13 +45,12 @@ export function useNewThreadDraftLeaveToast({
       const shouldAnnounce = shouldAnnounceNewThreadDraftLeave({
         draft: getCurrentDraftRef.current(),
         draftRowsVisible: draftRowsVisibleRef.current,
-        isSplitPane: isSplitPaneRef.current,
       });
       if (!shouldAnnounce) return;
 
       queueMicrotask(() => {
         if (!mountedRef.current) {
-          appToast.message("Saved to Drafts");
+          scheduleSavedDraftToast();
         }
       });
     };

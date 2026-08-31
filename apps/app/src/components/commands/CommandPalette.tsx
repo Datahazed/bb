@@ -46,9 +46,14 @@ type PaletteMode = "commands" | "threads";
 export interface CommandPaletteProps {
   threadId: string | null;
   projectId: string | null;
+  onSplit?: () => void;
 }
 
-export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
+export function CommandPalette({
+  threadId,
+  projectId,
+  onSplit,
+}: CommandPaletteProps) {
   const navigate = useNavigate();
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
@@ -76,6 +81,17 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         dispatch: runner.dispatch,
         shortcuts,
       }),
+      ...(onSplit === undefined
+        ? []
+        : [
+            {
+              id: "internal:thread.split",
+              group: "Threads",
+              title: "Split",
+              shortcut: null,
+              run: onSplit,
+            } satisfies PaletteAction,
+          ]),
       ...buildPluginPaletteActions({
         slots: getPluginSlotSnapshot().commandPaletteActions,
         threadId,
@@ -85,6 +101,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     ],
     [
       projectId,
+      onSplit,
       runner.dispatch,
       runner.isCommandAvailable,
       shortcuts,

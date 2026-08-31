@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
+import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { listPanes } from "@/lib/split-layout";
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 
 const ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY = "bb.root-compose.project-id";
 
@@ -13,8 +24,14 @@ const mockUseThreadDetailBootstrap = vi.hoisted(() => vi.fn());
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandHandler: (command: string, handler: () => boolean) => {
-    commandHandlers.set(command, handler);
+  useAppCommandHandler: (
+    command: string,
+    handler: () => boolean,
+    _priority = 0,
+    enabled = true,
+  ) => {
+    if (enabled) commandHandlers.set(command, handler);
+    else commandHandlers.delete(command);
   },
   useAppCommandShortcut: () => null,
   useAppCommandShortcuts: () => new Map(),
@@ -26,7 +43,15 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 }));
 
 vi.mock("@/components/sidebar/AppSidebar", () => ({
-  AppSidebar: () => <aside data-testid="app-sidebar" />,
+  AppSidebar: ({ onSplit }: { onSplit?: () => void }) => (
+    <aside data-testid="app-sidebar">
+      {onSplit ? (
+        <button type="button" onClick={onSplit}>
+          Split
+        </button>
+      ) : null}
+    </aside>
+  ),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -231,5 +256,68 @@ describe("AppLayout root compose project preference", () => {
     expect(
       window.localStorage.getItem(ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY),
     ).toBe("proj_last_run");
+  });
+
+  it("enters Split with two independently writable draft slots and left focus", async () => {
+    const store = createStore();
+
+    render(
+      <Provider store={store}>
+        <MemoryRouter
+          initialEntries={["/projects/proj_opened/threads/thr_opened"]}
+        >
+          <AppLayout>
+            <div>Thread route</div>
+          </AppLayout>
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Split" }));
+    expect(commandHandlers.has("thread.split")).toBe(false);
+
+    const layout = store.get(splitLayoutAtom);
+    expect(layout).not.toBeNull();
+    const panes = listPanes(layout!.root);
+    expect(panes).toHaveLength(2);
+    expect(layout?.focusedPaneId).toBe(panes[0]?.paneId);
+    const leftContent = panes[0]?.content;
+    const rightContent = panes[1]?.content;
+    expect(leftContent?.kind).toBe("new-thread");
+    expect(rightContent?.kind).toBe("new-thread");
+    if (
+      leftContent?.kind !== "new-thread" ||
+      rightContent?.kind !== "new-thread"
+    ) {
+      throw new Error("Split did not create two New thread panes.");
+    }
+    expect(leftContent.draftSlotId).not.toBe(rightContent.draftSlotId);
+
+    const destination = { projectId: "proj_opened", sectionId: null };
+    const leftDraft = getPromptDraftAccessor({
+      kind: "new-thread",
+      slotId: leftContent.draftSlotId,
+      destination,
+    });
+    const rightDraft = getPromptDraftAccessor({
+      kind: "new-thread",
+      slotId: rightContent.draftSlotId,
+      destination,
+    });
+    act(() => {
+      leftDraft.setDraft({
+        text: "Left pane draft",
+        mentions: [],
+        attachments: [],
+      });
+      rightDraft.setDraft({
+        text: "Right pane draft",
+        mentions: [],
+        attachments: [],
+      });
+    });
+
+    expect(leftDraft.getCurrent().text).toBe("Left pane draft");
+    expect(rightDraft.getCurrent().text).toBe("Right pane draft");
   });
 });

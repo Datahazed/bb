@@ -95,11 +95,13 @@ import {
   useMobileVisualViewportHeight,
 } from "./useMobileVisualViewportHeight";
 import { wsManager } from "@/lib/ws";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { findPaneByThread } from "@/lib/split-layout";
+import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { findPaneByThread, replaceWithTwoPaneLayout } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
+import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -450,6 +452,26 @@ export function AppLayout({ children }: AppLayoutProps) {
     });
     return true;
   });
+  const startTwoPaneCompose = useCallback(() => {
+    if (isCompactViewport) return;
+    if (projectId !== undefined) {
+      setRootComposeProjectId(projectId);
+    }
+    const leftDraftSlotId = createNewThreadDraftSlotId();
+    const rightDraftSlotId = createNewThreadDraftSlotId();
+    store.set(
+      splitLayoutAtom,
+      replaceWithTwoPaneLayout(
+        store.get(splitLayoutAtom),
+        { kind: "new-thread", draftSlotId: leftDraftSlotId },
+        { kind: "new-thread", draftSlotId: rightDraftSlotId },
+      ),
+    );
+    store.set(maximizedPaneIdAtom, null);
+    void navigate(getRootComposeRoutePath(), {
+      state: withRootComposeDraftSlotId(null, leftDraftSlotId),
+    });
+  }, [isCompactViewport, navigate, projectId, setRootComposeProjectId, store]);
   useAppCommandHandler("settings.open", () => {
     void navigate(settingsRoutePath);
     return true;
@@ -746,6 +768,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               settingsRoutePath={settingsRoutePath}
               toolsBackRoutePath={toolsBackRoutePath}
               toolsRoutePath={toolsRoutePath}
+              onSplit={isCompactViewport ? undefined : startTwoPaneCompose}
             />
             <SidebarInset>
               <div
@@ -785,6 +808,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <CommandPalette
             threadId={threadId ?? null}
             projectId={projectId ?? null}
+            onSplit={isCompactViewport ? undefined : startTwoPaneCompose}
           />
           <ProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}

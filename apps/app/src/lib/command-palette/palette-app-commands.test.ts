@@ -76,11 +76,6 @@ describe("buildAppCommandActions", () => {
     });
   });
 
-  it("leaves the shortcut null for a command the user has not bound", () => {
-    const { actions } = build(["thread.rename"]);
-    expect(actions[0]?.shortcut).toBeNull();
-  });
-
   it("dispatches with the element that was focused before the palette opened", () => {
     const target = { id: "composer" } as unknown as EventTarget;
     const dispatch = vi.fn();

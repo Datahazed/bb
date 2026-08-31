@@ -156,7 +156,13 @@ function Handler({ command }: { command: AppCommandId }) {
   return null;
 }
 
-function renderPalette(isCompactViewport = false) {
+function renderPalette({
+  isCompactViewport = false,
+  onSplit,
+}: {
+  isCompactViewport?: boolean;
+  onSplit?: () => void;
+} = {}) {
   const result = render(
     <MemoryRouter>
       <AppCommandProvider>
@@ -167,7 +173,7 @@ function renderPalette(isCompactViewport = false) {
         <Handler command="thread.next" />
         <Handler command="panel.toggle" />
         <Handler command="terminal.open" />
-        <CommandPalette threadId={null} projectId={null} />
+        <CommandPalette threadId={null} projectId={null} onSplit={onSplit} />
         <LocationProbe />
       </AppCommandProvider>
     </MemoryRouter>,
@@ -274,8 +280,24 @@ describe("CommandPalette", () => {
     expect(document.activeElement).toBe(screen.getByTestId("origin"));
   });
 
+  it("runs Split as an internal palette action without an app command", async () => {
+    const onSplit = vi.fn();
+    renderPalette({ onSplit });
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: ">split" } });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Split"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() => expect(onSplit).toHaveBeenCalledOnce());
+    expect(testState.calls).toEqual([]);
+  });
+
   it("runs a compact selection once after restoring focus", async () => {
-    renderPalette(true);
+    renderPalette({ isCompactViewport: true });
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
