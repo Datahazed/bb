@@ -1,10 +1,28 @@
-import type { ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import { useState, type ReactNode } from "react";
+import type { PromptTextMention, ThreadListEntry } from "@bb/domain";
 import {
+  NewThreadPromptBoxUI,
+  type NewThreadBranchConfig,
+  type NewThreadEnvironmentConfig,
+  type NewThreadModeConfig,
+  type NewThreadProjectConfig,
+  type NewThreadWorktreeConfig,
+} from "@/components/promptbox/NewThreadPromptBox";
+import { ModelPickerStoryQueryProvider } from "../../.ladle/model-picker-query-provider";
+import {
+  HOST_IDS,
   PROJECT_IDS,
   PROJECT_NAMES,
+  STORY_BRANCH_OPTIONS,
   STORY_PROVIDERS_BY_ID,
+  STORY_PROJECTS,
+  STORY_PROJECT_SOURCES,
+  STORY_WORKTREE_OPTIONS,
+  makeAttachmentsConfig,
+  makeExecutionControlsProps,
+  makeHost,
   makeThreadListEntry,
+  makeTypeaheadConfig,
 } from "../../.ladle/story-fixtures";
 import { RootComposeCompactHome } from "./RootComposeCompactHome";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
@@ -90,6 +108,61 @@ export const HOME_THREADS: ThreadListEntry[] = [
 
 export const MOBILE_RECENTS_VISIBILITY_CLASS = "bb-mobile-story-stage";
 
+const noop = () => {};
+
+const storyEnvironment: NewThreadEnvironmentConfig = {
+  value: `host:${HOST_IDS.local}:local`,
+  onChange: noop,
+  sources: STORY_PROJECT_SOURCES,
+  host: makeHost({ id: HOST_IDS.local }),
+  isLocal: true,
+};
+
+const storyBranch: NewThreadBranchConfig = {
+  value: null,
+  currentBranch: "main",
+  isNew: false,
+  options: STORY_BRANCH_OPTIONS,
+  loading: false,
+  currentOptionLabel: "Current: main",
+  placeholder: "Current checkout",
+  triggerLabel: "Current (main)",
+  triggerTitle: "Current: main",
+  onChange: noop,
+  onClear: noop,
+  onCreate: noop,
+};
+
+const storyWorktree: NewThreadWorktreeConfig = {
+  options: STORY_WORKTREE_OPTIONS,
+  value: null,
+  onChange: noop,
+};
+
+const storyProject: NewThreadProjectConfig = {
+  projects: STORY_PROJECTS,
+  value: PROJECT_IDS.bb,
+  onChange: noop,
+};
+
+const storyModeConfig = {
+  environment: storyEnvironment,
+  branch: storyBranch,
+  worktree: storyWorktree,
+  permission: {
+    value: "auto",
+    options: [
+      { value: "accept-edits", label: "Accept Edits" },
+      { value: "auto", label: "Approve for me" },
+      { value: "full", label: "Full Access", tone: "warning" },
+    ],
+    onChange: noop,
+    supported: true,
+  },
+} satisfies NewThreadModeConfig;
+
+const storyExecution = makeExecutionControlsProps();
+
 export function MobileRecentsVisibilityStyle() {
   return (
     <style>{`
@@ -103,16 +176,33 @@ export function MobileRecentsVisibilityStyle() {
 }
 
 export function StoryComposer() {
+  const [value, setValue] = useState("");
+  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
   return (
-    <div className="rounded-xl border border-border bg-background shadow-lift">
-      <div className="px-3 pt-3 pb-8 text-sm text-muted-foreground">
-        Ask anything.
-      </div>
-      <div className="flex items-center justify-between px-3 pb-3">
-        <span className="size-6 rounded-md border border-border-seam" />
-        <span className="size-6 rounded-md bg-foreground/80" />
-      </div>
-    </div>
+    <ModelPickerStoryQueryProvider>
+      <NewThreadPromptBoxUI
+        id="story-compact-home-composer"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={(nextValue, nextMentionRanges) => {
+          setValue(nextValue);
+          setMentionRanges(nextMentionRanges);
+        }}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled={false}
+        history={{
+          currentDraft: { text: "", mentions: [], attachments: [] },
+          entries: [],
+          onSelectEntry: noop,
+        }}
+        typeahead={makeTypeaheadConfig()}
+        attachments={makeAttachmentsConfig()}
+        modeConfig={storyModeConfig}
+        project={storyProject}
+        execution={storyExecution}
+      />
+    </ModelPickerStoryQueryProvider>
   );
 }
 
