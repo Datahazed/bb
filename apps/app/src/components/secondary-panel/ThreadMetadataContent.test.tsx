@@ -117,9 +117,8 @@ describe("ThreadMetadataCard", () => {
 });
 
 describe("EnvironmentRow", () => {
-  it("keeps the worktree name primary and exposes the rename action", async () => {
-    const onRenameWorktree = vi.fn();
-    const result = render(
+  it("keeps an existing custom worktree name primary and read-only", () => {
+    render(
       <TooltipProvider delayDuration={0}>
         <MemoryRouter>
           <EnvironmentRow
@@ -129,7 +128,6 @@ describe("EnvironmentRow", () => {
               name: "Design system polish",
             })}
             environmentDisplayHost={localHost}
-            onRenameWorktree={onRenameWorktree}
           />
         </MemoryRouter>
       </TooltipProvider>,
@@ -147,45 +145,13 @@ describe("EnvironmentRow", () => {
     expect(screen.queryByText("Name")).toBeNull();
     expect(screen.queryByText("Bersabel's MacBook Pro")).toBeNull();
     expect(screen.queryByText("env_obfuscated")).toBeNull();
-    const renameButton = screen.getByRole("button", {
-      name: "Rename worktree: Design system polish",
-    });
-    expect(renameButton.textContent).toContain("Design system polish");
     expect(
-      renameButton.querySelector('[data-icon="Edit"]')?.getAttribute("class"),
-    ).toContain("opacity-0");
-    renameButton.focus();
-    expect(document.activeElement).toBe(renameButton);
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Rename");
-    fireEvent.click(renameButton);
-    expect(onRenameWorktree).toHaveBeenCalledTimes(1);
-
-    result.rerender(
-      <TooltipProvider delayDuration={0}>
-        <MemoryRouter>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({ name: "Release coordination" })}
-            environmentDisplayHost={localHost}
-            onRenameWorktree={onRenameWorktree}
-            renameWorktreePending
-          />
-        </MemoryRouter>
-      </TooltipProvider>,
-    );
-
-    const pendingRenameButton = screen.getByRole("button", {
-      name: "Rename worktree: Release coordination",
-    });
-    expect(pendingRenameButton.hasAttribute("disabled")).toBe(true);
-    expect(
-      pendingRenameButton
-        .querySelector('[data-icon="Loading"]')
-        ?.getAttribute("class"),
-    ).toContain("opacity-100");
+      screen.queryByRole("button", { name: /rename worktree/iu }),
+    ).toBeNull();
+    expect(worktreeValue?.querySelector('[data-icon="Edit"]')).toBeNull();
   });
 
-  it("offers naming without using the worktree type as a row label", () => {
+  it("reports an unnamed worktree without offering a naming action", () => {
     render(
       <TooltipProvider delayDuration={0}>
         <MemoryRouter>
@@ -193,17 +159,18 @@ describe("EnvironmentRow", () => {
             thread={makeThread()}
             environment={makeEnvironment({ name: null })}
             environmentDisplayHost={localHost}
-            onRenameWorktree={vi.fn()}
           />
         </MemoryRouter>
       </TooltipProvider>,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Name worktree" }).textContent,
-    ).toContain("Add name");
+    expect(screen.getByText("Unnamed").closest("dd")).not.toBeNull();
     expect(screen.getByText("Worktree").closest("dt")).not.toBeNull();
     expect(screen.queryByText("Name")).toBeNull();
+    expect(screen.queryByText("Add name")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /name worktree/iu }),
+    ).toBeNull();
   });
 
   it("does not present direct locality as a resource identity", () => {

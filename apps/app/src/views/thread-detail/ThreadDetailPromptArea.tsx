@@ -158,8 +158,6 @@ interface ThreadDetailPromptAreaProps {
   environmentMachineName?: string;
   environmentTypeLabel?: EnvironmentWorkspaceTypeLabel;
   onCreateNewThreadInWorktree?: () => void;
-  onRenameWorktree?: () => void;
-  renameWorktreePending?: boolean;
   onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
   onPullRequestReady?: () => void;
@@ -354,8 +352,6 @@ export function ThreadDetailPromptArea({
   environmentMachineName,
   environmentTypeLabel,
   onCreateNewThreadInWorktree,
-  onRenameWorktree,
-  renameWorktreePending,
   onPullRequestDraft,
   onPullRequestMerge,
   onPullRequestReady,
@@ -1190,8 +1186,6 @@ export function ThreadDetailPromptArea({
           machineName={environmentMachineName}
           machineConnected={environmentMachineConnected}
           onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
-          onRenameWorktree={onRenameWorktree}
-          renameWorktreePending={renameWorktreePending}
         />
       ) : null,
     [
@@ -1203,9 +1197,7 @@ export function ThreadDetailPromptArea({
       environmentMachineName,
       environmentTypeLabel,
       onCreateNewThreadInWorktree,
-      onRenameWorktree,
       projectName,
-      renameWorktreePending,
     ],
   );
   const activePromptModeCard = useMemo(

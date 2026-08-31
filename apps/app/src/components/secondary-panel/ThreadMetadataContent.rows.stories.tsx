@@ -24,7 +24,6 @@ import {
   makeWorkspaceStatus,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { useWorktreeNameStoryState } from "../../../.ladle/worktree-name-story-fixture";
 
 export default {
   title: "right-panel/Info/Row",
@@ -50,28 +49,19 @@ function WorktreeRowFixture({
   initialName,
 }: WorktreeRowFixtureProps) {
   const environmentId = `env_${fixtureId}`;
-  const { name, onRenameWorktree, renameDialog } = useWorktreeNameStoryState({
-    environmentId,
-    initialName,
-    branchName: "bb/design-system-polish",
-  });
   const environment = makeEnvironment({
     id: environmentId,
-    name,
+    name: initialName,
   });
 
   return (
-    <>
-      <RowStage>
-        <EnvironmentRow
-          thread={makeThread({ environmentId: environment.id })}
-          environment={environment}
-          environmentDisplayHost={localEnvironmentDisplayHost}
-          onRenameWorktree={onRenameWorktree}
-        />
-      </RowStage>
-      {renameDialog}
-    </>
+    <RowStage>
+      <EnvironmentRow
+        thread={makeThread({ environmentId: environment.id })}
+        environment={environment}
+        environmentDisplayHost={localEnvironmentDisplayHost}
+      />
+    </RowStage>
   );
 }
 
@@ -184,7 +174,7 @@ export function Worktree() {
       </StoryRow>
       <StoryRow
         label="worktree"
-        hint="no custom metadata; the current Info action displays Add name"
+        hint="no custom metadata; Info reports Unnamed without an edit action"
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         <WorktreeRowFixture fixtureId="info-unnamed" initialName={null} />

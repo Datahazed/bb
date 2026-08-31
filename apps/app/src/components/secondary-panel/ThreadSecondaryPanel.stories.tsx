@@ -43,7 +43,6 @@ import {
 import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
-import { useWorktreeNameStoryState } from "../../../.ladle/worktree-name-story-fixture";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -206,11 +205,6 @@ const representativeWorkspaceStatus = makeWorkspaceStatus({
 });
 
 function RepresentativeInfoContent() {
-  const { name, onRenameWorktree, renameDialog } = useWorktreeNameStoryState({
-    environmentId: baseMetadataProps.environment?.id ?? "env_panel_story",
-    initialName: baseMetadataProps.environment?.name ?? null,
-    branchName: "bb/design-system-polish",
-  });
   const [selectedStoragePath, setSelectedStoragePath] = useState<string | null>(
     null,
   );
@@ -219,12 +213,8 @@ function RepresentativeInfoContent() {
     onSelectPath: setSelectedStoragePath,
     selectedPath: selectedStoragePath,
   });
-  const environment = baseMetadataProps.environment
-    ? { ...baseMetadataProps.environment, name }
-    : null;
   const props: ThreadMetadataContentProps = {
     ...baseMetadataProps,
-    environment,
     pullRequest: makePullRequest({
       number: 947,
       title: "Use the sidebar surface throughout the right panel",
@@ -237,15 +227,9 @@ function RepresentativeInfoContent() {
       isFilesLoading: false,
     },
     onCommitClick: noop,
-    ...(environment ? { onRenameWorktree } : {}),
   };
 
-  return (
-    <>
-      <ThreadMetadataContent {...props} />
-      {renameDialog}
-    </>
-  );
+  return <ThreadMetadataContent {...props} />;
 }
 
 interface ShellArgs {

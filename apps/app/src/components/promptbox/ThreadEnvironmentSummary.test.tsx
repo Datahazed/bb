@@ -176,8 +176,7 @@ describe("ThreadEnvironmentSummary", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the worktree name primary and exposes the rename action", async () => {
-    const onRenameWorktree = vi.fn();
+  it("keeps an existing custom worktree name primary and read-only", () => {
     const result = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
@@ -186,7 +185,6 @@ describe("ThreadEnvironmentSummary", () => {
           environmentIcon="FolderGit"
           environmentTypeLabel="Local worktree"
           machineName="Bersabel's MacBook Pro"
-          onRenameWorktree={onRenameWorktree}
         />
       </TooltipProvider>,
     );
@@ -200,48 +198,20 @@ describe("ThreadEnvironmentSummary", () => {
         ?.textContent,
     ).toBe("Design system polish");
     expect(screen.getAllByText("Bersabel's MacBook Pro")).toHaveLength(2);
-    const renameButton = screen.getByRole("button", {
-      name: "Rename worktree: Design system polish",
-    });
-    expect(renameButton.textContent).toContain("Design system polish");
     expect(
-      renameButton.querySelector('[data-icon="Edit"]')?.getAttribute("class"),
-    ).toContain("opacity-0");
-    renameButton.focus();
-    expect(document.activeElement).toBe(renameButton);
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Rename");
-    fireEvent.click(renameButton);
-    expect(onRenameWorktree).toHaveBeenCalledTimes(1);
-
-    result.rerender(
-      <TooltipProvider delayDuration={0}>
-        <ThreadEnvironmentSummary
-          environmentLabel="Release coordination"
-          environmentCompactLabel="Release coordination"
-          environmentIcon="FolderGit"
-          environmentTypeLabel="Local worktree"
-          machineName="Bersabel's MacBook Pro"
-          onRenameWorktree={onRenameWorktree}
-          renameWorktreePending
-        />
-      </TooltipProvider>,
-    );
-
-    const pendingRenameButton = screen.getByRole("button", {
-      name: "Rename worktree: Release coordination",
-    });
-    expect(pendingRenameButton.hasAttribute("disabled")).toBe(true);
+      screen.queryByRole("button", { name: /rename worktree/iu }),
+    ).toBeNull();
     expect(
-      pendingRenameButton
-        .querySelector('[data-icon="Loading"]')
-        ?.getAttribute("class"),
-    ).toContain("opacity-100");
+      result.container.querySelector(
+        '[data-promptbox-worktree-context=""] [data-icon="Edit"]',
+      ),
+    ).toBeNull();
   });
 
   it("truncates a long visible worktree name without overlapping controls", async () => {
     const longName =
       "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout";
-    render(
+    const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
           environmentLabel={longName}
@@ -249,23 +219,18 @@ describe("ThreadEnvironmentSummary", () => {
           environmentIcon="FolderGit"
           environmentTypeLabel="Local worktree"
           machineName="Bersabel's MacBook Pro"
-          onRenameWorktree={vi.fn()}
         />
       </TooltipProvider>,
     );
 
-    const renameButton = screen.getByRole("button", {
-      name: `Rename worktree: ${longName}`,
-    });
-    expect(renameButton.className).toContain("min-w-0");
-    expect(renameButton.textContent).toContain(longName);
-    expect(
-      renameButton.closest('[data-promptbox-worktree-context=""]'),
-    ).not.toBeNull();
-    renameButton.focus();
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Rename");
-    expect(
-      renameButton.querySelector('[data-icon="Edit"]')?.getAttribute("class"),
-    ).toContain("shrink-0");
+    const worktreeDisplay = container.querySelector<HTMLElement>(
+      '[data-promptbox-worktree-context=""] [data-option-display=""]',
+    );
+    expect(worktreeDisplay).not.toBeNull();
+    expect(worktreeDisplay!.className).toContain("min-w-0");
+    expect(worktreeDisplay!.textContent).toContain(longName);
+    expect(worktreeDisplay!.querySelector('[data-icon="Edit"]')).toBeNull();
+    fireEvent.focus(worktreeDisplay!);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(longName);
   });
 });

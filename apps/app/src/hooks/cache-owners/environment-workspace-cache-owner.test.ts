@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Environment } from "@bb/domain";
 import { createAppQueryClient } from "@/lib/query-client";
-import {
-  environmentQueryKey,
-  threadSearchQueryKey,
-} from "../queries/query-keys";
+import { threadSearchQueryKey } from "../queries/query-keys";
 import { applyEnvironmentUpdateResult } from "./environment-workspace-cache-owner";
 
 function createEnvironment(): Environment {
@@ -29,30 +26,6 @@ function createEnvironment(): Environment {
 }
 
 describe("applyEnvironmentUpdateResult", () => {
-  it("publishes the renamed environment to the composer and info cache", () => {
-    const queryClient = createAppQueryClient({
-      defaultOptions: {
-        queries: {
-          gcTime: Infinity,
-          retry: false,
-        },
-      },
-      showMutationErrorToasts: false,
-    });
-    const environment = createEnvironment();
-    queryClient.setQueryData(environmentQueryKey(environment.id), {
-      ...environment,
-      name: null,
-    });
-
-    applyEnvironmentUpdateResult({ environment, queryClient });
-
-    expect(
-      queryClient.getQueryData<Environment>(environmentQueryKey(environment.id))
-        ?.name,
-    ).toBe("Renamed environment");
-  });
-
   it("invalidates cached thread search rows that render environment metadata", () => {
     const queryClient = createAppQueryClient({
       defaultOptions: {

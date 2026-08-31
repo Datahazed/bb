@@ -9,7 +9,6 @@ import {
   makeThread,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { useWorktreeNameStoryState } from "../../../.ladle/worktree-name-story-fixture";
 
 export default {
   title: "right-panel/Info",
@@ -36,34 +35,16 @@ function MetadataFixture({
   )
     ? overrides.workspaceStatus
     : baseProps.workspaceStatus;
-  const { name, onRenameWorktree, renameDialog } = useWorktreeNameStoryState({
-    environmentId: initialEnvironment?.id ?? "env_info_story",
-    initialName: initialEnvironment?.name ?? null,
-    ...(workspaceStatus?.checkout.kind === "branch"
-      ? { branchName: workspaceStatus.checkout.branchName }
-      : {}),
-  });
-  const environment = initialEnvironment
-    ? { ...initialEnvironment, name }
-    : null;
-  const canRenameWorktree =
-    environment?.status === "ready" &&
-    (environment.isWorktree ||
-      environment.workspaceProvisionType === "managed-worktree");
 
   return (
-    <>
-      <PanelStage>
-        <ThreadMetadataContent
-          {...baseProps}
-          {...overrides}
-          environment={environment}
-          workspaceStatus={workspaceStatus}
-          {...(canRenameWorktree && environment ? { onRenameWorktree } : {})}
-        />
-      </PanelStage>
-      {renameDialog}
-    </>
+    <PanelStage>
+      <ThreadMetadataContent
+        {...baseProps}
+        {...overrides}
+        environment={initialEnvironment}
+        workspaceStatus={workspaceStatus}
+      />
+    </PanelStage>
   );
 }
 

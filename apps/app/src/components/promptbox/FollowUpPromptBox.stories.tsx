@@ -65,7 +65,6 @@ import type {
 import { PageShell } from "@/components/ui/page-shell.js";
 import { promptDraftToInput, type PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
-import { useWorktreeNameStoryState } from "../../../.ladle/worktree-name-story-fixture";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -180,7 +179,6 @@ interface EnvironmentSummaryArgs {
   projectName?: string;
   hostName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
-  onRenameWorktree?: () => void;
   onCreateNewThreadInWorktree?: () => void;
 }
 
@@ -190,7 +188,6 @@ function makeEnvironmentSummary({
   projectName,
   hostName,
   environmentCheckout,
-  onRenameWorktree,
   onCreateNewThreadInWorktree,
 }: EnvironmentSummaryArgs): ReactNode {
   const display = formatEnvironmentDisplay({
@@ -211,7 +208,6 @@ function makeEnvironmentSummary({
       environmentIcon={summaryDisplay.icon}
       environmentTypeLabel={summaryDisplay.typeLabel}
       environmentCheckout={environmentCheckout}
-      onRenameWorktree={onRenameWorktree}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
     />
   );
@@ -1247,16 +1243,11 @@ function WorktreeEnvironmentSummaryFixture({
   initialName: string | null;
 }) {
   const environmentId = `env_${fixtureId}`;
-  const { name, onRenameWorktree, renameDialog } = useWorktreeNameStoryState({
-    environmentId,
-    initialName,
-    branchName: STORY_BRANCH_NAME,
-  });
 
   const summary = makeEnvironmentSummary({
     environment: makeEnvironment({
       id: environmentId,
-      name,
+      name: initialName,
       isWorktree: true,
       workspaceProvisionType: "managed-worktree",
       status: "ready",
@@ -1264,16 +1255,10 @@ function WorktreeEnvironmentSummaryFixture({
     host: localEnvironmentDisplayHost,
     hostName: "Bersabel's MacBook Pro",
     environmentCheckout: STORY_CHECKOUT_DISPLAY,
-    onRenameWorktree: name === null ? undefined : onRenameWorktree,
     onCreateNewThreadInWorktree: noop,
   });
 
-  return (
-    <>
-      {summary}
-      {renameDialog}
-    </>
-  );
+  return summary;
 }
 
 export function QueuedWorkspace() {

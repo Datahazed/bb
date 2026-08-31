@@ -21,8 +21,6 @@ interface ThreadEnvironmentSummaryProps {
   environmentCheckout?: WorkspaceCheckoutDisplay;
   machineName?: string;
   machineConnected?: boolean;
-  onRenameWorktree?: () => void;
-  renameWorktreePending?: boolean;
   onCreateNewThreadInWorktree?: () => void;
 }
 
@@ -35,8 +33,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   environmentCheckout,
   machineName,
   machineConnected = true,
-  onRenameWorktree,
-  renameWorktreePending = false,
   onCreateNewThreadInWorktree,
 }: ThreadEnvironmentSummaryProps) {
   const isWorktree = environmentTypeLabel?.endsWith("worktree") ?? false;
@@ -94,53 +90,14 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               )}
             />
           ) : null}
-          {onRenameWorktree ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={`Rename worktree: ${environmentLabel}`}
-                  disabled={renameWorktreePending}
-                  onClick={onRenameWorktree}
-                  className="group -ml-1 inline-flex h-6 min-w-0 shrink items-center gap-1 rounded-md px-1 text-xs leading-tight text-muted-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
-                >
-                  <span
-                    className="min-w-0 truncate"
-                    data-promptbox-full-label=""
-                  >
-                    {environmentLabel}
-                  </span>
-                  {environmentCompactLabel ? (
-                    <span
-                      className="min-w-0 truncate"
-                      data-promptbox-compact-label=""
-                    >
-                      {environmentCompactLabel}
-                    </span>
-                  ) : null}
-                  <Icon
-                    name={renameWorktreePending ? "Loading" : "Edit"}
-                    className={cn(
-                      "size-3.5 shrink-0 transition-opacity",
-                      renameWorktreePending
-                        ? "animate-spin opacity-100"
-                        : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
-                    )}
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Rename</TooltipContent>
-            </Tooltip>
-          ) : (
-            <OptionDisplay
-              label={isWorktree ? "Worktree" : "Environment"}
-              value={environmentLabel}
-              compactValue={environmentCompactLabel}
-              className="h-6 min-w-0 shrink px-0"
-              tooltip={environmentLabel}
-              muted
-            />
-          )}
+          <OptionDisplay
+            label={isWorktree ? "Worktree" : "Environment"}
+            value={environmentLabel}
+            compactValue={environmentCompactLabel}
+            className="h-6 min-w-0 shrink px-0"
+            tooltip={environmentLabel}
+            muted
+          />
         </div>
       ) : null}
       {machineName ? (

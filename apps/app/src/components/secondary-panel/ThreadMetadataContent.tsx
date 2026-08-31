@@ -286,16 +286,12 @@ interface EnvironmentRowProps {
   thread: Thread;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
-  onRenameWorktree?: () => void;
-  renameWorktreePending?: boolean;
 }
 
 export function EnvironmentRow({
   thread,
   environment,
   environmentDisplayHost,
-  onRenameWorktree,
-  renameWorktreePending = false,
 }: EnvironmentRowProps) {
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId: thread.projectId,
@@ -309,8 +305,7 @@ export function EnvironmentRow({
     host: environmentDisplayHost,
   });
   const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
-  const worktreeTitle =
-    environment.name ?? (onRenameWorktree ? "Add name" : "Unnamed");
+  const worktreeTitle = environment.name ?? "Unnamed";
   const lifecycleTitle =
     display.lifecycle === "provisioning"
       ? "Provisioning"
@@ -335,42 +330,12 @@ export function EnvironmentRow({
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      {onRenameWorktree ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={
-                environment.name
-                  ? `Rename worktree: ${environment.name}`
-                  : "Name worktree"
-              }
-              disabled={renameWorktreePending}
-              onClick={onRenameWorktree}
-              className="group -ml-1 inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1 py-0.5 text-left text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
-            >
-              <span className="min-w-0 truncate">{worktreeTitle}</span>
-              <Icon
-                name={renameWorktreePending ? "Loading" : "Edit"}
-                className={cn(
-                  "size-3.5 shrink-0 text-muted-foreground transition-opacity",
-                  renameWorktreePending
-                    ? "animate-spin opacity-100"
-                    : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
-                )}
-              />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Rename</TooltipContent>
-        </Tooltip>
-      ) : (
-        <span
-          className="min-w-0 truncate text-foreground"
-          title={environmentTitle}
-        >
-          {worktreeTitle}
-        </span>
-      )}
+      <span
+        className="min-w-0 truncate text-foreground"
+        title={environmentTitle}
+      >
+        {worktreeTitle}
+      </span>
       {lifecycleTitle ? (
         <span className="shrink-0 text-muted-foreground">
           · {lifecycleTitle}
@@ -941,8 +906,6 @@ export interface ThreadMetadataContentProps {
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   updateThreadPending: boolean;
-  onRenameWorktree?: () => void;
-  renameWorktreePending?: boolean;
   storage?: ThreadStorageRowProps;
   onAssignParent: (parentThreadId: string | null) => void;
   onParentSelectorOpenChange: (open: boolean) => void;
@@ -1069,8 +1032,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     mergeBaseRemoteBranchOptions,
     isLoadingMergeBaseBranchOptions,
     updateThreadPending,
-    onRenameWorktree,
-    renameWorktreePending,
     storage,
     onAssignParent,
     onParentSelectorOpenChange,
@@ -1104,8 +1065,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         thread={thread}
         environment={environment}
         environmentDisplayHost={environmentDisplayHost}
-        onRenameWorktree={onRenameWorktree}
-        renameWorktreePending={renameWorktreePending}
       />
       <MachineRow
         name={environmentHostName}
