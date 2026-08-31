@@ -748,9 +748,13 @@ export function useThreadPendingInteractions(
         signal,
       }),
     enabled,
-    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnMount:
+      options?.refetchOnMount ??
+      ((query) => (query.getObserversCount() === 1 ? "always" : true)),
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
-    staleTime: options?.staleTime,
+    ...(options?.staleTime === undefined
+      ? {}
+      : { staleTime: options.staleTime }),
   });
 }
 

@@ -1,4 +1,9 @@
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { QueryKey } from "@tanstack/react-query";
 import type {
   PermissionMode,
@@ -10,7 +15,6 @@ import { permissionModeValues } from "@bb/domain";
 import { toRecord } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
-  SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -319,15 +323,21 @@ export function useSystemExecutionOptions(
   });
 }
 
+export function systemConfigQueryOptions() {
+  return queryOptions({
+    queryKey: systemConfigQueryKey(),
+    queryFn: ({ signal }) => sdk.system.config({ signal }),
+    staleTime: 60_000,
+  });
+}
+
 export function useSystemConfig(options?: QueryOptions) {
   const enabled = options?.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
 
-  return useQuery<SystemConfigResponse>({
-    queryKey: systemConfigQueryKey(),
-    queryFn: ({ signal }) => sdk.system.config({ signal }),
+  return useQuery({
+    ...systemConfigQueryOptions(),
     enabled,
-    staleTime: 60_000,
   });
 }
 
