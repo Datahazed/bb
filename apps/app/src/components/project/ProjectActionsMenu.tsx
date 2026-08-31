@@ -27,6 +27,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useProjectActions } from "./ProjectActionsProvider";
 
 interface ProjectActionsMenuBaseProps {
+  onCreateThread?: () => void;
   project: ProjectResponse;
 }
 
@@ -43,6 +44,7 @@ interface ProjectActionsContextMenuProps extends ProjectActionsMenuBaseProps {
 type ProjectActionsMenuSurface = "context" | "dropdown";
 
 interface ProjectActionsMenuItemsProps extends ProjectActionsMenuBaseProps {
+  onCreateThread?: () => void;
   surface: ProjectActionsMenuSurface;
 }
 
@@ -115,6 +117,7 @@ function ProjectActionMenuSeparator({
 }
 
 function ProjectActionsMenuItems({
+  onCreateThread,
   project,
   surface,
 }: ProjectActionsMenuItemsProps) {
@@ -128,6 +131,18 @@ function ProjectActionsMenuItems({
 
   return (
     <>
+      {onCreateThread ? (
+        <>
+          <ProjectActionMenuItem
+            surface={surface}
+            icon="MessageSquarePlus"
+            onSelect={onCreateThread}
+          >
+            New thread
+          </ProjectActionMenuItem>
+          <ProjectActionMenuSeparator surface={surface} />
+        </>
+      ) : null}
       <ProjectActionMenuItem
         surface={surface}
         icon="Settings"
@@ -173,6 +188,7 @@ function ProjectActionsMenuItems({
 }
 
 export function ProjectActionsMenu({
+  onCreateThread,
   project,
   triggerClassName,
   onOpenChange,
@@ -204,7 +220,11 @@ export function ProjectActionsMenu({
         align="end"
         onClick={stopProjectActionsMenuClickPropagation}
       >
-        <ProjectActionsMenuItems project={project} surface="dropdown" />
+        <ProjectActionsMenuItems
+          project={project}
+          onCreateThread={onCreateThread}
+          surface="dropdown"
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -222,6 +242,7 @@ export function ProjectActionsContextMenu(
 
 function ProjectActionsCompactLongPressMenu({
   children,
+  onCreateThread,
   project,
   onOpenChange,
 }: ProjectActionsContextMenuProps) {
@@ -229,7 +250,13 @@ function ProjectActionsCompactLongPressMenu({
     <CompactLongPressMenu
       label={`${project.name} actions`}
       onOpenChange={onOpenChange}
-      items={<ProjectActionsMenuItems project={project} surface="dropdown" />}
+      items={
+        <ProjectActionsMenuItems
+          project={project}
+          onCreateThread={onCreateThread}
+          surface="dropdown"
+        />
+      }
     >
       {children}
     </CompactLongPressMenu>
@@ -238,6 +265,7 @@ function ProjectActionsCompactLongPressMenu({
 
 function ProjectActionsDesktopContextMenu({
   children,
+  onCreateThread,
   project,
   onOpenChange,
 }: ProjectActionsContextMenuProps) {
@@ -248,7 +276,11 @@ function ProjectActionsDesktopContextMenu({
         aria-label={`${project.name} actions`}
         onClick={stopProjectActionsMenuClickPropagation}
       >
-        <ProjectActionsMenuItems project={project} surface="context" />
+        <ProjectActionsMenuItems
+          project={project}
+          onCreateThread={onCreateThread}
+          surface="context"
+        />
       </ContextMenuContent>
     </ContextMenu>
   );

@@ -414,7 +414,10 @@ describe("legacy new-thread draft migration", () => {
       first,
     );
 
-    initializeNewThreadDraftSlots("project-current", 100);
+    initializeNewThreadDraftSlots(
+      { projectId: "project-current", sectionId: null },
+      100,
+    );
     expect(readNewThreadDraftSlots()).toEqual([
       expect.objectContaining({
         lastEditedAt: 100,
@@ -430,14 +433,20 @@ describe("legacy new-thread draft migration", () => {
       promptDraftSlotStorageKeysForTests.legacy,
       first,
     );
-    initializeNewThreadDraftSlots("project-other", 200);
+    initializeNewThreadDraftSlots(
+      { projectId: "project-other", sectionId: null },
+      200,
+    );
     expect(readNewThreadDraftSlots()).toHaveLength(1);
 
     window.localStorage.setItem(
       promptDraftSlotStorageKeysForTests.legacy,
       legacyDraft("Legacy second"),
     );
-    initializeNewThreadDraftSlots("project-other", 300);
+    initializeNewThreadDraftSlots(
+      { projectId: "project-other", sectionId: null },
+      300,
+    );
     expect(readNewThreadDraftSlots()).toEqual([
       expect.objectContaining({
         lastEditedAt: 300,
@@ -480,7 +489,10 @@ describe("legacy new-thread draft migration", () => {
       }
     });
 
-    initializeNewThreadDraftSlots("project-current", 100);
+    initializeNewThreadDraftSlots(
+      { projectId: "project-current", sectionId: null },
+      100,
+    );
     expect(
       window.localStorage.getItem(promptDraftSlotStorageKeysForTests.legacy),
     ).toBe(second);
@@ -488,7 +500,10 @@ describe("legacy new-thread draft migration", () => {
       "Window one",
     ]);
 
-    initializeNewThreadDraftSlots("project-current", 200);
+    initializeNewThreadDraftSlots(
+      { projectId: "project-current", sectionId: null },
+      200,
+    );
     expect(
       window.localStorage.getItem(promptDraftSlotStorageKeysForTests.legacy),
     ).toBeNull();
@@ -517,7 +532,10 @@ describe("legacy new-thread draft migration", () => {
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    initializeNewThreadDraftSlots("project-current", 100);
+    initializeNewThreadDraftSlots(
+      { projectId: "project-current", sectionId: null },
+      100,
+    );
 
     expect(
       window.localStorage.getItem(promptDraftSlotStorageKeysForTests.legacy),

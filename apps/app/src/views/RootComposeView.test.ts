@@ -29,16 +29,18 @@ import {
   canCreateRootComposeTerminal,
   finishRootComposeThreadCreate,
   hasSingleUseRootComposeTargetState,
-  readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
-  resolveRootComposeInitialDestination,
   resolveRootComposeSelectionScope,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
-import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
+import {
+  readRootComposeSectionId,
+  withRootComposeDraftSlotId,
+} from "@/lib/root-compose-location-state";
+import { resolveNewThreadDraftDestination } from "@/lib/prompt-draft-slots";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import {
@@ -468,18 +470,18 @@ describe("shouldReplaceInitialPromptFromLocationState", () => {
   });
 });
 
-describe("readSectionIdFromLocationState", () => {
+describe("readRootComposeSectionId", () => {
   it("returns a trimmed section id seeded by navigation state", () => {
-    expect(readSectionIdFromLocationState({ sectionId: " sec_work " })).toBe(
+    expect(readRootComposeSectionId({ sectionId: " sec_work " })).toBe(
       "sec_work",
     );
   });
 
   it("returns null when no usable section id is present", () => {
-    expect(readSectionIdFromLocationState(null)).toBeNull();
-    expect(readSectionIdFromLocationState({})).toBeNull();
-    expect(readSectionIdFromLocationState({ sectionId: "" })).toBeNull();
-    expect(readSectionIdFromLocationState({ sectionId: 42 })).toBeNull();
+    expect(readRootComposeSectionId(null)).toBeNull();
+    expect(readRootComposeSectionId({})).toBeNull();
+    expect(readRootComposeSectionId({ sectionId: "" })).toBeNull();
+    expect(readRootComposeSectionId({ sectionId: 42 })).toBeNull();
   });
 });
 
@@ -513,8 +515,9 @@ describe("readRootComposeSectionTargetFromLocationState", () => {
 describe("root compose draft slot context", () => {
   it("restores the stored submit destination instead of the current root default", () => {
     expect(
-      resolveRootComposeInitialDestination({
-        currentProjectId: "project-current-default",
+      resolveNewThreadDraftDestination({
+        fallbackProjectId: "project-current-default",
+        routeProjectId: null,
         routeSectionId: "section-route",
         storedDestination: {
           projectId: "project-stored",
@@ -529,8 +532,9 @@ describe("root compose draft slot context", () => {
 
   it("seeds a fresh slot from the current project and route section", () => {
     expect(
-      resolveRootComposeInitialDestination({
-        currentProjectId: "project-current-default",
+      resolveNewThreadDraftDestination({
+        fallbackProjectId: "project-current-default",
+        routeProjectId: null,
         routeSectionId: "section-route",
         storedDestination: null,
       }),

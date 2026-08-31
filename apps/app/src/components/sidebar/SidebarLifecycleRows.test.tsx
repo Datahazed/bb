@@ -140,6 +140,7 @@ describe("SidebarDraftRows", () => {
       "older",
     ]);
     expect(container.querySelector('[data-icon="EditFile"]')).toBeNull();
+    expect(screen.getByText("Drafts")).not.toBeNull();
     expect(
       container.querySelectorAll("[data-sidebar-draft-state]"),
     ).toHaveLength(2);

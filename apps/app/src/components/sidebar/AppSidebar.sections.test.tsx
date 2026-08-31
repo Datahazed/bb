@@ -62,6 +62,24 @@ describe("SidebarTopLevelSections", () => {
     ).toEqual(["New thread", "Plugin page", "Thread row"]);
   });
 
+  it("renders regions and keyboard order in the persisted order", () => {
+    render(
+      <SidebarTopLevelSections
+        order={["threads", "bb-controls", "plugins"]}
+        sections={sections}
+      />,
+    );
+
+    expect(renderedSectionIds()).toEqual([
+      "thread-list",
+      "new-thread-extensions",
+      "plugin-pages",
+    ]);
+    expect(
+      screen.getAllByRole("button").map((button) => button.textContent),
+    ).toEqual(["Thread row", "New thread", "Plugin page"]);
+  });
+
   it("draws no divider beside empty regions", () => {
     const view = render(
       <SidebarTopLevelSections
@@ -90,6 +108,20 @@ describe("SidebarTopLevelSections", () => {
       "new-thread-extensions",
       "thread-list",
     ]);
+    expect(
+      view.container.querySelectorAll("[data-sidebar-top-level-divider]"),
+    ).toHaveLength(1);
+  });
+
+  it("collapses an empty BB-controls region after reordering", () => {
+    const view = render(
+      <SidebarTopLevelSections
+        order={["threads", "bb-controls", "plugins"]}
+        sections={{ ...sections, "new-thread-extensions": null }}
+      />,
+    );
+
+    expect(renderedSectionIds()).toEqual(["thread-list", "plugin-pages"]);
     expect(
       view.container.querySelectorAll("[data-sidebar-top-level-divider]"),
     ).toHaveLength(1);

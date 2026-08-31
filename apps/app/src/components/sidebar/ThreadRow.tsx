@@ -31,9 +31,13 @@ import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
+  SIDEBAR_COLLAPSIBLE_HOVER_ACTIONS_INSET_CLASS,
+  SIDEBAR_COLLAPSIBLE_STATUS_SLOT_CLASS,
+  SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
@@ -715,7 +719,10 @@ function ThreadRowComponent({
       <span
         className={cn(
           "flex min-w-0 flex-1 items-center gap-1.5",
-          !shortcut && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+          !shortcut &&
+            (parentOptions && hasChildren
+              ? SIDEBAR_COLLAPSIBLE_HOVER_ACTIONS_INSET_CLASS
+              : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
       >
         {isEditing ? (
@@ -738,7 +745,7 @@ function ThreadRowComponent({
                 data-sidebar-thread-cross-project=""
                 role="img"
                 aria-label={crossProjectLabel}
-                className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground"
+                className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground/75"
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -751,24 +758,54 @@ function ThreadRowComponent({
             <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
           </Tooltip>
         ) : null}
-        {parentOptions && hasChildren ? (
-          <SidebarChildToggleChevron
-            isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${labelTitle} threads`}
-            collapseLabel={`Collapse ${labelTitle} threads`}
-            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover
-          />
-        ) : null}
       </span>
-      <span className="flex shrink-0 items-center gap-0.5">
+      <span
+        data-sidebar-thread-trailing-controls=""
+        className="relative flex shrink-0 items-center gap-0.5"
+      >
         {shortcut ? (
-          <AppCommandShortcutPill shortcut={shortcut} />
+          <>
+            <span className="max-md:pointer-coarse:hidden">
+              <AppCommandShortcutPill shortcut={shortcut} />
+            </span>
+            <span
+              data-sidebar-thread-status-slot=""
+              className="hidden h-9 w-5 shrink-0 items-center justify-center max-md:pointer-coarse:flex"
+            >
+              {splitIndicator.miniMap ? (
+                <span
+                  data-sidebar-thread-trailing-indicator=""
+                  className={cn(
+                    SIDEBAR_ROW_GLYPH_SLOT_CLASS,
+                    COARSE_POINTER_GLYPH_BOX_CLASS,
+                  )}
+                >
+                  <SplitPaneMiniMap
+                    slots={splitIndicator.miniMap}
+                    label={splitIndicatorLabel}
+                    isWorking={splitIndicatorIsWorking}
+                  />
+                </span>
+              ) : (
+                <ThreadTrailingIndicator
+                  {...trailingIndicatorState}
+                  hideIdleDraftLabel={
+                    !hasHiddenChildren && trailingIndicatorKind === "draft"
+                  }
+                  pluginStatus={pluginThreadRowStatus}
+                />
+              )}
+            </span>
+          </>
         ) : (
           <span
+            data-sidebar-thread-status-slot=""
             className={cn(
-              "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
+              "flex shrink-0 items-center justify-end",
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+              parentOptions &&
+                hasChildren &&
+                SIDEBAR_COLLAPSIBLE_STATUS_SLOT_CLASS,
             )}
           >
             <span
@@ -783,7 +820,7 @@ function ThreadRowComponent({
                 }
                 className={cn(
                   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-                  "absolute inset-0 flex items-center justify-center",
+                  "absolute inset-0 flex items-center justify-center max-md:pointer-coarse:!opacity-100",
                 )}
               >
                 {splitIndicator.miniMap ? (
@@ -810,39 +847,58 @@ function ThreadRowComponent({
                   />
                 )}
               </span>
-              <div
-                data-sidebar-hover-actions-open={
-                  isActionsOpen ? "true" : undefined
-                }
-                className={cn(
-                  SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
-                )}
-              >
-                <ThreadArchiveQuickAction
-                  thread={thread}
-                  className={cn(
-                    "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                    "-mr-0.5",
-                    SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS,
-                  )}
-                />
-                <ThreadActionsMenu
-                  thread={thread}
-                  triggerClassName={cn(
-                    "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                    SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS,
-                  )}
-                  onOpenInSplit={splitAvailable ? openInSplit : undefined}
-                  onOpenChange={setIsDropdownActionsOpen}
-                />
-              </div>
             </span>
           </span>
         )}
+        <div
+          data-sidebar-mobile-row-actions=""
+          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
+          className={cn(
+            shortcut
+              ? "hidden max-md:pointer-coarse:relative max-md:pointer-coarse:inline-flex"
+              : SIDEBAR_HOVER_ACTIONS_CLASS,
+            !shortcut &&
+              "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto",
+          )}
+        >
+          <ThreadArchiveQuickAction
+            thread={thread}
+            className={cn(
+              "text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
+              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+              "-mr-0.5",
+              SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS,
+            )}
+          />
+          <ThreadActionsMenu
+            thread={thread}
+            triggerClassName={cn(
+              "text-subtle-foreground hover:bg-transparent hover:text-foreground",
+              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+              SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS,
+            )}
+            onOpenInSplit={splitAvailable ? openInSplit : undefined}
+            onOpenChange={setIsDropdownActionsOpen}
+          />
+        </div>
       </span>
+      {parentOptions && hasChildren ? (
+        <span
+          data-sidebar-collapse-caret-slot=""
+          className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
+        >
+          <SidebarChildToggleChevron
+            isCollapsed={isParentCollapsed}
+            expandLabel={`Expand ${labelTitle} threads`}
+            collapseLabel={`Collapse ${labelTitle} threads`}
+            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+            revealOnHover
+          />
+        </span>
+      ) : null}
     </>
   );
 

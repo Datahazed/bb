@@ -1666,7 +1666,7 @@ const SidebarContent = React.forwardRef<
 });
 SidebarContent.displayName = "SidebarContent";
 
-type SidebarStickyTierKind = "label" | "project" | "parent";
+type SidebarStickyTierKind = "toolbar" | "label" | "project" | "parent";
 
 type SidebarStickyStackProps = React.ComponentProps<"div">;
 

@@ -24,6 +24,7 @@ import {
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
+import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import {
   buildPaletteThreadSearchRows,
@@ -154,6 +155,16 @@ export function ThreadSearchPaletteMode({
           return;
         }
         if (row.draftSlotId !== null) {
+          if (split) {
+            openPaneContentInSplit({
+              store,
+              navigate,
+              content: { kind: "new-thread", draftSlotId: row.draftSlotId },
+              route: getRootComposeRoutePath(),
+              enabled: !isCompact,
+            });
+            return;
+          }
           navigate(getRootComposeRoutePath(), {
             state: withRootComposeDraftSlotId(
               { focusPrompt: true },
@@ -325,7 +336,17 @@ function ThreadSearchScopeFilter({
             cycle(event.key === "ArrowDown" ? 1 : -1);
             return;
           }
-          if (event.key === "Enter" || event.key === "Escape") {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            if (open) {
+              returnToInput();
+            } else {
+              setOpen(true);
+            }
+            return;
+          }
+          if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
             returnToInput();
