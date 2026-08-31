@@ -179,7 +179,6 @@ export function AppSidebar({
       state: { focusPrompt: true },
     });
   }, [closeOnMobile, navigate]);
-
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
     threadShortcutTargetsRef.current = targets;
@@ -312,7 +311,6 @@ export function AppSidebar({
                 newThreadSplit={newThreadSplit}
                 onNewChat={handleNewChat}
                 onSplit={onSplit}
-                onSearchThreads={closeOnMobile}
               />
               {toolsRoutePath ? (
                 <ExtensionsNavSidebarItem

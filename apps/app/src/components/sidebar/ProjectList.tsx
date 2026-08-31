@@ -144,10 +144,7 @@ import {
 } from "./sidebarRowClasses";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 export { TopLevelSidebarSection };
-import {
-  useAppCommandRunner,
-  useAppCommandShortcut,
-} from "@/components/commands/AppCommandProvider";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { useNewThreadSplitIndicator } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import {
@@ -187,7 +184,6 @@ interface ProjectListActionButtonsProps {
   };
   onNewChat?: () => void;
   onSplit?: () => void;
-  onSearchThreads?: () => void;
 }
 
 interface ProjectListShellProps {
@@ -825,12 +821,9 @@ export function ProjectListActionButtons({
   newThreadSplit,
   onNewChat,
   onSplit,
-  onSearchThreads,
 }: ProjectListActionButtonsProps) {
-  const commandRunner = useAppCommandRunner();
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
-  const threadSearchShortcut = useAppCommandShortcut("thread.search");
   const newThreadSplitIndicator = useNewThreadSplitIndicator(splitEnabled);
 
   return (
@@ -903,27 +896,6 @@ export function ProjectListActionButtons({
             </div>
           ) : null}
         </div>
-        <span className="flex shrink-0 items-center gap-1">
-          <AppCommandShortcutHint shortcut={threadSearchShortcut} />
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            aria-label={
-              threadSearchShortcut
-                ? `Search threads (${threadSearchShortcut.label})`
-                : "Search threads"
-            }
-            aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
-            className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-            onClick={(event) => {
-              onSearchThreads?.();
-              commandRunner.dispatch("thread.search", event.currentTarget);
-            }}
-          >
-            <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-          </Button>
-        </span>
       </div>
     </div>
   );
