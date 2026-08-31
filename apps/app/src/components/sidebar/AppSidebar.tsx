@@ -49,6 +49,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
+import { SidebarTopRegionCustomizeMenu } from "./SidebarTopRegionCustomizeMenu";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -206,7 +207,6 @@ export function AppSidebar({
       isCreatingProject={quickCreateProject.isCreating}
     />
   );
-
   const body = (
     <>
       {showTopReserve ? (
@@ -218,15 +218,21 @@ export function AppSidebar({
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
           )}
         >
-          <SidebarHistoryNavigationControls
-            onNavigate={closeOnMobile}
+          <div
             className={cn(
-              "group-data-[collapsible=icon]:hidden",
+              "flex items-center gap-1 group-data-[collapsible=icon]:hidden",
               usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
             )}
-          />
+          >
+            <SidebarHistoryNavigationControls onNavigate={closeOnMobile} />
+            <SidebarTopRegionCustomizeMenu />
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="flex h-8 shrink-0 items-center justify-end px-2 group-data-[collapsible=icon]:hidden">
+          <SidebarTopRegionCustomizeMenu />
+        </div>
+      )}
       <SidebarNavigationRegion
         onNavigate={closeOnMobile}
         splitEnabled
