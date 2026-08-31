@@ -82,7 +82,6 @@ export interface NewThreadEnvironmentConfig {
   host: EnvironmentPickerUIProps["host"];
   isLocal: EnvironmentPickerUIProps["isLocal"];
   machines?: EnvironmentPickerMachines | null;
-  onNewMachine?: () => void;
   onRequestMachineSetup?: (host: Host) => void;
   reuseDisabled?: boolean;
   worktreeDisabledReason?: string | null;
@@ -539,7 +538,6 @@ export function ProjectlessMachineSlot({
         parsedEnvironment?.type === "host" ? parsedEnvironment.hostId : null
       }
       onChange={handleMachineChange}
-      onNewMachine={environment.onNewMachine}
       disabled={environment.disabled}
       className="shrink-0"
       muted

@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
 
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
-import {
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   act,
   cleanup,
@@ -16,7 +10,6 @@ import {
   screen,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -1322,15 +1315,6 @@ describe("useComposer", () => {
 });
 
 describe("PluginNavSidebarItems + PluginPanelView", () => {
-  function renderPluginNav(ui: ReactNode) {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    return render(
-      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
-    );
-  }
-
   function Board() {
     return <div>board panel body</div>;
   }
@@ -1355,7 +1339,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
   it("keeps built-in Automations out of the traditional plugin nav list", () => {
     registerAutomationsPanel();
 
-    renderPluginNav(
+    render(
       <MemoryRouter>
         <PluginNavSidebarItems />
       </MemoryRouter>,
@@ -1379,7 +1363,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         ],
       }),
     );
-    renderPluginNav(
+    render(
       <MemoryRouter initialEntries={["/"]}>
         <PluginNavSidebarItems />
         <Routes>
@@ -1497,7 +1481,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       },
     });
 
-    renderPluginNav(
+    render(
       <Provider store={store}>
         <MemoryRouter initialEntries={["/"]}>
           <PluginNavSidebarItems splitEnabled />
@@ -1527,7 +1511,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         ],
       }),
     );
-    renderPluginNav(
+    render(
       <MemoryRouter
         initialEntries={[
           "/plugins/simple-notes/simple-notes/bb-plugin-marketplaces-and-compatible-updates.md",
@@ -1555,7 +1539,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         icon: "columns",
       },
     ]);
-    renderPluginNav(
+    render(
       <MemoryRouter>
         <PluginNavSidebarItems />
       </MemoryRouter>,
@@ -1595,7 +1579,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         icon: "columns",
       },
     ]);
-    renderPluginNav(
+    render(
       <MemoryRouter>
         <PluginNavSidebarItems />
       </MemoryRouter>,
