@@ -14,6 +14,7 @@ import { ThreadEnvironmentSummary } from "./ThreadEnvironmentSummary";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function mockMachineNameTruncation(isTruncated: boolean): void {
@@ -25,6 +26,20 @@ function mockMachineNameTruncation(isTruncated: boolean): void {
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
     function scrollWidth(this: HTMLElement) {
       if (!this.hasAttribute("data-machine-name-text")) return 0;
+      return isTruncated ? 200 : 100;
+    },
+  );
+}
+
+function mockEnvironmentNameTruncation(isTruncated: boolean): void {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+    function clientWidth(this: HTMLElement) {
+      return this.hasAttribute("data-environment-name-text") ? 100 : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+    function scrollWidth(this: HTMLElement) {
+      if (!this.hasAttribute("data-environment-name-text")) return 0;
       return isTruncated ? 200 : 100;
     },
   );
@@ -188,7 +203,8 @@ describe("ThreadEnvironmentSummary", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe("Worktree");
   });
 
-  it("does not add a redundant tooltip or focus stop to the machine icon", async () => {
+  it("does not add a redundant tooltip or focus stop to a fitting direct machine name", () => {
+    mockEnvironmentNameTruncation(false);
     const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
@@ -209,10 +225,57 @@ describe("ThreadEnvironmentSummary", () => {
       '[data-option-display=""]',
     );
     expect(machineDisplay).not.toBeNull();
+    expect(machineDisplay!.getAttribute("tabindex")).toBeNull();
+    fireEvent.pointerEnter(machineDisplay!);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("reveals a direct machine name only when it is truncated", async () => {
+    mockEnvironmentNameTruncation(true);
+    const { container } = render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          environmentLabel="Bersabel's remote build MacBook Pro"
+          environmentCompactLabel="Bersabel's remote build MacBook Pro"
+          environmentIcon="Laptop"
+          environmentTypeLabel="Machine"
+        />
+      </TooltipProvider>,
+    );
+
+    const machineDisplay = container.querySelector<HTMLElement>(
+      '[data-option-display=""]',
+    );
+    expect(machineDisplay?.getAttribute("tabindex")).toBe("0");
     fireEvent.focus(machineDisplay!);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Build Mac mini",
+      "Bersabel's remote build MacBook Pro",
     );
+  });
+
+  it("shows direct machine offline status without adding a machine tooltip", async () => {
+    mockEnvironmentNameTruncation(false);
+    const { container } = render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          environmentLabel="Build Mac mini"
+          environmentCompactLabel="Build Mac mini"
+          environmentIcon="Laptop"
+          environmentTypeLabel="Machine"
+          machineConnected={false}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(container.querySelector('[data-icon="Laptop"]')).toBeNull();
+    expect(container.querySelector('[data-icon="LaptopIssue"]')).not.toBeNull();
+    const machineDisplay = screen.getByLabelText(
+      "Machine: Build Mac mini, offline",
+    );
+    expect(machineDisplay.getAttribute("tabindex")).toBeNull();
+
+    fireEvent.focus(screen.getByRole("img", { name: "Offline" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Offline");
   });
 
   it("explains the create-thread action in a tooltip", async () => {
@@ -259,6 +322,30 @@ describe("ThreadEnvironmentSummary", () => {
     expect(screen.getByRole("img", { name: "Worktree" })).not.toBeNull();
   });
 
+  it("keeps unnamed worktree identity while exposing offline machine status", async () => {
+    mockEnvironmentNameTruncation(false);
+    const { container } = render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          environmentLabel="Bersabel's MacBook Pro"
+          environmentCompactLabel="Bersabel's MacBook Pro"
+          environmentIcon="FolderGit"
+          environmentTypeLabel="Worktree"
+          machineConnected={false}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(container.querySelector('[data-icon="FolderGit"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="LaptopIssue"]')).not.toBeNull();
+    expect(
+      screen.getByLabelText("Worktree: Bersabel's MacBook Pro, offline"),
+    ).not.toBeNull();
+
+    fireEvent.focus(screen.getByRole("img", { name: "Offline" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Offline");
+  });
+
   it("keeps an existing custom worktree name primary and read-only", () => {
     const result = render(
       <TooltipProvider delayDuration={0}>
@@ -292,6 +379,7 @@ describe("ThreadEnvironmentSummary", () => {
   });
 
   it("truncates a long visible worktree name without overlapping controls", async () => {
+    mockEnvironmentNameTruncation(true);
     const longName =
       "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout";
     const { container } = render(
@@ -315,5 +403,80 @@ describe("ThreadEnvironmentSummary", () => {
     expect(worktreeDisplay!.querySelector('[data-icon="Edit"]')).toBeNull();
     fireEvent.focus(worktreeDisplay!);
     expect((await screen.findByRole("tooltip")).textContent).toBe(longName);
+  });
+
+  it("keeps measuring the live machine name after its tooltip mounts", async () => {
+    let isTruncated = false;
+    const observers: Array<{
+      callback: ResizeObserverCallback;
+      target: Element | null;
+    }> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserverMock {
+        private readonly observer = {
+          callback: null as ResizeObserverCallback | null,
+          target: null as Element | null,
+        };
+
+        constructor(callback: ResizeObserverCallback) {
+          this.observer.callback = callback;
+          observers.push({ callback, target: null });
+        }
+
+        observe(target: Element) {
+          this.observer.target = target;
+          observers.at(-1)!.target = target;
+        }
+
+        disconnect() {}
+
+        unobserve() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      function clientWidth(this: HTMLElement) {
+        return this.hasAttribute("data-machine-name-text") && this.isConnected
+          ? 100
+          : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+      function scrollWidth(this: HTMLElement) {
+        if (!this.hasAttribute("data-machine-name-text") || !this.isConnected) {
+          return 0;
+        }
+        return isTruncated ? 200 : 100;
+      },
+    );
+
+    render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary machineName="Build Mac mini" />
+      </TooltipProvider>,
+    );
+    const getMachineName = () =>
+      screen.getByLabelText("Machine: Build Mac mini");
+    expect(getMachineName().getAttribute("tabindex")).toBeNull();
+
+    isTruncated = true;
+    for (const observer of observers.filter(
+      ({ target }) => target?.isConnected,
+    )) {
+      observer.callback([], observer as never);
+    }
+    await waitFor(() =>
+      expect(getMachineName().getAttribute("tabindex")).toBe("0"),
+    );
+
+    isTruncated = false;
+    for (const observer of observers.filter(
+      ({ target }) => target?.isConnected,
+    )) {
+      observer.callback([], observer as never);
+    }
+    await waitFor(() =>
+      expect(getMachineName().getAttribute("tabindex")).toBeNull(),
+    );
   });
 });

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { isValidElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -18,6 +19,7 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: { get: vi.fn() },
     environments: { get: vi.fn() },
+    hosts: { list: vi.fn() },
     providers: { list: vi.fn(async () => []) },
   },
   BbHttpError: class BbHttpError extends Error {
@@ -104,6 +106,7 @@ beforeEach(() => {
   mocks.embeddedChatProps = [];
   mocks.timelinePanelProps = [];
   vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_FIXTURE as never);
+  vi.mocked(sdk.hosts.list).mockResolvedValue([]);
 });
 
 describe("PluginThreadChat", () => {
@@ -141,6 +144,64 @@ describe("PluginThreadChat", () => {
         },
       }),
     );
+  });
+
+  it("keeps Git checkout context in plugin-hosted composers", async () => {
+    vi.mocked(sdk.threads.get).mockResolvedValue({
+      ...THREAD_FIXTURE,
+      environmentId: "env_demo",
+    } as never);
+    vi.mocked(sdk.environments.get).mockResolvedValue({
+      id: "env_demo",
+      projectId: "proj_demo",
+      hostId: "host_demo",
+      path: "/workspace",
+      name: "Design system polish",
+      managed: true,
+      isGitRepo: true,
+      isWorktree: true,
+      workspaceProvisionType: "managed-worktree",
+      branchName: "bb/design-system-polish",
+      baseBranch: "main",
+      defaultBranch: "main",
+      mergeBaseBranch: null,
+      status: "ready",
+      createdAt: 0,
+      updatedAt: 0,
+    } as never);
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      {
+        id: "host_demo",
+        name: "Build Mac mini",
+        status: "connected",
+      },
+    ] as never);
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+
+    render(
+      <Wrapper>
+        <MemoryRouter>
+          <DemoPluginPage threadId="thr_demo" />
+        </MemoryRouter>
+      </Wrapper>,
+    );
+
+    await waitFor(() => {
+      const composer = mocks.embeddedChatProps.at(-1)?.composer;
+      expect(composer).toBeTruthy();
+      if (typeof composer !== "object" || composer === null) return;
+      const environmentSummary = Reflect.get(composer, "environmentSummary");
+      expect(isValidElement(environmentSummary)).toBe(true);
+      if (!isValidElement(environmentSummary)) return;
+      expect(
+        Reflect.get(environmentSummary.props, "environmentCheckout"),
+      ).toEqual(
+        expect.objectContaining({
+          label: "bb/design-system-polish",
+          rowLabel: "Branch",
+        }),
+      );
+    });
   });
 
   it("hands the permission picker to the user only when asked", async () => {

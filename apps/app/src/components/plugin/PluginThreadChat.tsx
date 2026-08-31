@@ -30,6 +30,7 @@ import {
   getEnvironmentWorkspaceSummaryDisplay,
   shouldShowWorktreeMachineInComposer,
 } from "@/lib/environment-workspace-display";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
 import {
   getProjectComposeRoutePath,
@@ -207,9 +208,20 @@ function PluginThreadChatBody({
         environmentCompactLabel={summaryDisplay.compactLabel}
         environmentIcon={summaryDisplay.icon}
         environmentTypeLabel={summaryDisplay.typeLabel}
+        environmentCheckout={
+          environment.branchName
+            ? formatWorkspaceCheckoutDisplay({
+                checkout: {
+                  kind: "branch",
+                  branchName: environment.branchName,
+                  headSha: null,
+                },
+              })
+            : undefined
+        }
         machineName={composerMachine?.name}
         machineConnected={
-          composerMachine ? composerMachine.status === "connected" : undefined
+          environmentHost ? environmentHost.status === "connected" : undefined
         }
       />
     );

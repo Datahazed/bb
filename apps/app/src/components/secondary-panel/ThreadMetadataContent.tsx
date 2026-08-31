@@ -396,11 +396,8 @@ interface MachineRowProps {
 }
 
 export function MachineRow({ name, connected = true }: MachineRowProps) {
-  const nameRef = useRef<HTMLSpanElement>(null);
-  const isNameTruncated = useIsElementTruncated({
-    elementRef: nameRef,
-    measurementKey: name ?? "",
-  });
+  const { elementRef: nameRef, isTruncated: isNameTruncated } =
+    useIsElementTruncated({ measurementKey: name ?? "" });
   if (!name) return null;
   const accessibleLabel = connected
     ? `Machine: ${name}`

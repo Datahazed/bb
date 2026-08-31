@@ -1,18 +1,22 @@
-import { useLayoutEffect, useState, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 
 interface UseIsElementTruncatedArgs {
-  elementRef: RefObject<HTMLElement | null>;
   measurementKey: string;
 }
 
 export function useIsElementTruncated({
-  elementRef,
   measurementKey,
-}: UseIsElementTruncatedArgs): boolean {
+}: UseIsElementTruncatedArgs): {
+  elementRef: (element: HTMLElement | null) => void;
+  isTruncated: boolean;
+} {
+  const [element, setElement] = useState<HTMLElement | null>(null);
   const [isTruncated, setIsTruncated] = useState(false);
+  const elementRef = useCallback((nextElement: HTMLElement | null) => {
+    setElement(nextElement);
+  }, []);
 
   useLayoutEffect(() => {
-    const element = elementRef.current;
     if (element === null) {
       setIsTruncated(false);
       return;
@@ -27,7 +31,7 @@ export function useIsElementTruncated({
     const resizeObserver = new ResizeObserver(measure);
     resizeObserver.observe(element);
     return () => resizeObserver.disconnect();
-  }, [elementRef, measurementKey]);
+  }, [element, measurementKey]);
 
-  return isTruncated;
+  return { elementRef, isTruncated };
 }

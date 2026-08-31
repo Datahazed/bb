@@ -2499,7 +2499,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       environmentIcon={composerEnvironmentSummary?.icon}
       environmentLabel={composerEnvironmentSummary?.label}
       environmentMachineConnected={
-        composerMachine ? composerMachine.status === "connected" : undefined
+        resolvedThreadEnvironmentHost
+          ? resolvedThreadEnvironmentHost.status === "connected"
+          : undefined
       }
       environmentMachineName={composerMachine?.name}
       environmentTypeLabel={composerEnvironmentSummary?.typeLabel}

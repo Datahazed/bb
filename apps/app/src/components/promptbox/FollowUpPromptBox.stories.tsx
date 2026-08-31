@@ -176,6 +176,7 @@ const readOnlyPermission: ExecutionPermissionConfig = {
 interface EnvironmentSummaryArgs {
   environment: Environment;
   host: EnvironmentDisplayHostContext;
+  connected?: boolean;
   projectName?: string;
   hostName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
@@ -185,6 +186,7 @@ interface EnvironmentSummaryArgs {
 function makeEnvironmentSummary({
   environment,
   host,
+  connected,
   projectName,
   hostName,
   environmentCheckout,
@@ -207,6 +209,7 @@ function makeEnvironmentSummary({
       environmentIcon={summaryDisplay.icon}
       environmentTypeLabel={summaryDisplay.typeLabel}
       environmentCheckout={environmentCheckout}
+      machineConnected={connected}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
     />
   );
@@ -255,6 +258,32 @@ const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   host: remoteEnvironmentDisplayHost,
   hostName: "Build Mac mini",
 });
+
+const offlineDirectEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    managed: false,
+    isWorktree: false,
+    workspaceProvisionType: "unmanaged",
+    status: "ready",
+  }),
+  host: remoteEnvironmentDisplayHost,
+  connected: false,
+  hostName: "Build Mac mini",
+});
+
+const offlineUnnamedWorktreeEnvironmentSummary: ReactNode =
+  makeEnvironmentSummary({
+    environment: makeEnvironment({
+      name: null,
+      isWorktree: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    }),
+    host: localEnvironmentDisplayHost,
+    connected: false,
+    hostName: "Bersabel's MacBook Pro",
+    environmentCheckout: STORY_CHECKOUT_DISPLAY,
+  });
 
 const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
@@ -1145,7 +1174,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · local"
-        hint="laptop icon · full machine-name tooltip"
+        hint="laptop icon · fitting machine name has no tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1154,11 +1183,29 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · remote"
-        hint="laptop icon · full machine-name tooltip"
+        hint="laptop icon · fitting machine name has no tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="offline · direct"
+        hint="issue icon owns the Offline tooltip; fitting machine name does not"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={offlineDirectEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="offline · unnamed worktree"
+        hint="worktree identity remains visible beside independent Offline status"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={offlineUnnamedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow

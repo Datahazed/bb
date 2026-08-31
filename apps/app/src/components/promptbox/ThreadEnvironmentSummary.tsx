@@ -1,5 +1,10 @@
-import { memo, useRef } from "react";
-import { OptionDisplay } from "@bb/shared-ui/option-display";
+import { memo } from "react";
+import {
+  OPTION_BASE_CLASS_NAME,
+  OPTION_CONTENT_CLASS_NAME,
+  OPTION_MUTED_CLASS_NAME,
+  OptionDisplay,
+} from "@bb/shared-ui/option-display";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -25,6 +30,89 @@ interface ThreadEnvironmentSummaryProps {
   onCreateNewThreadInWorktree?: () => void;
 }
 
+function OfflineMachineIcon() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          tabIndex={0}
+          aria-label="Offline"
+          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <Icon name="LaptopIssue" className="size-4" aria-hidden />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>Offline</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function EnvironmentName({
+  label,
+  name,
+  compactName,
+  connected,
+}: {
+  label: string;
+  name: string;
+  compactName?: string;
+  connected?: boolean;
+}) {
+  const { elementRef: fullNameRef, isTruncated: isFullNameTruncated } =
+    useIsElementTruncated({ measurementKey: name });
+  const { elementRef: compactNameRef, isTruncated: isCompactNameTruncated } =
+    useIsElementTruncated({ measurementKey: compactName ?? "" });
+  const isNameTruncated = isFullNameTruncated || isCompactNameTruncated;
+  const accessibleLabel =
+    connected === false ? `${label}: ${name}, offline` : `${label}: ${name}`;
+  const display = (
+    <div
+      data-option-display=""
+      tabIndex={isNameTruncated ? 0 : undefined}
+      aria-label={accessibleLabel}
+      className={cn(
+        "inline-flex h-6 min-w-0 shrink px-0",
+        OPTION_BASE_CLASS_NAME,
+        OPTION_MUTED_CLASS_NAME,
+        isNameTruncated &&
+          "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
+    >
+      <span className={OPTION_CONTENT_CLASS_NAME}>
+        <span className="sr-only">{label}: </span>
+        <span
+          ref={fullNameRef}
+          className="min-w-0 truncate"
+          data-promptbox-full-label=""
+          data-environment-name-text=""
+        >
+          {name}
+        </span>
+        {compactName ? (
+          <span
+            ref={compactNameRef}
+            className="min-w-0 truncate"
+            data-promptbox-compact-label=""
+            data-environment-name-text=""
+          >
+            {compactName}
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+
+  return isNameTruncated ? (
+    <Tooltip>
+      <TooltipTrigger asChild>{display}</TooltipTrigger>
+      <TooltipContent>{name}</TooltipContent>
+    </Tooltip>
+  ) : (
+    display
+  );
+}
+
 function MachineContext({
   name,
   connected,
@@ -32,19 +120,12 @@ function MachineContext({
   name: string;
   connected: boolean;
 }) {
-  const accessibleLabel = connected
-    ? `Machine: ${name}`
-    : `Machine: ${name}, offline`;
-  const fullNameRef = useRef<HTMLSpanElement>(null);
-  const compactNameRef = useRef<HTMLSpanElement>(null);
-  const isFullNameTruncated = useIsElementTruncated({
-    elementRef: fullNameRef,
-    measurementKey: name,
-  });
-  const isCompactNameTruncated = useIsElementTruncated({
-    elementRef: compactNameRef,
-    measurementKey: name,
-  });
+  const accessibleLabel =
+    connected === false ? `Machine: ${name}, offline` : `Machine: ${name}`;
+  const { elementRef: fullNameRef, isTruncated: isFullNameTruncated } =
+    useIsElementTruncated({ measurementKey: name });
+  const { elementRef: compactNameRef, isTruncated: isCompactNameTruncated } =
+    useIsElementTruncated({ measurementKey: name });
   const isNameTruncated = isFullNameTruncated || isCompactNameTruncated;
 
   const nameDisplay = (
@@ -81,22 +162,10 @@ function MachineContext({
       data-promptbox-secondary-context=""
       className="inline-flex h-6 w-fit max-w-[10rem] min-w-0 shrink items-center gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
     >
-      {connected ? (
-        <Icon name="Laptop" className="size-4 shrink-0" aria-hidden />
+      {connected === false ? (
+        <OfflineMachineIcon />
       ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              role="img"
-              tabIndex={0}
-              aria-label="Offline"
-              className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              <Icon name="LaptopIssue" className="size-4" aria-hidden />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>Offline</TooltipContent>
-        </Tooltip>
+        <Icon name="Laptop" className="size-4 shrink-0" aria-hidden />
       )}
       {isNameTruncated ? (
         <Tooltip>
@@ -122,6 +191,10 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   onCreateNewThreadInWorktree,
 }: ThreadEnvironmentSummaryProps) {
   const isWorktree = environmentTypeLabel === "Worktree";
+  const showPrimaryOffline =
+    !machineName && machineConnected === false && environmentIcon !== "Loading";
+  const showOfflineAsPrimaryIcon =
+    showPrimaryOffline && environmentTypeLabel === "Machine";
   if (
     !projectName &&
     !environmentLabel &&
@@ -153,7 +226,9 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           data-promptbox-worktree-context={isWorktree ? "" : undefined}
           className="inline-flex h-6 w-fit max-w-full min-w-0 shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
         >
-          {environmentIcon && isWorktree && environmentIcon !== "Loading" ? (
+          {showOfflineAsPrimaryIcon ? (
+            <OfflineMachineIcon />
+          ) : environmentIcon && isWorktree && environmentIcon !== "Loading" ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
@@ -177,14 +252,13 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               )}
             />
           ) : null}
-          <OptionDisplay
+          <EnvironmentName
             label={environmentTypeLabel ?? "Worktree"}
-            value={environmentLabel}
-            compactValue={environmentCompactLabel}
-            className="h-6 min-w-0 shrink px-0"
-            tooltip={environmentLabel}
-            muted
+            name={environmentLabel}
+            compactName={environmentCompactLabel}
+            connected={showPrimaryOffline ? false : undefined}
           />
+          {showPrimaryOffline && isWorktree ? <OfflineMachineIcon /> : null}
         </div>
       ) : null}
       {machineName ? (
