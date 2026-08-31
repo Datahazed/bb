@@ -64,6 +64,14 @@ describe("CompactSecondaryPanelShelf", () => {
     );
   });
 
+  it("lifts the full page panel over the fixed app chrome so its icons cannot collide", () => {
+    renderShelf(true, "full");
+
+    const shelf = screen.getByTestId("secondary-panel-shelf");
+    expect(shelf.className).toContain("z-0");
+    expect(shelf.className).toContain("data-[state=full]:z-60");
+  });
+
   it("stops the dismiss layer from swallowing taps once the panel is full page", () => {
     renderShelf(true, "full");
 
