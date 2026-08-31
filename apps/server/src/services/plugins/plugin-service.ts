@@ -1183,6 +1183,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             identity?.manifest.description ??
             null,
           name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          screenshots: [],
           icon:
             loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
@@ -1197,6 +1198,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : row.enabled
               ? "not loaded"
               : null,
+          lastProblem: null,
           handlerStats: stats
             ? { ...stats }
             : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
