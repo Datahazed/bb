@@ -67,6 +67,26 @@ export interface NewThreadDraftDestination {
   sectionId: string | null;
 }
 
+interface ResolveNewThreadDraftDestinationArgs {
+  storedDestination: NewThreadDraftDestination | null;
+  routeProjectId: string | null;
+  routeSectionId: string | null;
+  fallbackProjectId: string;
+}
+
+export function resolveNewThreadDraftDestination({
+  storedDestination,
+  routeProjectId,
+  routeSectionId,
+  fallbackProjectId,
+}: ResolveNewThreadDraftDestinationArgs): NewThreadDraftDestination {
+  if (storedDestination !== null) return storedDestination;
+  return {
+    projectId: routeProjectId ?? fallbackProjectId,
+    sectionId: routeSectionId,
+  };
+}
+
 export interface NewThreadDraftComposerSelection {
   providerId: string;
   model: string;
@@ -332,16 +352,14 @@ function findLegacyMigrationSlotId(
 }
 
 export function initializeNewThreadDraftSlots(
-  currentProjectId: string,
+  destination: NewThreadDraftDestination,
   now = Date.now(),
 ): void {
   const storage = getLocalStorage();
   if (storage === null) return;
 
-  const destinationResult = newThreadDraftDestinationSchema.safeParse({
-    projectId: currentProjectId,
-    sectionId: null,
-  });
+  const destinationResult =
+    newThreadDraftDestinationSchema.safeParse(destination);
   if (!destinationResult.success) return;
 
   readNewThreadDraftSlots();

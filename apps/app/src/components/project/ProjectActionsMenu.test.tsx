@@ -10,7 +10,11 @@ import {
 import type { ProjectResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { ProjectActionsMenu } from "./ProjectActionsMenu";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
+  ProjectActionsContextMenu,
+  ProjectActionsMenu,
+} from "./ProjectActionsMenu";
 
 const mockPathPickerHost = vi.hoisted(() => ({
   value: { hostId: null as string | null, hostName: null as string | null },
@@ -67,5 +71,76 @@ describe("ProjectActionsMenu", () => {
     await waitFor(() => {
       expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
     });
+  });
+
+  it("keeps the row's New thread quick action reachable from the overflow", async () => {
+    const onCreateThread = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <ProjectActionsMenu
+          project={makeProject()}
+          onCreateThread={onCreateThread}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "New thread" }),
+    );
+
+    expect(onCreateThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps New thread reachable from the desktop context menu", async () => {
+    const onCreateThread = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <CompactViewportOverrideProvider isCompactViewport={false}>
+          <ProjectActionsContextMenu
+            project={makeProject()}
+            onCreateThread={onCreateThread}
+          >
+            <div data-testid="project-row">Test project</div>
+          </ProjectActionsContextMenu>
+        </CompactViewportOverrideProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("project-row"));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "New thread" }),
+    );
+
+    expect(onCreateThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps New thread reachable from the compact long-press menu", async () => {
+    const onCreateThread = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <ProjectActionsContextMenu
+            project={makeProject()}
+            onCreateThread={onCreateThread}
+          >
+            <div data-testid="project-row">Test project</div>
+          </ProjectActionsContextMenu>
+        </CompactViewportOverrideProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("project-row"));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "New thread" }),
+    );
+
+    expect(onCreateThread).toHaveBeenCalledTimes(1);
   });
 });

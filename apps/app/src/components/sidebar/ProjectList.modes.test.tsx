@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 
 import { useMemo, type ReactNode } from "react";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import {
   createStore,
   Provider as JotaiProvider,
@@ -60,7 +53,7 @@ function getModeOrderProbeConfig(mode: SidebarOrganizationMode): {
   switch (mode) {
     case "project":
       return { entitySectionIds: ["project:a"] };
-    case "chronological":
+    case "manual":
       return { entitySectionIds: ["section:a"] };
     case "machine":
       return { entitySectionIds: [], hasThreadsSection: true };
@@ -82,23 +75,21 @@ function ModeOrderProbe({ mode }: { mode: SidebarOrganizationMode }) {
 
 interface ActiveModeOrderProbeProps {
   mode: SidebarOrganizationMode;
-  renderChronological?: () => ReactNode;
+  renderManual?: () => ReactNode;
   renderMachine?: () => ReactNode;
   renderProject?: () => ReactNode;
 }
 
 function ActiveModeOrderProbe({
   mode,
-  renderChronological = () => (
-    <ModeOrderProbe key="chronological" mode="chronological" />
-  ),
+  renderManual = () => <ModeOrderProbe key="manual" mode="manual" />,
   renderMachine = () => <ModeOrderProbe key="machine" mode="machine" />,
   renderProject = () => <ModeOrderProbe key="project" mode="project" />,
 }: ActiveModeOrderProbeProps) {
   return (
     <ActiveSidebarModeSections
       mode={mode}
-      renderChronological={renderChronological}
+      renderManual={renderManual}
       renderMachine={renderMachine}
       renderProject={renderProject}
     />
@@ -144,7 +135,6 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
-    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "active",
@@ -179,13 +169,10 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
       isReady
       showPinnedSection={false}
       pinnedSection={{ label: "Pinned", content: null }}
-      threadsSection={{ label: "Threads" }}
       collapsedSectionIds={collapsedSectionIdSet}
       collapsedThreadIds={new Set()}
       collapsedEnvironmentIds={new Set()}
       compareThreads={() => 0}
-      renderSectionDisplayOptions={() => null}
-      isSectionDisplayOptionsOpen={() => false}
       onToggleCollapsed={handleToggleCollapsed}
       onToggleThreadCollapsed={vi.fn()}
       onToggleEnvironmentCollapsed={vi.fn()}
@@ -200,16 +187,17 @@ afterEach(() => {
 });
 
 describe("sidebar organization mode sections", () => {
-  it.each<SidebarOrganizationMode>(["project", "chronological", "machine"])(
+  it.each<SidebarOrganizationMode>(["project", "manual", "machine"])(
     "keeps drafts above %s sections and archived rows trailing",
     (mode) => {
       const { container } = render(
         <BuiltInSidebarLifecycleSections
+          toolbar={<div>Toolbar</div>}
           draftRows={<div>Drafts</div>}
           activeModeSections={
             <ActiveSidebarModeSections
               mode={mode}
-              renderChronological={() => <div>Chronological</div>}
+              renderManual={() => <div>Custom</div>}
               renderMachine={() => <div>Machine</div>}
               renderProject={() => <div>Project</div>}
             />
@@ -220,12 +208,12 @@ describe("sidebar organization mode sections", () => {
       );
 
       const activeLabel =
-        mode === "chronological"
-          ? "Chronological"
+        mode === "manual"
+          ? "Custom"
           : mode === "machine"
             ? "Machine"
             : "Project";
-      expect(container.textContent).toBe(`Drafts${activeLabel}Archived`);
+      expect(container.textContent).toBe(`ToolbarDrafts${activeLabel}Archived`);
     },
   );
 
@@ -234,9 +222,7 @@ describe("sidebar organization mode sections", () => {
     store.set(sidebarSectionOrderAtom, ["threads", "project:a", "pinned"]);
     store.set(sidebarManualSectionOrderAtom, ["section:stale"]);
     store.set(sidebarMachineSectionOrderAtom, ["machine:stale"]);
-    const renderChronological = vi.fn(() => (
-      <ModeOrderProbe mode="chronological" />
-    ));
+    const renderManual = vi.fn(() => <ModeOrderProbe mode="manual" />);
     const renderMachine = vi.fn(() => <MachineModeProbe />);
     const renderProject = vi.fn(() => <ModeOrderProbe mode="project" />);
 
@@ -244,7 +230,7 @@ describe("sidebar organization mode sections", () => {
       <JotaiProvider store={store}>
         <ActiveModeOrderProbe
           mode="project"
-          renderChronological={renderChronological}
+          renderManual={renderManual}
           renderMachine={renderMachine}
           renderProject={renderProject}
         />
@@ -253,7 +239,7 @@ describe("sidebar organization mode sections", () => {
 
     await screen.findByTestId("project-order");
     expect(renderProject).toHaveBeenCalledOnce();
-    expect(renderChronological).not.toHaveBeenCalled();
+    expect(renderManual).not.toHaveBeenCalled();
     expect(renderMachine).not.toHaveBeenCalled();
     expect(mockUseHosts).not.toHaveBeenCalled();
     expect(mockBuildMachineThreadGroups).not.toHaveBeenCalled();
@@ -279,8 +265,8 @@ describe("sidebar organization mode sections", () => {
     );
 
     expect(await screen.findByTestId("project-order")).not.toBeNull();
-    act(() => store.set(sidebarOrganizationModeAtom, "chronological"));
-    expect(await screen.findByTestId("chronological-order")).not.toBeNull();
+    act(() => store.set(sidebarOrganizationModeAtom, "manual"));
+    expect(await screen.findByTestId("manual-order")).not.toBeNull();
     act(() => store.set(sidebarOrganizationModeAtom, "machine"));
     expect(await screen.findByTestId("machine-order")).not.toBeNull();
     act(() => store.set(sidebarOrganizationModeAtom, "project"));
@@ -293,7 +279,7 @@ describe("sidebar organization mode sections", () => {
     });
   });
 
-  it("collapses and expands empty-machine Threads", () => {
+  it("does not create a loose Threads catch-all in machine mode", () => {
     const store = createStore();
     store.set(sidebarMachineSectionOrderAtom, ["threads"]);
     store.set(collapsedSidebarSectionIdsAtom, []);
@@ -304,16 +290,8 @@ describe("sidebar organization mode sections", () => {
       </JotaiProvider>,
     );
 
-    expect(screen.getByText("No threads")).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Collapse Threads section" }),
-    );
+    expect(screen.queryByText("Threads")).toBeNull();
     expect(screen.queryByText("No threads")).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand Threads section" }),
-    );
-    expect(screen.getByText("No threads")).not.toBeNull();
     expect(mockBuildMachineThreadGroups).toHaveBeenCalledWith([], []);
   });
 

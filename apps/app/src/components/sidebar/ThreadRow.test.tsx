@@ -52,8 +52,12 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-  ThreadActionsMenu: () => null,
-  ThreadArchiveQuickAction: () => null,
+  ThreadActionsMenu: ({ triggerClassName }: { triggerClassName?: string }) => (
+    <button aria-label="Thread actions" className={triggerClassName} />
+  ),
+  ThreadArchiveQuickAction: ({ className }: { className?: string }) => (
+    <button aria-label="Archive thread" className={className} />
+  ),
 }));
 
 function createThread(
@@ -453,7 +457,7 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
-  it("shows a keyboard shortcut in place of a plugin status", () => {
+  it("shows a desktop keyboard shortcut while preserving mobile plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
@@ -462,14 +466,14 @@ describe("ThreadRow", () => {
     renderThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
   });
 
-  it("shows a keyboard shortcut in place of a split mini-map", () => {
+  it("shows a desktop keyboard shortcut while preserving the mobile split mini-map", () => {
     renderSplitThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.queryByRole("img", { name: /open in split/ })).toBeNull();
+    expect(screen.getByRole("img", { name: /open in split/ })).not.toBeNull();
   });
 
   it("renders a plugin status with the semantic success tone", () => {
@@ -770,6 +774,8 @@ describe("ThreadRow", () => {
     );
     expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
+    expect(marker?.classList.contains("text-muted-foreground/75")).toBe(true);
+    expect(marker?.classList.contains("text-muted-foreground")).toBe(false);
     expect(
       marker?.closest("[data-sidebar-thread-trailing-indicator]"),
     ).toBeNull();
@@ -955,42 +961,62 @@ describe("ThreadRow", () => {
       },
     });
 
+    const disclosure = screen.getByRole("button", {
+      name: "Collapse Parent thread threads",
+    });
+    expect(disclosure.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(disclosure.classList.contains("text-subtle-foreground/75")).toBe(
+      true,
+    );
+    expect(disclosure.classList.contains("text-subtle-foreground")).toBe(false);
     expect(
-      screen
-        .getByRole("button", { name: "Collapse Parent thread threads" })
-        .getAttribute("data-sidebar-hover-actions-mobile"),
+      disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
+    ).toBe(true);
+    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
+    const row = caretSlot?.parentElement;
+    const trailingControls = row?.querySelector(
+      "[data-sidebar-thread-trailing-controls]",
+    );
+    const statusSlot = trailingControls?.querySelector(
+      "[data-sidebar-thread-status-slot]",
+    );
+    const mobileActions = trailingControls?.querySelector(
+      "[data-sidebar-mobile-row-actions]",
+    );
+    const titleRegion = screen
+      .getByTitle("Parent thread")
+      .closest(".bb-sidebar-collapsible-hover-actions-inset");
+
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(row?.lastElementChild).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+    expect(
+      statusSlot?.classList.contains("bb-sidebar-collapsible-status-slot"),
+    ).toBe(true);
+    expect(
+      statusSlot!.compareDocumentPosition(mobileActions!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      mobileActions?.getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
+    expect(
+      mobileActions?.querySelector('[aria-label="Thread actions"]'),
+    ).not.toBeNull();
+    expect(
+      mobileActions
+        ?.querySelector('[aria-label="Archive thread"]')
+        ?.classList.contains("max-md:pointer-coarse:hidden"),
+    ).toBe(true);
+    expect(titleRegion).not.toBeNull();
+    expect(
+      titleRegion?.classList.contains("bb-sidebar-hover-actions-inset"),
+    ).toBe(false);
   });
 
-  it.each([
-    { isCollapsed: true, expectedHoverReveal: false },
-    { isCollapsed: false, expectedHoverReveal: true },
-  ])(
-    "sets parent-thread disclosure hover reveal to $expectedHoverReveal when collapsed is $isCollapsed",
-    ({ expectedHoverReveal, isCollapsed }) => {
-      renderThreadRow({
-        thread: createThread({ title: "Parent thread" }),
-        options: {
-          kind: "parent",
-          depth: 1,
-          isCompact: false,
-          isCollapsed,
-          childCount: 1,
-          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-          onToggleCollapsed: vi.fn(),
-        },
-      });
-
-      const toggle = screen.getByRole("button", {
-        name: `${isCollapsed ? "Expand" : "Collapse"} Parent thread threads`,
-      });
-      expect(toggle.classList.contains("bb-sidebar-hover-actions")).toBe(
-        expectedHoverReveal,
-      );
-    },
-  );
-
-  it("shows its Command shortcut in place of an active indicator", () => {
+  it("shows its desktop Command shortcut while preserving the mobile active indicator", () => {
     renderThreadRow({
       shortcutKey: "3",
       thread: createThread({
@@ -1006,7 +1032,7 @@ describe("ThreadRow", () => {
     expect(shortcut.className).toContain("px-1.5");
     expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
