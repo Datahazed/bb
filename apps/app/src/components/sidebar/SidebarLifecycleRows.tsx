@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/sidebar-hover-actions.js";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import {
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
@@ -48,6 +49,7 @@ import {
 } from "./sidebarRowClasses";
 import { SidebarWindowedItems } from "./SidebarWindowedItems";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
+import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 
 export interface SidebarDraftRowItem {
   id: string;
@@ -62,14 +64,16 @@ interface SidebarDraftRowsProps {
 
 type DraftActionsMenuSurface = "context" | "dropdown";
 
-function DraftActionsMenuItem({
+function DraftActionsMenuItems({
   onDelete,
+  onOpenInSplit,
   surface,
 }: {
   onDelete: () => void;
+  onOpenInSplit?: () => void;
   surface: DraftActionsMenuSurface;
 }) {
-  const content = (
+  const deleteContent = (
     <>
       <Icon name="Trash2" aria-hidden="true" />
       Delete draft
@@ -78,27 +82,45 @@ function DraftActionsMenuItem({
 
   if (surface === "context") {
     return (
-      <ContextMenuItem
-        className="text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive"
-        onSelect={onDelete}
-      >
-        {content}
-      </ContextMenuItem>
+      <>
+        {onOpenInSplit ? (
+          <ContextMenuItem onSelect={onOpenInSplit}>
+            <Icon name="Columns2" aria-hidden="true" />
+            Open in split
+          </ContextMenuItem>
+        ) : null}
+        <ContextMenuItem
+          className="text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive"
+          onSelect={onDelete}
+        >
+          {deleteContent}
+        </ContextMenuItem>
+      </>
     );
   }
 
   return (
-    <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-      {content}
-    </DropdownMenuItem>
+    <>
+      {onOpenInSplit ? (
+        <DropdownMenuItem onSelect={onOpenInSplit}>
+          <Icon name="Columns2" aria-hidden="true" />
+          Open in split
+        </DropdownMenuItem>
+      ) : null}
+      <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+        {deleteContent}
+      </DropdownMenuItem>
+    </>
   );
 }
 
 function DraftActionsMenu({
   onDelete,
+  onOpenInSplit,
   onOpenChange,
 }: {
   onDelete: () => void;
+  onOpenInSplit?: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
   return (
@@ -125,7 +147,11 @@ function DraftActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DraftActionsMenuItem surface="dropdown" onDelete={onDelete} />
+        <DraftActionsMenuItems
+          surface="dropdown"
+          onDelete={onDelete}
+          onOpenInSplit={onOpenInSplit}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -134,10 +160,12 @@ function DraftActionsMenu({
 function DraftActionsContextMenu({
   children,
   onDelete,
+  onOpenInSplit,
   onOpenChange,
 }: {
   children: ReactNode;
   onDelete: () => void;
+  onOpenInSplit?: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const isCompactViewport = useIsCompactViewport();
@@ -147,7 +175,13 @@ function DraftActionsContextMenu({
       <CompactLongPressMenu
         label="Draft actions"
         onOpenChange={onOpenChange}
-        items={<DraftActionsMenuItem surface="dropdown" onDelete={onDelete} />}
+        items={
+          <DraftActionsMenuItems
+            surface="dropdown"
+            onDelete={onDelete}
+            onOpenInSplit={onOpenInSplit}
+          />
+        }
       >
         {children}
       </CompactLongPressMenu>
@@ -158,7 +192,11 @@ function DraftActionsContextMenu({
     <ContextMenu onOpenChange={onOpenChange}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent aria-label="Draft actions">
-        <DraftActionsMenuItem surface="context" onDelete={onDelete} />
+        <DraftActionsMenuItems
+          surface="context"
+          onDelete={onDelete}
+          onOpenInSplit={onOpenInSplit}
+        />
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -167,13 +205,20 @@ function DraftActionsContextMenu({
 function SidebarDraftRow({
   draft,
   onOpenDraft,
+  splitEnabled,
 }: {
   draft: SidebarDraftRowItem;
   onOpenDraft: (draftId: string) => void;
+  splitEnabled: boolean;
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const actionsOpen = dropdownOpen || contextOpen;
+  const draftSplit = usePaneContentSplitDrag({
+    content: { kind: "new-thread", draftSlotId: draft.id },
+    enabled: splitEnabled,
+    label: draft.title,
+  });
 
   const row = (
     <div
@@ -220,6 +265,7 @@ function SidebarDraftRow({
       >
         <DraftActionsMenu
           onDelete={draft.delete}
+          onOpenInSplit={splitEnabled ? draftSplit.openInSplit : undefined}
           onOpenChange={setDropdownOpen}
         />
       </span>
@@ -229,6 +275,7 @@ function SidebarDraftRow({
   return (
     <DraftActionsContextMenu
       onDelete={draft.delete}
+      onOpenInSplit={splitEnabled ? draftSplit.openInSplit : undefined}
       onOpenChange={setContextOpen}
     >
       {row}
@@ -240,6 +287,7 @@ export function SidebarDraftRows({
   drafts,
   onOpenDraft,
 }: SidebarDraftRowsProps) {
+  const splitEnabled = useSplitWorkspaceActive();
   if (drafts.length === 0) {
     return null;
   }
@@ -251,6 +299,7 @@ export function SidebarDraftRows({
           key={draft.id}
           draft={draft}
           onOpenDraft={onOpenDraft}
+          splitEnabled={splitEnabled}
         />
       ))}
     </div>

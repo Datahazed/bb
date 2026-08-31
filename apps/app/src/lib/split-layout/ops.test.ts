@@ -10,6 +10,7 @@ import {
   normalize,
   removePane,
   replacePaneContent,
+  replaceWithTwoPaneLayout,
   resizeSplit,
   setFocus,
   splitPane,
@@ -68,6 +69,67 @@ function expectNormalizedSizes(layout: SplitLayout): void {
 }
 
 describe("split layout operations", () => {
+  it("creates two equal new-thread panes and focuses the left pane", () => {
+    const leftContent = newThreadContent("left-draft");
+    const rightContent = newThreadContent("right-draft");
+
+    const layout = replaceWithTwoPaneLayout(
+      null,
+      leftContent,
+      rightContent,
+    );
+
+    expect(layout).toEqual({
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          { type: "pane", paneId: "pane-1", content: leftContent },
+          { type: "pane", paneId: "pane-2", content: rightContent },
+        ],
+      },
+      focusedPaneId: "pane-1",
+    });
+  });
+
+  it.each([1, 2, MAX_PANES])(
+    "replaces a %i-pane workspace without retaining old panes or content",
+    (paneCount) => {
+      const current = layoutAtPaneCount(paneCount);
+      const previousPanes = listPanes(current.root);
+      const previousPaneIds = new Set(previousPanes.map((item) => item.paneId));
+      const leftContent = newThreadContent(`left-draft-${paneCount}`);
+      const rightContent = newThreadContent(`right-draft-${paneCount}`);
+
+      const replacement = replaceWithTwoPaneLayout(
+        current,
+        leftContent,
+        rightContent,
+      );
+      const replacementPanes = listPanes(replacement.root);
+
+      expect(countPanes(replacement.root)).toBe(2);
+      expect(replacement.root).toMatchObject({
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+      });
+      expect(replacementPanes[0]?.content).toBe(leftContent);
+      expect(replacementPanes[1]?.content).toBe(rightContent);
+      expect(replacement.focusedPaneId).toBe(replacementPanes[0]?.paneId);
+      expect(
+        replacementPanes.every(
+          (item) => !previousPaneIds.has(item.paneId),
+        ),
+      ).toBe(true);
+      expect(
+        replacementPanes.some((item) => previousPanes.includes(item)),
+      ).toBe(false);
+      expect(countPanes(current.root)).toBe(paneCount);
+    },
+  );
+
   it("keeps independent new-thread slots distinct and finds the exact binding", () => {
     const withFirstDraft = splitPane(
       singlePaneLayout(),

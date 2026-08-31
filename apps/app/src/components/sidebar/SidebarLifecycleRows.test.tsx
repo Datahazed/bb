@@ -13,6 +13,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarContent } from "@/components/ui/sidebar.js";
 import {
@@ -20,6 +21,8 @@ import {
   SidebarDraftRows,
   type SidebarDraftRowItem,
 } from "./SidebarLifecycleRows";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { listPanes } from "@/lib/split-layout";
 
 const threadActions = vi.hoisted(() => ({
   archiveThreadAndChildren: vi.fn(),
@@ -83,17 +86,22 @@ function createThread(
 
 function renderLifecycleRows(
   children: ReactNode,
-  { compact = false }: { compact?: boolean } = {},
+  {
+    compact = false,
+    store = createStore(),
+  }: { compact?: boolean; store?: ReturnType<typeof createStore> } = {},
 ) {
   const root = document.createElement("div");
   root.id = "root";
   document.body.appendChild(root);
   return render(
-    <CompactViewportOverrideProvider isCompactViewport={compact}>
-      <TooltipProvider>
-        <MemoryRouter>{children}</MemoryRouter>
-      </TooltipProvider>
-    </CompactViewportOverrideProvider>,
+    <Provider store={store}>
+      <CompactViewportOverrideProvider isCompactViewport={compact}>
+        <TooltipProvider>
+          <MemoryRouter>{children}</MemoryRouter>
+        </TooltipProvider>
+      </CompactViewportOverrideProvider>
+    </Provider>,
     { container: root },
   );
 }
@@ -143,7 +151,7 @@ describe("SidebarDraftRows", () => {
     expect(onOpenDraft).toHaveBeenCalledWith("older");
   });
 
-  it("offers Delete draft and no Archive from both the overflow and right-click menus", () => {
+  it("offers Delete draft and Open in split, but no Archive, from both menus", () => {
     const drafts = createDrafts();
     const { container } = renderLifecycleRows(
       <SidebarDraftRows drafts={drafts} onOpenDraft={vi.fn()} />,
@@ -155,6 +163,9 @@ describe("SidebarDraftRows", () => {
     const overflowDelete = screen.getByRole("menuitem", {
       name: "Delete draft",
     });
+    expect(
+      screen.getByRole("menuitem", { name: "Open in split" }),
+    ).not.toBeNull();
     expect(screen.queryByRole("menuitem", { name: /archive/iu })).toBeNull();
     fireEvent.click(overflowDelete);
     expect(drafts[0]?.delete).toHaveBeenCalledTimes(1);
@@ -168,7 +179,55 @@ describe("SidebarDraftRows", () => {
     expect(
       within(contextMenu).getByRole("menuitem", { name: "Delete draft" }),
     ).not.toBeNull();
+    expect(
+      within(contextMenu).getByRole("menuitem", { name: "Open in split" }),
+    ).not.toBeNull();
     expect(within(contextMenu).queryByText(/archive/iu)).toBeNull();
+  });
+
+  it("opens the selected draft slot in a split and omits the item when unavailable", () => {
+    const store = createStore();
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-thread",
+      root: {
+        type: "pane",
+        paneId: "pane-thread",
+        content: {
+          kind: "thread",
+          projectId: "proj_test",
+          threadId: "thr_test",
+        },
+      },
+    });
+    const drafts = createDrafts();
+    const wide = renderLifecycleRows(
+      <SidebarDraftRows drafts={drafts} onOpenDraft={vi.fn()} />,
+      { store },
+    );
+
+    fireEvent.pointerDown(
+      screen.getAllByRole("button", { name: "Draft actions" })[0],
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in split" }));
+
+    const panes = listPanes(store.get(splitLayoutAtom)!.root);
+    expect(panes).toHaveLength(2);
+    expect(panes[1]?.content).toEqual({
+      kind: "new-thread",
+      draftSlotId: "newest",
+    });
+
+    wide.unmount();
+    renderLifecycleRows(
+      <SidebarDraftRows drafts={drafts} onOpenDraft={vi.fn()} />,
+      { compact: true },
+    );
+    fireEvent.pointerDown(
+      screen.getAllByRole("button", { name: "Draft actions" })[0],
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "Open in split" }),
+    ).toBeNull();
   });
 
   it("uses the persistent compact drawer for a touch long-press", () => {

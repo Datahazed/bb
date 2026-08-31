@@ -36,6 +36,7 @@ import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
 import { readRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
+import { readNewThreadDraftSlots } from "@/lib/prompt-draft-slots";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -91,6 +92,11 @@ function HostedComposerScopeProbe({ threadId }: { threadId: string }) {
 function RootComposeFixture({ draftSlotId }: { draftSlotId: string }) {
   const pane = useContext(PaneContext);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const draft = usePromptDraftStorage({
+    kind: "new-thread",
+    slotId: draftSlotId,
+    destination: { projectId: PERSONAL_PROJECT_ID, sectionId: null },
+  });
   const panelModel = useMemo(
     () => ({
       composerHost: null,
@@ -108,7 +114,61 @@ function RootComposeFixture({ draftSlotId }: { draftSlotId: string }) {
     panelModel,
   );
   return (
-    <div data-testid="root-compose-view" data-draft-slot-id={draftSlotId} />
+    <div
+      data-testid="root-compose-view"
+      data-draft-slot-id={draftSlotId}
+      data-focused={pane?.isFocused ? "true" : "false"}
+    >
+      <textarea
+        aria-label={`Draft ${draftSlotId}`}
+        value={draft.text}
+        onChange={(event) =>
+          draft.setDraft({
+            ...draft.getCurrent(),
+            text: event.target.value,
+          })
+        }
+      />
+      <button
+        type="button"
+        data-testid={`add-attachment-${draftSlotId}`}
+        onClick={() =>
+          draft.setAttachments([
+            {
+              name: "plan.md",
+              path: `/tmp/${draftSlotId}-plan.md`,
+              sizeBytes: 12,
+              type: "localFile",
+            },
+          ])
+        }
+      >
+        add attachment
+      </button>
+      <button
+        type="button"
+        data-testid={`navigate-compose-${draftSlotId}`}
+        onClick={() => {
+          draft.clear();
+          pane?.navigateInPane({
+            projectId: PERSONAL_PROJECT_ID,
+            threadId: `created-${draftSlotId}`,
+          });
+        }}
+      >
+        navigate after send
+      </button>
+      <button
+        type="button"
+        data-testid={`reset-compose-${draftSlotId}`}
+        onClick={() => {
+          draft.clear();
+          pane?.resetNewThreadPane?.();
+        }}
+      >
+        reset after send
+      </button>
+    </div>
   );
 }
 
@@ -437,6 +497,29 @@ function newThreadContentFor(draftSlotId: string): PaneContent {
 }
 
 const newThreadContent = newThreadContentFor("draft-slot-default");
+
+function twoPaneComposeLayout(focusedPaneId: string): SplitLayout {
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        {
+          type: "pane",
+          paneId: "pane-left",
+          content: newThreadContentFor("draft-slot-left"),
+        },
+        {
+          type: "pane",
+          paneId: "pane-right",
+          content: newThreadContentFor("draft-slot-right"),
+        },
+      ],
+    },
+    focusedPaneId,
+  };
+}
 
 function pluginContent(panelPath: string): PaneContent {
   return {
@@ -1502,6 +1585,243 @@ describe("SplitThreadArea", () => {
     expect(screen.getByTestId("root-compose-view").dataset.draftSlotId).toBe(
       "draft-slot-right",
     );
+  });
+
+  it.each([
+    {
+      label: "left",
+      paneId: "pane-left",
+      slotId: "draft-slot-left",
+      siblingPaneId: "pane-right",
+      siblingSlotId: "draft-slot-right",
+    },
+    {
+      label: "right",
+      paneId: "pane-right",
+      slotId: "draft-slot-right",
+      siblingPaneId: "pane-left",
+      siblingSlotId: "draft-slot-left",
+    },
+  ])(
+    "replaces the $label composer in place after send when navigation is on",
+    async ({ paneId, slotId, siblingPaneId, siblingSlotId }) => {
+      const store = renderSplitArea({
+        path: "/",
+        layout: twoPaneComposeLayout(paneId),
+        routeContent: newThreadContentFor(slotId),
+      });
+      fireEvent.change(screen.getByRole("textbox", { name: `Draft ${slotId}` }), {
+        target: { value: "Submitted work" },
+      });
+      fireEvent.change(
+        screen.getByRole("textbox", { name: `Draft ${siblingSlotId}` }),
+        { target: { value: "Untouched sibling" } },
+      );
+
+      fireEvent.click(screen.getByTestId(`navigate-compose-${slotId}`));
+
+      await waitFor(() => {
+        const layout = store.get(splitLayoutAtom);
+        const panes = layout === null ? [] : listPanes(layout.root);
+        expect(panes.find((pane) => pane.paneId === paneId)?.content).toEqual({
+          kind: "thread",
+          projectId: PERSONAL_PROJECT_ID,
+          threadId: `created-${slotId}`,
+        });
+        expect(
+          panes.find((pane) => pane.paneId === siblingPaneId)?.content,
+        ).toEqual(newThreadContentFor(siblingSlotId));
+        expect(layout?.focusedPaneId).toBe(paneId);
+      });
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: `Draft ${siblingSlotId}`,
+          }) as HTMLTextAreaElement
+        ).value,
+      ).toBe("Untouched sibling");
+      expect(readNewThreadDraftSlots().map((slot) => slot.id)).not.toContain(
+        slotId,
+      );
+    },
+  );
+
+  it.each([
+    {
+      label: "left",
+      paneId: "pane-left",
+      slotId: "draft-slot-left",
+      siblingPaneId: "pane-right",
+      siblingSlotId: "draft-slot-right",
+    },
+    {
+      label: "right",
+      paneId: "pane-right",
+      slotId: "draft-slot-right",
+      siblingPaneId: "pane-left",
+      siblingSlotId: "draft-slot-left",
+    },
+  ])(
+    "refreshes the $label composer with a fresh slot when navigation is off",
+    async ({ paneId, slotId, siblingPaneId, siblingSlotId }) => {
+      const store = renderSplitArea({
+        path: "/",
+        layout: twoPaneComposeLayout(paneId),
+        routeContent: newThreadContentFor(slotId),
+      });
+      fireEvent.change(screen.getByRole("textbox", { name: `Draft ${slotId}` }), {
+        target: { value: "Submitted work" },
+      });
+      fireEvent.change(
+        screen.getByRole("textbox", { name: `Draft ${siblingSlotId}` }),
+        { target: { value: "Untouched sibling" } },
+      );
+
+      fireEvent.click(screen.getByTestId(`reset-compose-${slotId}`));
+
+      let freshSlotId: string | null = null;
+      await waitFor(() => {
+        const layout = store.get(splitLayoutAtom);
+        const panes = layout === null ? [] : listPanes(layout.root);
+        const targetContent = panes.find(
+          (pane) => pane.paneId === paneId,
+        )?.content;
+        expect(targetContent?.kind).toBe("new-thread");
+        if (targetContent?.kind === "new-thread") {
+          freshSlotId = targetContent.draftSlotId;
+          expect(freshSlotId).not.toBe(slotId);
+        }
+        expect(
+          panes.find((pane) => pane.paneId === siblingPaneId)?.content,
+        ).toEqual(newThreadContentFor(siblingSlotId));
+        expect(layout?.focusedPaneId).toBe(paneId);
+      });
+      expect(freshSlotId).not.toBeNull();
+      expect(screen.getByTestId("location").dataset.draftSlotId).toBe(
+        freshSlotId ?? undefined,
+      );
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: `Draft ${siblingSlotId}`,
+          }) as HTMLTextAreaElement
+        ).value,
+      ).toBe("Untouched sibling");
+      expect(readNewThreadDraftSlots().map((slot) => slot.id)).not.toContain(
+        slotId,
+      );
+    },
+  );
+
+  it.each([
+    { kind: "text", expectedAttachments: 0 },
+    { kind: "attachment", expectedAttachments: 1 },
+  ])(
+    "keeps a closed compose pane whose only input is $kind",
+    async ({ kind, expectedAttachments }) => {
+      const layout = twoPaneComposeLayout("pane-left");
+      renderSplitArea({
+        path: "/",
+        layout,
+        routeContent: newThreadContentFor("draft-slot-left"),
+      });
+      const leftPane = document.querySelector<HTMLElement>(
+        '[data-split-pane-id="pane-left"]',
+      );
+      expect(leftPane).not.toBeNull();
+      if (leftPane === null) return;
+
+      if (kind === "text") {
+        fireEvent.change(
+          within(leftPane).getByRole("textbox", {
+            name: "Draft draft-slot-left",
+          }),
+          { target: { value: "Keep after close" } },
+        );
+      } else {
+        fireEvent.click(
+          within(leftPane).getByTestId("add-attachment-draft-slot-left"),
+        );
+      }
+      fireEvent.click(
+        within(leftPane).getByRole("button", { name: "Close pane" }),
+      );
+
+      await waitFor(() =>
+        expect(screen.queryByRole("textbox", { name: "Draft draft-slot-left" })).toBeNull(),
+      );
+      const persisted = readNewThreadDraftSlots().find(
+        (slot) => slot.id === "draft-slot-left",
+      );
+      expect(persisted).toBeDefined();
+      expect(persisted?.draft.text).toBe(
+        kind === "text" ? "Keep after close" : "",
+      );
+      expect(persisted?.draft.attachments).toHaveLength(expectedAttachments);
+    },
+  );
+
+  it("leaves no draft row after closing an empty compose pane", async () => {
+    renderSplitArea({
+      path: "/",
+      layout: twoPaneComposeLayout("pane-left"),
+      routeContent: newThreadContentFor("draft-slot-left"),
+    });
+    const leftPane = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-left"]',
+    );
+    expect(leftPane).not.toBeNull();
+    if (leftPane === null) return;
+
+    fireEvent.click(
+      within(leftPane).getByRole("button", { name: "Close pane" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Draft draft-slot-left" })).toBeNull(),
+    );
+    expect(readNewThreadDraftSlots().map((slot) => slot.id)).not.toContain(
+      "draft-slot-left",
+    );
+  });
+
+  it("restores both compose drafts after the split remounts", () => {
+    const layout = twoPaneComposeLayout("pane-left");
+    renderSplitArea({
+      path: "/",
+      layout,
+      routeContent: newThreadContentFor("draft-slot-left"),
+    });
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Draft draft-slot-left" }),
+      { target: { value: "Restored left" } },
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Draft draft-slot-right" }),
+      { target: { value: "Restored right" } },
+    );
+
+    cleanup();
+    renderSplitArea({
+      path: "/",
+      layout,
+      routeContent: newThreadContentFor("draft-slot-left"),
+    });
+
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Draft draft-slot-left",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("Restored left");
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Draft draft-slot-right",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("Restored right");
   });
 
   it("passes the route slot to the standalone compose surface", () => {

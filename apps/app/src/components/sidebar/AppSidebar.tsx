@@ -210,6 +210,7 @@ export function AppSidebar({
           : undefined
       }
       onProjectSelect={closeOnMobile}
+      onSplit={onSplit}
       isCreatingProject={quickCreateProject.isCreating}
     />
   );
