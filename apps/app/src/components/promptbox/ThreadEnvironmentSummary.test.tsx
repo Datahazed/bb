@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadEnvironmentSummary } from "./ThreadEnvironmentSummary";
@@ -57,7 +63,7 @@ describe("ThreadEnvironmentSummary", () => {
     );
 
     const machineDisplay = container.querySelector<HTMLElement>(
-      '[data-option-display=""]',
+      '[aria-label="Machine: Bersabel\'s MacBook Pro"]',
     );
     expect(machineDisplay).not.toBeNull();
     expect(machineDisplay!.className).toContain("max-w-[10rem]");
@@ -68,7 +74,7 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it("uses the issue icon for an offline machine", () => {
+  it("separates offline state from the full machine-name tooltip", async () => {
     const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
@@ -79,7 +85,22 @@ describe("ThreadEnvironmentSummary", () => {
     );
 
     expect(container.querySelector('[data-icon="LaptopIssue"]')).not.toBeNull();
-    expect(screen.getAllByText("Build Mac mini · Offline")).toHaveLength(2);
+    expect(screen.getAllByText("Build Mac mini")).toHaveLength(2);
+    expect(screen.queryByText("Build Mac mini · Offline")).toBeNull();
+
+    const offlineIcon = screen.getByRole("img", { name: "Offline" });
+    fireEvent.focus(offlineIcon);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Offline");
+
+    fireEvent.blur(offlineIcon);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    const machineName = screen.getByLabelText(
+      "Machine: Build Mac mini, offline",
+    );
+    fireEvent.focus(machineName);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Build Mac mini",
+    );
   });
 
   it("renders Git checkout context in the composer summary", () => {
@@ -117,35 +138,48 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it.each(["Worktree", "Machine"] as const)(
-    "identifies the %s resource from its icon",
-    async (environmentTypeLabel) => {
-      render(
-        <TooltipProvider delayDuration={0}>
-          <ThreadEnvironmentSummary
-            environmentLabel={
-              environmentTypeLabel === "Worktree"
-                ? "Design system polish"
-                : "Build Mac mini"
-            }
-            environmentCompactLabel="Workspace"
-            environmentIcon="Laptop"
-            environmentTypeLabel={environmentTypeLabel}
-          />
-        </TooltipProvider>,
-      );
+  it("identifies a worktree from its unfamiliar icon", async () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          environmentLabel="Design system polish"
+          environmentCompactLabel="Workspace"
+          environmentIcon="FolderGit"
+          environmentTypeLabel="Worktree"
+        />
+      </TooltipProvider>,
+    );
 
-      fireEvent.focus(
-        screen.getByRole("img", {
-          name: environmentTypeLabel,
-        }),
-      );
+    fireEvent.focus(screen.getByRole("img", { name: "Worktree" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Worktree");
+  });
 
-      expect((await screen.findByRole("tooltip")).textContent).toBe(
-        environmentTypeLabel,
-      );
-    },
-  );
+  it("does not add a redundant tooltip or focus stop to the machine icon", async () => {
+    const { container } = render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          environmentLabel="Build Mac mini"
+          environmentCompactLabel="Build Mac mini"
+          environmentIcon="Laptop"
+          environmentTypeLabel="Machine"
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.queryByRole("img", { name: "Machine" })).toBeNull();
+    const laptopIcon = container.querySelector('[data-icon="Laptop"]');
+    expect(laptopIcon).not.toBeNull();
+    expect(laptopIcon?.parentElement?.getAttribute("tabindex")).toBeNull();
+
+    const machineDisplay = container.querySelector<HTMLElement>(
+      '[data-option-display=""]',
+    );
+    expect(machineDisplay).not.toBeNull();
+    fireEvent.focus(machineDisplay!);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Build Mac mini",
+    );
+  });
 
   it("explains the create-thread action in a tooltip", async () => {
     const { container } = render(

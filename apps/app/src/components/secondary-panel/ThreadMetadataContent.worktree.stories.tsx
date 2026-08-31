@@ -216,7 +216,7 @@ export function MachineVisibility() {
       </StoryRow>
       <StoryRow
         label="offline machine"
-        hint="machine shown with its connection state"
+        hint="issue icon explains Offline; name tooltip reveals the full machine name"
       >
         <WorktreeMachineVisibilityFixture
           connected={false}

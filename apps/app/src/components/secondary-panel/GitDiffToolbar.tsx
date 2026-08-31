@@ -187,11 +187,6 @@ export function GitDiffToolbar({
     <div ref={rootRef} className="px-4 pb-3 pt-3">
       {checkout ? (
         <div className="mb-2 flex min-w-0 items-center gap-2 text-xs">
-          {checkout.rowLabel === "Checkout" ? (
-            <span className="shrink-0 text-muted-foreground">
-              {checkout.rowLabel}
-            </span>
-          ) : null}
           {checkoutCopyAction !== null ? (
             <Tooltip>
               <TooltipTrigger asChild>

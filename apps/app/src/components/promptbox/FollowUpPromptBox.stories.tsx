@@ -1143,13 +1143,19 @@ export function EnvironmentMatrix() {
           environmentSummary={provisioningEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow label="ready · local" hint="laptop icon · Machine tooltip">
+      <StoryRow
+        label="ready · local"
+        hint="laptop icon · full machine-name tooltip"
+      >
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={localEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow label="ready · remote" hint="laptop icon · Machine tooltip">
+      <StoryRow
+        label="ready · remote"
+        hint="laptop icon · full machine-name tooltip"
+      >
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
@@ -1198,7 +1204,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · detached worktree"
-        hint="worktree icon · detached commit checkout"
+        hint="worktree icon · detached commit"
       >
         <Row
           submitMode={{ kind: "ready" }}

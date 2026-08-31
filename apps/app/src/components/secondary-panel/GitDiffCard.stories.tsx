@@ -824,7 +824,7 @@ function InteractiveDiffPanel({
   );
 }
 
-export function Checkout() {
+export function BranchAndCommit() {
   return (
     <StoryCard>
       <StoryRow
@@ -836,7 +836,7 @@ export function Checkout() {
       </StoryRow>
       <StoryRow
         label="detached"
-        hint="Checkout label disambiguates a detached commit"
+        hint="detached commit appears directly above the diff selector"
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         <InteractiveDiffPanel diffs={[]} checkout={DETACHED_CHECKOUT} />

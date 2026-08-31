@@ -38,8 +38,8 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         value: "abcdef1234567890",
       },
       detailTooltip: null,
-      label: "detached abcdef1",
-      rowLabel: "Checkout",
+      label: "Detached at abcdef1",
+      rowLabel: "Commit",
     });
   });
 
@@ -54,8 +54,8 @@ describe("formatWorkspaceCheckoutDisplay", () => {
     ).toMatchObject({
       copyAction: null,
       detailTooltip: "Detached HEAD",
-      label: "detached HEAD",
-      rowLabel: "Checkout",
+      label: "Detached HEAD",
+      rowLabel: "Commit",
     });
   });
 
@@ -71,7 +71,7 @@ describe("formatWorkspaceCheckoutDisplay", () => {
       copyAction: null,
       detailTooltip: "Empty branch: main",
       label: "main (empty)",
-      rowLabel: "Checkout",
+      rowLabel: "Branch",
     });
   });
 
@@ -87,7 +87,7 @@ describe("formatWorkspaceCheckoutDisplay", () => {
       copyAction: null,
       detailTooltip: "Empty repository",
       label: "empty repo",
-      rowLabel: "Checkout",
+      rowLabel: "Repository",
     });
   });
 
@@ -101,9 +101,9 @@ describe("formatWorkspaceCheckoutDisplay", () => {
       }),
     ).toMatchObject({
       copyAction: null,
-      detailTooltip: "Unknown checkout: HEAD is missing",
-      label: "unknown checkout",
-      rowLabel: "Checkout",
+      detailTooltip: "Unknown Git state: HEAD is missing",
+      label: "unknown state",
+      rowLabel: "Git",
     });
   });
 });

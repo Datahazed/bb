@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
@@ -276,11 +277,17 @@ describe("EnvironmentRow", () => {
     expect(screen.getByText("· Offline").getAttribute("class")).toContain(
       "text-muted-foreground",
     );
+    const offlineIcon = screen.getByRole("img", { name: "Offline" });
+    fireEvent.focus(offlineIcon);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Offline");
+
+    fireEvent.blur(offlineIcon);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
     fireEvent.focus(
-      screen.getByLabelText("Machine: Bersabel's MacBook Pro · Offline"),
+      screen.getByLabelText("Machine: Bersabel's MacBook Pro, offline"),
     );
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Bersabel's MacBook Pro · Offline",
+      "Bersabel's MacBook Pro",
     );
   });
 

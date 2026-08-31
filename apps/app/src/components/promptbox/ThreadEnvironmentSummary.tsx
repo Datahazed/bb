@@ -24,6 +24,60 @@ interface ThreadEnvironmentSummaryProps {
   onCreateNewThreadInWorktree?: () => void;
 }
 
+function MachineContext({
+  name,
+  connected,
+}: {
+  name: string;
+  connected: boolean;
+}) {
+  const accessibleLabel = connected
+    ? `Machine: ${name}`
+    : `Machine: ${name}, offline`;
+
+  return (
+    <span
+      data-promptbox-secondary-context=""
+      className="inline-flex h-6 w-fit max-w-[10rem] min-w-0 shrink items-center gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
+    >
+      {connected ? (
+        <Icon name="Laptop" className="size-4 shrink-0" aria-hidden />
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              role="img"
+              tabIndex={0}
+              aria-label="Offline"
+              className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <Icon name="LaptopIssue" className="size-4" aria-hidden />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Offline</TooltipContent>
+        </Tooltip>
+      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            tabIndex={0}
+            aria-label={accessibleLabel}
+            className="inline-flex min-w-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <span className="min-w-0 truncate" data-promptbox-full-label="">
+              {name}
+            </span>
+            <span className="min-w-0 truncate" data-promptbox-compact-label="">
+              {name}
+            </span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{name}</TooltipContent>
+      </Tooltip>
+    </span>
+  );
+}
+
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   projectName,
   environmentLabel,
@@ -67,25 +121,24 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           data-promptbox-worktree-context={isWorktree ? "" : undefined}
           className="inline-flex h-6 w-fit max-w-full min-w-0 shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
         >
-          {environmentIcon &&
-          environmentTypeLabel &&
-          environmentIcon !== "Loading" ? (
+          {environmentIcon && isWorktree && environmentIcon !== "Loading" ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
                   role="img"
                   tabIndex={0}
-                  aria-label={environmentTypeLabel}
+                  aria-label="Worktree"
                   className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
-                  <Icon name={environmentIcon} className="size-4" />
+                  <Icon name={environmentIcon} className="size-4" aria-hidden />
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{environmentTypeLabel}</TooltipContent>
+              <TooltipContent>Worktree</TooltipContent>
             </Tooltip>
           ) : environmentIcon ? (
             <Icon
               name={environmentIcon}
+              aria-hidden
               className={cn(
                 "size-4 shrink-0",
                 environmentIcon === "Loading" && "animate-spin",
@@ -103,26 +156,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
         </div>
       ) : null}
       {machineName ? (
-        <span data-promptbox-secondary-context="" className="contents">
-          <OptionDisplay
-            label="Machine"
-            value={machineConnected ? machineName : `${machineName} · Offline`}
-            compactValue={
-              machineConnected ? machineName : `${machineName} · Offline`
-            }
-            leading={
-              <Icon
-                name={machineConnected ? "Laptop" : "LaptopIssue"}
-                className="size-4 shrink-0"
-              />
-            }
-            className="h-6 min-w-0 max-w-[10rem] shrink"
-            tooltip={
-              machineConnected ? machineName : `${machineName} · Offline`
-            }
-            muted
-          />
-        </span>
+        <MachineContext name={machineName} connected={machineConnected} />
       ) : null}
       {environmentCheckout && checkoutCopyAction !== null ? (
         <Tooltip>

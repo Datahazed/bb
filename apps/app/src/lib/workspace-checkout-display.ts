@@ -14,7 +14,7 @@ export interface WorkspaceCheckoutDisplay {
   copyAction: WorkspaceCheckoutCopyAction | null;
   detailTooltip: string | null;
   label: string;
-  rowLabel: "Branch" | "Checkout";
+  rowLabel: "Branch" | "Commit" | "Git" | "Repository";
 }
 
 interface FormatWorkspaceCheckoutDisplayArgs {
@@ -47,8 +47,8 @@ export function formatWorkspaceCheckoutDisplay({
         return {
           copyAction: null,
           detailTooltip: "Detached HEAD",
-          label: "detached HEAD",
-          rowLabel: "Checkout",
+          label: "Detached HEAD",
+          rowLabel: "Commit",
         };
       }
       return {
@@ -60,8 +60,8 @@ export function formatWorkspaceCheckoutDisplay({
           value: checkout.headSha,
         },
         detailTooltip: null,
-        label: `detached ${shortSha(checkout.headSha)}`,
-        rowLabel: "Checkout",
+        label: `Detached at ${shortSha(checkout.headSha)}`,
+        rowLabel: "Commit",
       };
     case "unborn":
       return {
@@ -74,14 +74,14 @@ export function formatWorkspaceCheckoutDisplay({
           checkout.branchName !== null
             ? `${checkout.branchName} (empty)`
             : "empty repo",
-        rowLabel: "Checkout",
+        rowLabel: checkout.branchName !== null ? "Branch" : "Repository",
       };
     case "unknown":
       return {
         copyAction: null,
-        detailTooltip: `Unknown checkout: ${checkout.reason}`,
-        label: "unknown checkout",
-        rowLabel: "Checkout",
+        detailTooltip: `Unknown Git state: ${checkout.reason}`,
+        label: "unknown state",
+        rowLabel: "Git",
       };
   }
 }

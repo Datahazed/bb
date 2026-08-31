@@ -396,19 +396,40 @@ interface MachineRowProps {
 
 export function MachineRow({ name, connected = true }: MachineRowProps) {
   if (!name) return null;
-  const value = connected ? name : `${name} · Offline`;
+  const accessibleLabel = connected
+    ? `Machine: ${name}`
+    : `Machine: ${name}, offline`;
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel
-          icon={connected ? PersistentHostIconName : "LaptopIssue"}
-        >
-          Machine
-        </DetailRowIconLabel>
+        <span className="flex items-center gap-1.5">
+          {connected ? (
+            <Icon
+              name={PersistentHostIconName}
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="img"
+                  tabIndex={0}
+                  aria-label="Offline"
+                  className="inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Icon name="LaptopIssue" className="size-3.5" aria-hidden />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Offline</TooltipContent>
+            </Tooltip>
+          )}
+          <span className="min-w-0 truncate">Machine</span>
+        </span>
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      <DetailValueTooltip accessibleLabel={`Machine: ${value}`} tooltip={value}>
+      <DetailValueTooltip accessibleLabel={accessibleLabel} tooltip={name}>
         <span className="min-w-0 truncate text-foreground">{name}</span>
         {connected ? null : (
           <span className="shrink-0 text-muted-foreground">· Offline</span>
