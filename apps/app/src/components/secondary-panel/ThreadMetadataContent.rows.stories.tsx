@@ -1,4 +1,9 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import type { Environment as EnvironmentRecord } from "@bb/domain";
+import {
+  EnvironmentRenameDialog,
+  type EnvironmentRenameDialogTarget,
+} from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   ParentSelectorRow,
   EnvironmentRow,
@@ -36,6 +41,71 @@ function RowStage({ children }: { children: ReactNode }) {
     <PanelStage>
       <ThreadMetadataCard>{children}</ThreadMetadataCard>
     </PanelStage>
+  );
+}
+
+interface EnvironmentRowFixtureProps {
+  fixtureId: string;
+  initialName: string | null;
+  environmentOverrides?: Partial<EnvironmentRecord>;
+}
+
+function EnvironmentRowFixture({
+  fixtureId,
+  initialName,
+  environmentOverrides,
+}: EnvironmentRowFixtureProps) {
+  const [name, setName] = useState<string | null>(initialName);
+  const [renameTarget, setRenameTarget] =
+    useState<EnvironmentRenameDialogTarget | null>(null);
+  const renameTriggerRef = useRef<HTMLElement | null>(null);
+  const closeRename = () => {
+    const renameTrigger = renameTriggerRef.current;
+    renameTriggerRef.current = null;
+    setRenameTarget(null);
+    requestAnimationFrame(() => {
+      if (renameTrigger?.isConnected) renameTrigger.focus();
+    });
+  };
+  const environment = makeEnvironment({
+    ...environmentOverrides,
+    id: `env_${fixtureId}`,
+    name,
+  });
+
+  return (
+    <>
+      <RowStage>
+        <EnvironmentRow
+          thread={makeThread({ environmentId: environment.id })}
+          environment={environment}
+          environmentDisplayHost={localEnvironmentDisplayHost}
+          onRenameWorktree={() => {
+            renameTriggerRef.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+            setRenameTarget({
+              id: environment.id,
+              currentName: name ?? "",
+              branchName: "bb/design-system-polish",
+              canClearName: name !== null,
+            });
+          }}
+        />
+      </RowStage>
+      <EnvironmentRenameDialog
+        target={renameTarget}
+        pending={false}
+        onOpenChange={(open) => {
+          if (!open) closeRename();
+        }}
+        onRename={(_environmentId, nextName) => {
+          setName(nextName);
+          closeRename();
+        }}
+      />
+    </>
   );
 }
 
@@ -126,57 +196,43 @@ export function ParentSelector() {
 export function Environment() {
   return (
     <StoryCard>
-      <StoryRow label="worktree" hint="typical name">
-        <RowStage>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({ name: "Design system polish" })}
-            environmentDisplayHost={localEnvironmentDisplayHost}
-            onRenameWorktree={noop}
-          />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="worktree" hint="long name">
-        <RowStage>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({
-              name: "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout",
-            })}
-            environmentDisplayHost={localEnvironmentDisplayHost}
-            onRenameWorktree={noop}
-          />
-        </RowStage>
+      <StoryRow
+        label="worktree"
+        hint="existing custom name"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+      >
+        <EnvironmentRowFixture
+          fixtureId="info-custom"
+          initialName="Design system polish"
+        />
       </StoryRow>
       <StoryRow
         label="worktree"
-        hint="unnamed · naming stays discoverable here"
+        hint="valid long custom name"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+      >
+        <EnvironmentRowFixture
+          fixtureId="info-long"
+          initialName="internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout-monitoring"
+        />
+      </StoryRow>
+      <StoryRow
+        label="worktree"
+        hint="no custom metadata; the current Info action displays Add name"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+      >
+        <EnvironmentRowFixture fixtureId="info-unnamed" initialName={null} />
+      </StoryRow>
+      <StoryRow
+        label="worktree"
+        hint="provisioning lifecycle without custom metadata"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({ name: null })}
-            environmentDisplayHost={localEnvironmentDisplayHost}
-            onRenameWorktree={noop}
-          />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="machine" hint="local">
-        <RowStage>
-          <MachineRow name="Bersabel's MacBook Pro" />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="machine" hint="remote">
-        <RowStage>
-          <MachineRow name="Build Mac mini" />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="worktree" hint="provisioning">
-        <RowStage>
-          <EnvironmentRow
-            thread={makeThread()}
             environment={makeEnvironment({
-              name: "Design system polish",
+              name: null,
               status: "provisioning",
               path: null,
               isWorktree: false,

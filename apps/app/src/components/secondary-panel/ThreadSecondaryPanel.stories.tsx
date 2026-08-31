@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -42,6 +43,11 @@ import {
 } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
+import {
+  EnvironmentRenameDialog,
+  type EnvironmentRenameDialogTarget,
+} from "@/components/dialogs/EnvironmentRenameDialog";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -204,6 +210,12 @@ const representativeWorkspaceStatus = makeWorkspaceStatus({
 });
 
 function RepresentativeInfoContent() {
+  const [environmentName, setEnvironmentName] = useState<string | null>(
+    baseMetadataProps.environment?.name ?? null,
+  );
+  const [renameTarget, setRenameTarget] =
+    useState<EnvironmentRenameDialogTarget | null>(null);
+  const renameTriggerRef = useRef<HTMLElement | null>(null);
   const [selectedStoragePath, setSelectedStoragePath] = useState<string | null>(
     null,
   );
@@ -212,8 +224,20 @@ function RepresentativeInfoContent() {
     onSelectPath: setSelectedStoragePath,
     selectedPath: selectedStoragePath,
   });
+  const environment = baseMetadataProps.environment
+    ? { ...baseMetadataProps.environment, name: environmentName }
+    : null;
+  const closeRename = () => {
+    const renameTrigger = renameTriggerRef.current;
+    renameTriggerRef.current = null;
+    setRenameTarget(null);
+    requestAnimationFrame(() => {
+      if (renameTrigger?.isConnected) renameTrigger.focus();
+    });
+  };
   const props: ThreadMetadataContentProps = {
     ...baseMetadataProps,
+    environment,
     pullRequest: makePullRequest({
       number: 947,
       title: "Use the sidebar surface throughout the right panel",
@@ -226,9 +250,40 @@ function RepresentativeInfoContent() {
       isFilesLoading: false,
     },
     onCommitClick: noop,
+    ...(environment
+      ? {
+          onRenameWorktree: () => {
+            renameTriggerRef.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+            setRenameTarget({
+              id: environment.id,
+              currentName: environment.name ?? "",
+              branchName: "bb/design-system-polish",
+              canClearName: environment.name !== null,
+            });
+          },
+        }
+      : {}),
   };
 
-  return <ThreadMetadataContent {...props} />;
+  return (
+    <>
+      <ThreadMetadataContent {...props} />
+      <EnvironmentRenameDialog
+        target={renameTarget}
+        pending={false}
+        onOpenChange={(open) => {
+          if (!open) closeRename();
+        }}
+        onRename={(_environmentId, nextName) => {
+          setEnvironmentName(nextName);
+          closeRename();
+        }}
+      />
+    </>
+  );
 }
 
 interface ShellArgs {
@@ -249,6 +304,13 @@ function ShellRow({
           <ThreadSecondaryPanel
             activeTab={createStoryFixedPanelTab(panel)}
             canUseGitUi={canUseGitUi}
+            gitCheckout={formatWorkspaceCheckoutDisplay({
+              checkout: {
+                kind: "branch",
+                branchName: "bb/design-system-polish",
+                headSha: null,
+              },
+            })}
             requestedMergeBaseBranch="main"
             environmentId={undefined}
             isOpen

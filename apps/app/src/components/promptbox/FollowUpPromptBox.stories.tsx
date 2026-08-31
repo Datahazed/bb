@@ -48,13 +48,11 @@ import {
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import {
   EnvironmentRenameDialog,
-  EnvironmentRenameDialogContent,
   type EnvironmentRenameDialogTarget,
 } from "@/components/dialogs/EnvironmentRenameDialog";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { DialogStage } from "../../../.ladle/story-dialog-stage";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
@@ -80,7 +78,7 @@ const noop = () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 const STORY_WORKTREE_NAME = "Design system polish";
 const STORY_LONG_WORKTREE_NAME =
-  "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout-observability-and-accessibility";
+  "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout-monitoring";
 const STORY_CHECKOUT_DISPLAY = formatWorkspaceCheckoutDisplay({
   checkout: {
     kind: "branch",
@@ -298,19 +296,6 @@ const unmanagedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     managed: false,
     isWorktree: true,
     workspaceProvisionType: "unmanaged",
-    status: "ready",
-  }),
-  host: localEnvironmentDisplayHost,
-  hostName: "Bersabel's MacBook Pro",
-  environmentCheckout: STORY_CHECKOUT_DISPLAY,
-  onCreateNewThreadInWorktree: noop,
-});
-
-const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
-  environment: makeEnvironment({
-    name: STORY_WORKTREE_NAME,
-    isWorktree: true,
-    workspaceProvisionType: "managed-worktree",
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
@@ -883,7 +868,12 @@ export function Overview() {
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="active"
           contextWindowUsage={usage}
-          environmentSummary={namedWorktreeEnvironmentSummary}
+          environmentSummary={
+            <WorktreeEnvironmentSummaryFixture
+              fixtureId="overview-queue"
+              initialName={STORY_WORKTREE_NAME}
+            />
+          }
         />
       </StoryRow>
       <StoryRow
@@ -924,7 +914,12 @@ export function Overview() {
           isFollowUpSubmitting
           threadRuntimeDisplayStatus="active"
           initialMessage="And confirm the new env summary renders correctly."
-          environmentSummary={namedWorktreeEnvironmentSummary}
+          environmentSummary={
+            <WorktreeEnvironmentSummaryFixture
+              fixtureId="overview-submitting"
+              initialName={STORY_WORKTREE_NAME}
+            />
+          }
         />
       </StoryRow>
       <StoryRow
@@ -1052,7 +1047,12 @@ export function Overview() {
           stack={contextBannerElement}
           queuedMessages={queuedMessages}
           contextWindowUsage={usage}
-          environmentSummary={namedWorktreeEnvironmentSummary}
+          environmentSummary={
+            <WorktreeEnvironmentSummaryFixture
+              fixtureId="overview-stacked"
+              initialName={STORY_WORKTREE_NAME}
+            />
+          }
         />
       </StoryRow>
       <StoryRow
@@ -1078,11 +1078,16 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="env: named worktree"
-        hint="worktree name and machine are separate context labels"
+        hint="custom worktree name replaces the machine fallback; branch remains separate"
       >
         <Row
           submitMode={{ kind: "ready" }}
-          environmentSummary={namedWorktreeEnvironmentSummary}
+          environmentSummary={
+            <WorktreeEnvironmentSummaryFixture
+              fixtureId="overview-named"
+              initialName={STORY_WORKTREE_NAME}
+            />
+          }
         />
       </StoryRow>
       <StoryRow
@@ -1193,7 +1198,12 @@ export function EnvironmentMatrix() {
       >
         <Row
           submitMode={{ kind: "ready" }}
-          environmentSummary={namedWorktreeEnvironmentSummary}
+          environmentSummary={
+            <WorktreeEnvironmentSummaryFixture
+              fixtureId="matrix-named"
+              initialName={STORY_WORKTREE_NAME}
+            />
+          }
         />
       </StoryRow>
       <StoryRow
@@ -1234,12 +1244,14 @@ export function ProvisioningEnvironmentSummary() {
   );
 }
 
-function WorktreeNameEditingFixture({
+function WorktreeEnvironmentSummaryFixture({
   fixtureId,
   initialName,
+  framed = false,
 }: {
   fixtureId: string;
   initialName: string | null;
+  framed?: boolean;
 }) {
   const [name, setName] = useState<string | null>(initialName);
   const [renameTarget, setRenameTarget] =
@@ -1266,28 +1278,34 @@ function WorktreeNameEditingFixture({
     });
   };
 
+  const summary = makeEnvironmentSummary({
+    environment: makeEnvironment({
+      id: `env_${fixtureId}`,
+      name,
+      isWorktree: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    }),
+    host: localEnvironmentDisplayHost,
+    hostName: "Bersabel's MacBook Pro",
+    environmentCheckout: STORY_CHECKOUT_DISPLAY,
+    onRenameWorktree: name === null ? undefined : openRename,
+    onCreateNewThreadInWorktree: noop,
+  });
+
   return (
     <>
-      <div
-        data-promptbox=""
-        data-worktree-name-fixture={fixtureId}
-        className="w-full max-w-xl rounded-md border bg-background p-3"
-      >
-        {makeEnvironmentSummary({
-          environment: makeEnvironment({
-            id: `env_${fixtureId}`,
-            name,
-            isWorktree: true,
-            workspaceProvisionType: "managed-worktree",
-            status: "ready",
-          }),
-          host: localEnvironmentDisplayHost,
-          hostName: "Bersabel's MacBook Pro",
-          environmentCheckout: STORY_CHECKOUT_DISPLAY,
-          onRenameWorktree: name === null ? undefined : openRename,
-          onCreateNewThreadInWorktree: noop,
-        })}
-      </div>
+      {framed ? (
+        <div
+          data-promptbox=""
+          data-worktree-name-fixture={fixtureId}
+          className="w-full max-w-xl rounded-md border bg-background p-3"
+        >
+          {summary}
+        </div>
+      ) : (
+        summary
+      )}
       <EnvironmentRenameDialog
         target={renameTarget}
         pending={false}
@@ -1307,21 +1325,25 @@ export function WorktreeNameEditing() {
   return (
     <StoryCard>
       <StoryRow
-        label="typical name"
-        hint="visible worktree name; restrained rename affordance on interaction"
+        label="existing custom name"
+        hint="custom metadata is visible; hover, focus, or activate it to rename"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
-        <WorktreeNameEditingFixture
-          fixtureId="typical"
+        <WorktreeEnvironmentSummaryFixture
+          fixtureId="custom"
           initialName={STORY_WORKTREE_NAME}
+          framed
         />
       </StoryRow>
       <StoryRow
-        label="long name"
-        hint="long visible name truncates before branch and thread controls"
+        label="maximum-length custom name"
+        hint="valid long metadata truncates before branch and thread controls"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
-        <WorktreeNameEditingFixture
+        <WorktreeEnvironmentSummaryFixture
           fixtureId="long"
           initialName={STORY_LONG_WORKTREE_NAME}
+          framed
         />
       </StoryRow>
     </StoryCard>
@@ -1329,71 +1351,31 @@ export function WorktreeNameEditing() {
 }
 
 export function WorktreeNamingContract() {
-  const inputRef = useRef<HTMLInputElement | null>(null);
   return (
     <StoryCard>
       <StoryRow
         label="custom name"
-        hint="clearing the custom name returns the composer to machine + branch"
+        hint="custom metadata replaces the machine fallback and opens the rename flow"
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
-        <DialogStage>
-          <EnvironmentRenameDialogContent
-            target={{
-              id: "env_named",
-              currentName: "Design system polish",
-              branchName: STORY_BRANCH_NAME,
-              canClearName: true,
-            }}
-            pending={false}
-            onRename={noop}
-            inputRef={inputRef}
-          />
-        </DialogStage>
+        <WorktreeEnvironmentSummaryFixture
+          fixtureId="contract-custom"
+          initialName={STORY_WORKTREE_NAME}
+          framed
+        />
       </StoryRow>
       <StoryRow
         label="unnamed"
-        hint="worktree icon + machine fallback + branch; generated identity stays hidden"
+        hint="worktree icon + machine fallback; branch stays separate when width allows"
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
-        <WorktreeNameEditingFixture fixtureId="unnamed" initialName={null} />
+        <WorktreeEnvironmentSummaryFixture
+          fixtureId="contract-unnamed"
+          initialName={null}
+          framed
+        />
       </StoryRow>
     </StoryCard>
-  );
-}
-
-export function WorktreeRenameResponsive() {
-  const [target, setTarget] = useState<EnvironmentRenameDialogTarget | null>({
-    id: "env_responsive",
-    currentName: STORY_WORKTREE_NAME,
-    branchName: STORY_BRANCH_NAME,
-    canClearName: true,
-  });
-  return (
-    <div className="flex min-h-[80dvh] items-center justify-center p-6">
-      <button
-        type="button"
-        className="rounded-md border px-3 py-2 text-sm"
-        onClick={() => {
-          setTarget({
-            id: "env_responsive",
-            currentName: STORY_WORKTREE_NAME,
-            branchName: STORY_BRANCH_NAME,
-            canClearName: true,
-          });
-        }}
-      >
-        Open rename dialog
-      </button>
-      <EnvironmentRenameDialog
-        target={target}
-        pending={false}
-        onOpenChange={(open) => {
-          if (!open) setTarget(null);
-        }}
-        onRename={noop}
-      />
-    </div>
   );
 }
 

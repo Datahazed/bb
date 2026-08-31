@@ -22,7 +22,10 @@ import {
 } from "../git-diff/git-diff-parsing";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { appToast } from "@/components/ui/app-toast";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import {
+  formatWorkspaceCheckoutDisplay,
+  type WorkspaceCheckoutDisplay,
+} from "@/lib/workspace-checkout-display";
 
 export default {
   title: "right-panel/Diff",
@@ -605,6 +608,21 @@ const SELECTION_OPTIONS: readonly GitDiffSelectionOption[] = [
   },
 ];
 
+const BRANCH_CHECKOUT = formatWorkspaceCheckoutDisplay({
+  checkout: {
+    kind: "branch",
+    branchName: "bb/design-system-polish",
+    headSha: null,
+  },
+});
+
+const DETACHED_CHECKOUT = formatWorkspaceCheckoutDisplay({
+  checkout: {
+    kind: "detached",
+    headSha: "abcdef1234567890",
+  },
+});
+
 type DiffPanelFixture = AlignedDiffResult | ImageDiffResult;
 
 interface InteractiveDiffPanelDiff {
@@ -661,12 +679,14 @@ function getFixtureSideContents(
 
 interface InteractiveDiffPanelArgs {
   diffs: readonly InteractiveDiffPanelDiff[];
+  checkout?: WorkspaceCheckoutDisplay;
   initialCollapsed?: ReadonlySet<string>;
   renderingFileKeys?: ReadonlySet<string>;
 }
 
 function InteractiveDiffPanel({
   diffs,
+  checkout = BRANCH_CHECKOUT,
   initialCollapsed,
   renderingFileKeys,
 }: InteractiveDiffPanelArgs) {
@@ -768,13 +788,7 @@ function InteractiveDiffPanel({
   return (
     <PanelStage>
       <GitDiffToolbar
-        checkout={formatWorkspaceCheckoutDisplay({
-          checkout: {
-            kind: "branch",
-            branchName: "bb/design-system-polish",
-            headSha: null,
-          },
-        })}
+        checkout={checkout}
         selectionValue={selection}
         selectionOptions={SELECTION_OPTIONS}
         onSelectionChange={setSelection}
@@ -807,6 +821,27 @@ function InteractiveDiffPanel({
         </div>
       </div>
     </PanelStage>
+  );
+}
+
+export function CheckoutContext() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="branch"
+        hint="branch name appears directly above the diff selector"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+      >
+        <InteractiveDiffPanel diffs={[]} checkout={BRANCH_CHECKOUT} />
+      </StoryRow>
+      <StoryRow
+        label="detached"
+        hint="Checkout label disambiguates a detached commit"
+        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+      >
+        <InteractiveDiffPanel diffs={[]} checkout={DETACHED_CHECKOUT} />
+      </StoryRow>
+    </StoryCard>
   );
 }
 
