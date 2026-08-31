@@ -117,19 +117,6 @@ function ResponsiveDialogFixture() {
   );
 }
 
-export function BranchContext() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="branch context"
-        hint="current branch beneath the custom worktree name"
-      >
-        <ContentFixture target={customNameTarget} />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
 export function Overview() {
   return (
     <StoryCard>

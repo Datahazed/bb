@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   Environment,
   PermissionMode,
@@ -46,10 +46,6 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import {
-  EnvironmentRenameDialog,
-  type EnvironmentRenameDialogTarget,
-} from "@/components/dialogs/EnvironmentRenameDialog";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -69,6 +65,7 @@ import type {
 import { PageShell } from "@/components/ui/page-shell.js";
 import { promptDraftToInput, type PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
+import { useWorktreeNameStoryState } from "../../../.ladle/worktree-name-story-fixture";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -77,8 +74,6 @@ export default {
 const noop = () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 const STORY_WORKTREE_NAME = "Design system polish";
-const STORY_LONG_WORKTREE_NAME =
-  "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout-monitoring";
 const STORY_CHECKOUT_DISPLAY = formatWorkspaceCheckoutDisplay({
   checkout: {
     kind: "branch",
@@ -1247,40 +1242,20 @@ export function ProvisioningEnvironmentSummary() {
 function WorktreeEnvironmentSummaryFixture({
   fixtureId,
   initialName,
-  framed = false,
 }: {
   fixtureId: string;
   initialName: string | null;
-  framed?: boolean;
 }) {
-  const [name, setName] = useState<string | null>(initialName);
-  const [renameTarget, setRenameTarget] =
-    useState<EnvironmentRenameDialogTarget | null>(null);
-  const renameTriggerRef = useRef<HTMLElement | null>(null);
-  const openRename = () => {
-    renameTriggerRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    setRenameTarget({
-      id: `env_${fixtureId}`,
-      currentName: name ?? "",
-      branchName: STORY_BRANCH_NAME,
-      canClearName: name !== null,
-    });
-  };
-  const closeRename = () => {
-    const renameTrigger = renameTriggerRef.current;
-    renameTriggerRef.current = null;
-    setRenameTarget(null);
-    requestAnimationFrame(() => {
-      if (renameTrigger?.isConnected) renameTrigger.focus();
-    });
-  };
+  const environmentId = `env_${fixtureId}`;
+  const { name, onRenameWorktree, renameDialog } = useWorktreeNameStoryState({
+    environmentId,
+    initialName,
+    branchName: STORY_BRANCH_NAME,
+  });
 
   const summary = makeEnvironmentSummary({
     environment: makeEnvironment({
-      id: `env_${fixtureId}`,
+      id: environmentId,
       name,
       isWorktree: true,
       workspaceProvisionType: "managed-worktree",
@@ -1289,93 +1264,15 @@ function WorktreeEnvironmentSummaryFixture({
     host: localEnvironmentDisplayHost,
     hostName: "Bersabel's MacBook Pro",
     environmentCheckout: STORY_CHECKOUT_DISPLAY,
-    onRenameWorktree: name === null ? undefined : openRename,
+    onRenameWorktree: name === null ? undefined : onRenameWorktree,
     onCreateNewThreadInWorktree: noop,
   });
 
   return (
     <>
-      {framed ? (
-        <div
-          data-promptbox=""
-          data-worktree-name-fixture={fixtureId}
-          className="w-full max-w-xl rounded-md border bg-background p-3"
-        >
-          {summary}
-        </div>
-      ) : (
-        summary
-      )}
-      <EnvironmentRenameDialog
-        target={renameTarget}
-        pending={false}
-        onOpenChange={(open) => {
-          if (!open) closeRename();
-        }}
-        onRename={(_environmentId, nextName) => {
-          setName(nextName);
-          closeRename();
-        }}
-      />
+      {summary}
+      {renameDialog}
     </>
-  );
-}
-
-export function WorktreeNameEditing() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="existing custom name"
-        hint="custom metadata is visible; hover, focus, or activate it to rename"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeEnvironmentSummaryFixture
-          fixtureId="custom"
-          initialName={STORY_WORKTREE_NAME}
-          framed
-        />
-      </StoryRow>
-      <StoryRow
-        label="maximum-length custom name"
-        hint="valid long metadata truncates before branch and thread controls"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeEnvironmentSummaryFixture
-          fixtureId="long"
-          initialName={STORY_LONG_WORKTREE_NAME}
-          framed
-        />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function WorktreeNamingContract() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="custom name"
-        hint="custom metadata replaces the machine fallback and opens the rename flow"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeEnvironmentSummaryFixture
-          fixtureId="contract-custom"
-          initialName={STORY_WORKTREE_NAME}
-          framed
-        />
-      </StoryRow>
-      <StoryRow
-        label="unnamed"
-        hint="worktree icon + machine fallback; branch stays separate when width allows"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeEnvironmentSummaryFixture
-          fixtureId="contract-unnamed"
-          initialName={null}
-          framed
-        />
-      </StoryRow>
-    </StoryCard>
   );
 }
 

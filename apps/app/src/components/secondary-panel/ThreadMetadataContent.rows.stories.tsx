@@ -1,9 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
-import type { Environment as EnvironmentRecord } from "@bb/domain";
-import {
-  EnvironmentRenameDialog,
-  type EnvironmentRenameDialogTarget,
-} from "@/components/dialogs/EnvironmentRenameDialog";
+import type { ReactNode } from "react";
 import {
   ParentSelectorRow,
   EnvironmentRow,
@@ -29,6 +24,7 @@ import {
   makeWorkspaceStatus,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { useWorktreeNameStoryState } from "../../../.ladle/worktree-name-story-fixture";
 
 export default {
   title: "right-panel/Info/Row",
@@ -44,32 +40,23 @@ function RowStage({ children }: { children: ReactNode }) {
   );
 }
 
-interface EnvironmentRowFixtureProps {
+interface WorktreeRowFixtureProps {
   fixtureId: string;
   initialName: string | null;
-  environmentOverrides?: Partial<EnvironmentRecord>;
 }
 
-function EnvironmentRowFixture({
+function WorktreeRowFixture({
   fixtureId,
   initialName,
-  environmentOverrides,
-}: EnvironmentRowFixtureProps) {
-  const [name, setName] = useState<string | null>(initialName);
-  const [renameTarget, setRenameTarget] =
-    useState<EnvironmentRenameDialogTarget | null>(null);
-  const renameTriggerRef = useRef<HTMLElement | null>(null);
-  const closeRename = () => {
-    const renameTrigger = renameTriggerRef.current;
-    renameTriggerRef.current = null;
-    setRenameTarget(null);
-    requestAnimationFrame(() => {
-      if (renameTrigger?.isConnected) renameTrigger.focus();
-    });
-  };
+}: WorktreeRowFixtureProps) {
+  const environmentId = `env_${fixtureId}`;
+  const { name, onRenameWorktree, renameDialog } = useWorktreeNameStoryState({
+    environmentId,
+    initialName,
+    branchName: "bb/design-system-polish",
+  });
   const environment = makeEnvironment({
-    ...environmentOverrides,
-    id: `env_${fixtureId}`,
+    id: environmentId,
     name,
   });
 
@@ -80,31 +67,10 @@ function EnvironmentRowFixture({
           thread={makeThread({ environmentId: environment.id })}
           environment={environment}
           environmentDisplayHost={localEnvironmentDisplayHost}
-          onRenameWorktree={() => {
-            renameTriggerRef.current =
-              document.activeElement instanceof HTMLElement
-                ? document.activeElement
-                : null;
-            setRenameTarget({
-              id: environment.id,
-              currentName: name ?? "",
-              branchName: "bb/design-system-polish",
-              canClearName: name !== null,
-            });
-          }}
+          onRenameWorktree={onRenameWorktree}
         />
       </RowStage>
-      <EnvironmentRenameDialog
-        target={renameTarget}
-        pending={false}
-        onOpenChange={(open) => {
-          if (!open) closeRename();
-        }}
-        onRename={(_environmentId, nextName) => {
-          setName(nextName);
-          closeRename();
-        }}
-      />
+      {renameDialog}
     </>
   );
 }
@@ -193,7 +159,7 @@ export function ParentSelector() {
   );
 }
 
-export function Environment() {
+export function Worktree() {
   return (
     <StoryCard>
       <StoryRow
@@ -201,7 +167,7 @@ export function Environment() {
         hint="existing custom name"
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
-        <EnvironmentRowFixture
+        <WorktreeRowFixture
           fixtureId="info-custom"
           initialName="Design system polish"
         />
@@ -211,7 +177,7 @@ export function Environment() {
         hint="valid long custom name"
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
-        <EnvironmentRowFixture
+        <WorktreeRowFixture
           fixtureId="info-long"
           initialName="internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout-monitoring"
         />
@@ -221,7 +187,7 @@ export function Environment() {
         hint="no custom metadata; the current Info action displays Add name"
         className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
-        <EnvironmentRowFixture fixtureId="info-unnamed" initialName={null} />
+        <WorktreeRowFixture fixtureId="info-unnamed" initialName={null} />
       </StoryRow>
       <StoryRow
         label="worktree"

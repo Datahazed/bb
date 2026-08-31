@@ -1,8 +1,3 @@
-import { useRef, useState } from "react";
-import {
-  EnvironmentRenameDialog,
-  type EnvironmentRenameDialogTarget,
-} from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   ThreadMetadataContent,
   type ThreadMetadataContentProps,
@@ -14,6 +9,7 @@ import {
   makeThread,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { useWorktreeNameStoryState } from "../../../.ladle/worktree-name-story-fixture";
 
 export default {
   title: "right-panel/Info",
@@ -34,33 +30,26 @@ function MetadataFixture({
   )
     ? (overrides.environment ?? null)
     : baseProps.environment;
-  const [environmentName, setEnvironmentName] = useState<string | null>(
-    initialEnvironment?.name ?? null,
-  );
-  const [renameTarget, setRenameTarget] =
-    useState<EnvironmentRenameDialogTarget | null>(null);
-  const renameTriggerRef = useRef<HTMLElement | null>(null);
-  const environment = initialEnvironment
-    ? { ...initialEnvironment, name: environmentName }
-    : null;
   const workspaceStatus = Object.prototype.hasOwnProperty.call(
     overrides,
     "workspaceStatus",
   )
     ? overrides.workspaceStatus
     : baseProps.workspaceStatus;
+  const { name, onRenameWorktree, renameDialog } = useWorktreeNameStoryState({
+    environmentId: initialEnvironment?.id ?? "env_info_story",
+    initialName: initialEnvironment?.name ?? null,
+    ...(workspaceStatus?.checkout.kind === "branch"
+      ? { branchName: workspaceStatus.checkout.branchName }
+      : {}),
+  });
+  const environment = initialEnvironment
+    ? { ...initialEnvironment, name }
+    : null;
   const canRenameWorktree =
     environment?.status === "ready" &&
     (environment.isWorktree ||
       environment.workspaceProvisionType === "managed-worktree");
-  const closeRename = () => {
-    const renameTrigger = renameTriggerRef.current;
-    renameTriggerRef.current = null;
-    setRenameTarget(null);
-    requestAnimationFrame(() => {
-      if (renameTrigger?.isConnected) renameTrigger.focus();
-    });
-  };
 
   return (
     <>
@@ -70,37 +59,10 @@ function MetadataFixture({
           {...overrides}
           environment={environment}
           workspaceStatus={workspaceStatus}
-          {...(canRenameWorktree && environment
-            ? {
-                onRenameWorktree: () => {
-                  renameTriggerRef.current =
-                    document.activeElement instanceof HTMLElement
-                      ? document.activeElement
-                      : null;
-                  setRenameTarget({
-                    ...(workspaceStatus?.checkout.kind === "branch"
-                      ? { branchName: workspaceStatus.checkout.branchName }
-                      : {}),
-                    id: environment.id,
-                    currentName: environment.name ?? "",
-                    canClearName: environment.name !== null,
-                  });
-                },
-              }
-            : {})}
+          {...(canRenameWorktree && environment ? { onRenameWorktree } : {})}
         />
       </PanelStage>
-      <EnvironmentRenameDialog
-        target={renameTarget}
-        pending={false}
-        onOpenChange={(open) => {
-          if (!open) closeRename();
-        }}
-        onRename={(_environmentId, nextName) => {
-          setEnvironmentName(nextName);
-          closeRename();
-        }}
-      />
+      {renameDialog}
     </>
   );
 }

@@ -824,7 +824,7 @@ function InteractiveDiffPanel({
   );
 }
 
-export function CheckoutContext() {
+export function Checkout() {
   return (
     <StoryCard>
       <StoryRow
