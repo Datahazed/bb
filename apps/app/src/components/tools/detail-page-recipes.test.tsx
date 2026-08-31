@@ -118,6 +118,9 @@ const PLUGIN: PluginListItem = {
   enabled: true,
   status: "running",
   statusDetail: null,
+  lastProblem: null,
+  categoryId: null,
+  category: null,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",
@@ -473,7 +476,7 @@ describe("Plugin detail recipe", () => {
 
     expect(
       screen.getByRole("link", { name: "review" }).getAttribute("href"),
-    ).toBe("/extensions/skills?view=library");
+    ).toBe("/extensions/skills?view=installed");
     expect(listSkills).not.toHaveBeenCalled();
   });
 
