@@ -27,6 +27,7 @@ import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
+  finishRootComposeThreadCreate,
   hasSingleUseRootComposeTargetState,
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
@@ -38,6 +39,7 @@ import {
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import {
   resolveProjectSourceWorktreeDisabledReason,
@@ -869,6 +871,80 @@ describe("shouldNavigateAfterThreadCreate", () => {
       }),
     ).toBe(true);
   });
+});
+
+describe("finishRootComposeThreadCreate", () => {
+  const thread = { projectId: "proj_created", threadId: "thr_created" };
+
+  it("uses page navigation for the standalone composer", () => {
+    const navigatedPaths: string[] = [];
+
+    finishRootComposeThreadCreate({
+      navigate: (path) => navigatedPaths.push(path),
+      paneContext: {
+        paneId: "main",
+        navigateInPane: () => {
+          throw new Error("Standalone composer must not use pane navigation");
+        },
+      },
+      shouldNavigateToCreatedThread: true,
+      thread,
+    });
+
+    expect(navigatedPaths).toEqual([getThreadRoutePath(thread)]);
+  });
+
+  it.each(["pane-left", "pane-right"])(
+    "replaces only the submitted workspace pane when navigation is on (%s)",
+    (paneId) => {
+      const navigatedPaths: string[] = [];
+      const paneThreads: typeof thread[] = [];
+      let resetCount = 0;
+
+      finishRootComposeThreadCreate({
+        navigate: (path) => navigatedPaths.push(path),
+        paneContext: {
+          paneId,
+          navigateInPane: (nextThread) => paneThreads.push(nextThread),
+          resetNewThreadPane: () => {
+            resetCount += 1;
+          },
+        },
+        shouldNavigateToCreatedThread: true,
+        thread,
+      });
+
+      expect(paneThreads).toEqual([thread]);
+      expect(navigatedPaths).toEqual([]);
+      expect(resetCount).toBe(0);
+    },
+  );
+
+  it.each(["pane-left", "pane-right"])(
+    "refreshes only the submitted workspace pane when navigation is off (%s)",
+    (paneId) => {
+      let resetCount = 0;
+
+      finishRootComposeThreadCreate({
+        navigate: () => {
+          throw new Error("Workspace pane must not use page navigation");
+        },
+        paneContext: {
+          paneId,
+          navigateInPane: () => {
+            throw new Error("Navigation is disabled");
+          },
+          resetNewThreadPane: () => {
+            resetCount += 1;
+          },
+        },
+        shouldNavigateToCreatedThread: false,
+        thread,
+      });
+
+      expect(resetCount).toBe(1);
+    },
+  );
 });
 
 describe("resolveProjectSourceWorktreeDisabledReason", () => {

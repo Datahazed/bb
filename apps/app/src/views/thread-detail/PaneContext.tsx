@@ -30,6 +30,7 @@ export interface PaneContextValue {
   isTopRow: boolean;
   ownsWindowTopLeft: boolean;
   navigateInPane: (thread: ThreadRoutePathArgs) => void;
+  resetNewThreadPane?: () => void;
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
 }
 

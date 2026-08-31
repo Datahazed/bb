@@ -112,13 +112,41 @@ function replacePaneNode(
   };
 }
 
-function nextPaneId(root: LayoutNode): string {
-  const existingIds = new Set(listPanes(root).map((pane) => pane.paneId));
+function nextPaneId(
+  root: LayoutNode | null,
+  reservedIds: readonly string[] = [],
+): string {
+  const existingIds = new Set([
+    ...(root === null ? [] : listPanes(root).map((pane) => pane.paneId)),
+    ...reservedIds,
+  ]);
   let sequence = 1;
   while (existingIds.has(`pane-${sequence}`)) {
     sequence += 1;
   }
   return `pane-${sequence}`;
+}
+
+export function replaceWithTwoPaneLayout(
+  layout: SplitLayout | null,
+  leftContent: PaneContent,
+  rightContent: PaneContent,
+): SplitLayout {
+  const previousRoot = layout?.root ?? null;
+  const leftPaneId = nextPaneId(previousRoot);
+  const rightPaneId = nextPaneId(previousRoot, [leftPaneId]);
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        { type: "pane", paneId: leftPaneId, content: leftContent },
+        { type: "pane", paneId: rightPaneId, content: rightContent },
+      ],
+    },
+    focusedPaneId: leftPaneId,
+  };
 }
 
 function splitDirection(side: SplitSide): SplitNode["dir"] {
