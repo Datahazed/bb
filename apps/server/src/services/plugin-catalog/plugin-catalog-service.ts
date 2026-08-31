@@ -352,6 +352,8 @@ export function createPluginCatalogService(deps: {
           : entryIconAssetUrl(CURATED_MARKETPLACE_NAME, entry.name, iconHash),
       iconTinted: iconHash !== null,
       category: entry.category,
+      screenshots: [],
+      newAndNotableRank: null,
       source: builtinPluginSource(entry.name),
       repositoryUrl: null,
       marketplace: CURATED_MARKETPLACE_NAME,
@@ -418,6 +420,8 @@ export function createPluginCatalogService(deps: {
       icon: entryIconName(entry),
       ...entryIconAsset(row.name, entry.id),
       category: entryCategory(entry, official),
+      screenshots: [],
+      newAndNotableRank: null,
       source: entrySourceDisplay(entry),
       repositoryUrl: entryRepositoryUrl(entry),
       marketplace: row.name,
@@ -1080,12 +1084,14 @@ export function createPluginCatalogService(deps: {
           const marketplaceDifference =
             left.marketplaceRank - right.marketplaceRank;
           if (marketplaceDifference !== 0) return marketplaceDifference;
+          const leftCategory = left.result.category ?? "";
+          const rightCategory = right.result.category ?? "";
           const categoryDifference =
-            (categoryOrder.get(left.result.category) ?? categoryOrder.size) -
-            (categoryOrder.get(right.result.category) ?? categoryOrder.size);
+            (categoryOrder.get(leftCategory) ?? categoryOrder.size) -
+            (categoryOrder.get(rightCategory) ?? categoryOrder.size);
           return (
             categoryDifference ||
-            left.result.category.localeCompare(right.result.category) ||
+            leftCategory.localeCompare(rightCategory) ||
             left.result.displayName.localeCompare(right.result.displayName)
           );
         })
