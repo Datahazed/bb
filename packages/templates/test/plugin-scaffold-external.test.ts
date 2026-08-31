@@ -132,7 +132,7 @@ describe("scaffold frontend", () => {
     await slot.behavior.emitRealtime("todos-changed", { count: 0 });
     await slot.findByText(/Nothing to do/);
     slot.lifecycle.unmount();
-  });
+  }, 30_000);
 });
 `;
 

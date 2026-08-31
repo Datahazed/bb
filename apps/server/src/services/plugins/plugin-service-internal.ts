@@ -135,7 +135,10 @@ export interface PluginAgentToolContribution {
 
 export interface PluginInstructionContribution {
   pluginId: string;
-  provider: (ctx: { threadId: string; projectId: string }) => string | null;
+  provider: (ctx: {
+    threadId: string;
+    projectId: string;
+  }) => Promise<string | null>;
 }
 
 export interface PluginResolvedAgentConfiguration {

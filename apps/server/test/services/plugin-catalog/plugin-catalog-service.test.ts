@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -6,25 +6,34 @@ import {
   getPluginMarketplace,
   markInstalledPluginRemoved,
   migrate,
+  recordPluginListingSubmission,
+  savePluginListingDraft,
   upsertInstalledPlugin,
+  upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
+import { REVIEWED_COMMUNITY_ENTRY_DATES } from "../../../src/services/plugin-catalog/plugin-category-registry.js";
+import {
+  createPluginCatalogService,
+  officialMarketplaceManifestUrls,
+} from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
   OFFICIAL_PLUGINS,
-  PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
 } from "../../../src/services/plugins/builtin-registry.js";
+import { PLUGIN_CATALOG_CATEGORIES } from "../../../src/services/plugin-catalog/plugin-category-registry.js";
 
-const MANIFEST_URL = "https://marketplace.test/marketplace/v1/marketplace.json";
-const ICON_URL = "https://marketplace.test/marketplace/v1/icons/widgets.svg";
-const STATS_URL = "https://marketplace.test/marketplace/v1/stats.json";
+const MANIFEST_URL = "https://marketplace.test/marketplace/v2/marketplace.json";
+const V1_MANIFEST_URL =
+  "https://marketplace.test/marketplace/v1/marketplace.json";
+const ICON_URL = "https://marketplace.test/marketplace/v2/icons/widgets.svg";
+const STATS_URL = "https://marketplace.test/marketplace/v2/stats.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 
 const VALID_SVG = Buffer.from(
@@ -37,6 +46,8 @@ function remoteEntry(overrides: Record<string, unknown> = {}) {
     displayName: "Acme Widgets",
     description: "Widgets for threads.",
     icon: { url: "./icons/widgets.svg" },
+    category: "thread-lists-and-navigation",
+    screenshots: [],
     tags: ["interface", "widgets"],
     author: { name: "Acme", github: "acme" },
     source: {
@@ -50,7 +61,30 @@ function remoteEntry(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function manifest(plugins: unknown[]): unknown {
+function remoteEntryV1(overrides: Record<string, unknown> = {}) {
+  const {
+    category: _category,
+    screenshots: _screenshots,
+    ...entry
+  } = remoteEntry(overrides);
+  return entry;
+}
+
+function manifest(
+  plugins: unknown[],
+  fields: Record<string, unknown> = {},
+): unknown {
+  return {
+    schemaVersion: 2,
+    name: "bb-community",
+    displayName: "BB Community",
+    newAndNotable: [],
+    ...fields,
+    plugins,
+  };
+}
+
+function manifestV1(plugins: unknown[]): unknown {
   return {
     schemaVersion: 1,
     name: "bb-community",
@@ -89,18 +123,36 @@ describe("plugin catalog service", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
+  it("derives both official manifest versions without guessing custom URLs", () => {
+    expect(officialMarketplaceManifestUrls(V1_MANIFEST_URL)).toEqual({
+      v1: V1_MANIFEST_URL,
+      v2: MANIFEST_URL,
+    });
+    expect(
+      officialMarketplaceManifestUrls(
+        "https://dev.example/custom-marketplace.json",
+      ),
+    ).toEqual({
+      v1: null,
+      v2: "https://dev.example/custom-marketplace.json",
+    });
+  });
+
   function service(options?: {
     bundledPlugins?: Parameters<
       typeof createPluginCatalogService
     >[0]["bundledPlugins"];
     fetch?: MarketplaceFetch;
+    notifyCatalogChanged?: () => void;
     warn?: (message: string) => void;
+    isDevelopment?: boolean;
   }) {
     return createPluginCatalogService({
       db,
       appVersion: "1.0.0",
       marketplaceUrl: MANIFEST_URL,
       dataDir,
+      isDevelopment: options?.isDevelopment ?? false,
       plugins: {
         installOfficialPlugin: async (name: string) => {
           installedNames.push(name);
@@ -119,6 +171,9 @@ describe("plugin catalog service", () => {
         ? {}
         : { bundledPlugins: options.bundledPlugins }),
       ...(options?.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(options?.notifyCatalogChanged === undefined
+        ? {}
+        : { notifyCatalogChanged: options.notifyCatalogChanged }),
       ...(options?.warn === undefined ? {} : { warn: options.warn }),
     });
   }
@@ -171,14 +226,17 @@ describe("plugin catalog service", () => {
       displayName: "Docs",
       icon: "FileText",
       iconUrl: null,
-      category: "Context & knowledge",
+      categoryId: "files-and-viewers",
+      category: "File Viewers & Editors",
+      screenshots: [],
+      newAndNotableRank: null,
       source: "builtin:docs",
       installed: false,
       compatible: true,
     });
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
-        .filter((entry) => entry.category === category)
+        .filter((entry) => entry.categoryId === category.id)
         .map((entry) => entry.displayName);
       expect(categoryNames).toEqual(
         [...categoryNames].sort((a, b) => a.localeCompare(b)),
@@ -192,7 +250,9 @@ describe("plugin catalog service", () => {
     expect(hoverCards).toMatchObject({
       entryId: "thread-hover-cards",
       pluginId: "thread-hover-cards",
-      category: "Interface",
+      categoryId: "thread-lists-and-navigation",
+      category: "Thread Management",
+      newAndNotableRank: 1,
       icon: "ZoomIn",
       iconUrl: null,
       source:
@@ -215,6 +275,31 @@ describe("plugin catalog service", () => {
       (await catalog.search("sidebar")).map((entry) => entry.entryId),
     ).toContain("thread-hover-cards");
     expect(await catalog.search("no-such-plugin")).toEqual([]);
+  });
+
+  it("parses each stored marketplace only once per search", async () => {
+    const warnings: string[] = [];
+    const catalog = service({
+      bundledPlugins: [],
+      warn: (message) => warnings.push(message),
+    });
+    upsertPluginMarketplace(db, {
+      name: "bb-community",
+      sourceKind: "https",
+      manifestUrl: MANIFEST_URL,
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: "not json",
+      statsJson: null,
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 1,
+      lastAttemptedRefreshAt: 1,
+      lastError: null,
+    });
+
+    await expect(catalog.search("")).resolves.toEqual([]);
+    expect(warnings).toHaveLength(1);
   });
 
   it("reflects install and remove in the installed flag", async () => {
@@ -257,7 +342,7 @@ describe("plugin catalog service", () => {
           pluginId: "broken",
           autoInstall: false,
           defaultEnabled: true,
-          category: "Developer tools",
+          category: "code-and-reviews",
           rootDir: missingRoot,
         },
       ],
@@ -301,7 +386,346 @@ describe("plugin catalog service", () => {
     expect(await catalog.icon("bb-community", withGlyph.name)).toBeUndefined();
   });
 
+  function bundledRegistration(name: string) {
+    const registration = listBundledPluginRegistrations().find(
+      (plugin) => plugin.name === name,
+    );
+    if (registration === undefined) {
+      throw new Error(`expected the ${name} bundled registration`);
+    }
+    return registration;
+  }
+
+  it("serves a bundled entry's declared screenshots from its plugin directory", async () => {
+    const docs = bundledRegistration("plugin-api-docs");
+    const declared = docs.screenshots ?? [];
+    expect(declared).toEqual([
+      "screenshots/plugin-guide-map.png",
+      "screenshots/plugin-guide-surfaces.png",
+      "screenshots/plugin-guide-reference.png",
+    ]);
+    const catalog = service({ bundledPlugins: [docs] });
+
+    const entry = (await catalog.search("")).find(
+      (result) => result.entryId === docs.name,
+    );
+    expect(entry?.screenshots).toHaveLength(declared.length);
+    const first = await catalog.screenshot("bb-community", docs.name, 0);
+    expect(first?.contentType).toBe("image/png");
+    expect(first?.bytes.subarray(0, 4).toString("hex")).toBe("89504e47");
+    expect(entry?.screenshots[0]).toBe(
+      `/api/v1/plugin-catalog/screenshots/bb-community/${docs.name}/0?h=${first?.hash}`,
+    );
+    expect(entry?.screenshots[2]).toMatch(
+      new RegExp(
+        `^/api/v1/plugin-catalog/screenshots/bb-community/${docs.name}/2\\?h=[0-9a-f]{16}$`,
+        "u",
+      ),
+    );
+  });
+
+  it("refuses a bundled screenshot that leaves the plugin directory", async () => {
+    const warnings: string[] = [];
+    const docs = bundledRegistration("plugin-api-docs");
+    const catalog = service({
+      bundledPlugins: [
+        {
+          ...docs,
+          screenshots: [
+            "../../etc/passwd.png",
+            "/etc/passwd.png",
+            "../../etc/passwd",
+          ],
+        },
+      ],
+      warn: (message) => warnings.push(message),
+    });
+
+    const entry = (await catalog.search("")).find(
+      (result) => result.entryId === docs.name,
+    );
+    expect(entry?.screenshots).toEqual([]);
+    expect(warnings.splice(0)).toEqual([
+      expect.stringContaining("escapes the plugin directory"),
+      expect.stringContaining("must be plugin-relative"),
+      expect.stringContaining("is not a .png, .jpg, .jpeg, or .webp file"),
+    ]);
+    for (const index of [0, 1, 2]) {
+      expect(
+        await catalog.screenshot("bb-community", docs.name, index),
+      ).toBeUndefined();
+    }
+    expect(warnings).toHaveLength(3);
+  });
+
+  it("refuses a bundled screenshot that escapes through a symlink", async () => {
+    const pluginRoot = await mkdtemp(join(tmpdir(), "bb-screenshot-plugin-"));
+    const outside = await mkdtemp(join(tmpdir(), "bb-screenshot-outside-"));
+    const warnings: string[] = [];
+    try {
+      const secret = join(outside, "secret.png");
+      await writeFile(secret, Buffer.from("89504e470d0a1a0a", "hex"));
+      await symlink(secret, join(pluginRoot, "escape.png"));
+      const catalog = service({
+        bundledPlugins: [
+          {
+            name: "escaper",
+            pluginId: "escaper",
+            autoInstall: false,
+            defaultEnabled: true,
+            category: "code-and-reviews",
+            rootDir: pluginRoot,
+            screenshots: ["escape.png"],
+          },
+        ],
+        warn: (message) => warnings.push(message),
+      });
+
+      expect(
+        await catalog.screenshot("bb-community", "escaper", 0),
+      ).toBeUndefined();
+      expect(warnings).toEqual([
+        expect.stringContaining(
+          "escapes the plugin directory through a symlink",
+        ),
+      ]);
+    } finally {
+      await rm(pluginRoot, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("links every bundled BB Team entry to its canonical source directory", async () => {
+    const registrations = listBundledPluginRegistrations();
+    const catalog = service({ bundledPlugins: registrations });
+
+    const bundledEntries = (await catalog.search("")).filter(
+      (entry) => entry.author?.name === "BB Team",
+    );
+    expect(bundledEntries).toHaveLength(registrations.length);
+    for (const entry of bundledEntries) {
+      expect(entry.repositoryUrl).toBe(
+        `https://github.com/get-bb/bb/tree/main/plugins/${encodeURIComponent(entry.entryId)}`,
+      );
+    }
+  });
+
   describe("refresh", () => {
+    it("returns discovery metadata declared by v2", async () => {
+      const catalog = service({
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return jsonResponse(
+              manifest(
+                [
+                  remoteEntry({
+                    screenshots: ["./screenshots/widgets.png"],
+                    publishedAt: "2026-08-20T09:30:00Z",
+                    updatedAt: "2026-08-24T16:45:00+02:00",
+                  }),
+                  remoteEntry({
+                    id: "later-entry",
+                    category: "security",
+                    screenshots: undefined,
+                    icon: "Zap",
+                  }),
+                ],
+                { newAndNotable: ["widgets"] },
+              ),
+            );
+          }
+          if (url === STATS_URL) {
+            return jsonResponse({
+              schemaVersion: 1,
+              generatedAt: "2026-08-21T00:00:00.000Z",
+              plugins: { widgets: { installs: 1_204 } },
+            });
+          }
+          return new Response(VALID_SVG, {
+            status: 200,
+            headers: { "content-type": "image/svg+xml" },
+          });
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect(
+        (await catalog.search("widgets")).find(
+          (entry) => entry.entryId === "widgets",
+        ),
+      ).toMatchObject({
+        categoryId: "thread-lists-and-navigation",
+        category: "Thread Management",
+        screenshots: [
+          "https://marketplace.test/marketplace/v2/screenshots/widgets.png",
+        ],
+        newAndNotableRank: 0,
+        installs: 1_204,
+        publishedAt: "2026-08-20T09:30:00Z",
+        updatedAt: "2026-08-24T16:45:00+02:00",
+      });
+      const [laterEntry] = await catalog.search("later-entry");
+      expect(laterEntry).toMatchObject({
+        categoryId: "security",
+        category: "Security",
+        screenshots: [],
+        newAndNotableRank: null,
+        installs: null,
+      });
+      expect(laterEntry).not.toHaveProperty("publishedAt");
+      expect(laterEntry).not.toHaveProperty("updatedAt");
+    });
+
+    it("falls back to immutable v1 only when v2 is missing", async () => {
+      const requests: string[] = [];
+      const fallbackManifest = manifestV1([remoteEntryV1({ icon: "Zap" })]);
+      const catalog = service({
+        fetch: async (url) => {
+          requests.push(url);
+          if (url === MANIFEST_URL) return new Response(null, { status: 404 });
+          if (url === V1_MANIFEST_URL) {
+            return jsonResponse(fallbackManifest);
+          }
+          throw new Error(`unexpected request ${url}`);
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL, STATS_URL]);
+      const results = await catalog.search("");
+      expect(results.some((entry) => entry.entryId === "widgets")).toBe(true);
+      for (const entry of results) {
+        expect(entry).not.toHaveProperty("categoryId");
+        expect(entry).not.toHaveProperty("category");
+      }
+      expect(JSON.stringify(results)).not.toContain('"other"');
+      expect(await catalog.search("widgets")).toMatchObject([
+        { screenshots: [], newAndNotableRank: null },
+      ]);
+      const stored = getPluginMarketplace(db, "bb-community");
+      expect(stored).toMatchObject({
+        manifestUrl: V1_MANIFEST_URL,
+        lastSuccessfulRefreshAt: 1_000,
+      });
+      expect(stored?.manifestJson).toBe(JSON.stringify(fallbackManifest));
+      expect(JSON.parse(stored?.manifestJson ?? "null")).toEqual(
+        fallbackManifest,
+      );
+    });
+
+    it("synthesizes categorized discovery from the live v1 catalog in development", async () => {
+      const requests: string[] = [];
+      const liveAdvisor = remoteEntryV1({
+        id: "advisor",
+        displayName: "Live Advisor Name",
+        description: "Live registry description.",
+        icon: "Sparkles",
+        tags: ["live", "registry"],
+        author: { name: "Live Author", github: "live-author" },
+        source: { npm: { package: "bb-plugin-live-advisor", tag: "next" } },
+      });
+      const catalog = service({
+        bundledPlugins: [],
+        isDevelopment: true,
+        fetch: async (url) => {
+          requests.push(url);
+          if (url === MANIFEST_URL) return new Response(null, { status: 500 });
+          if (url === V1_MANIFEST_URL) {
+            return jsonResponse(
+              manifestV1([
+                liveAdvisor,
+                remoteEntryV1({
+                  id: "ports",
+                  displayName: "Live Ports",
+                  icon: "Network",
+                }),
+                remoteEntryV1({ id: "not-yet-reviewed", icon: "Zap" }),
+              ]),
+            );
+          }
+          throw new Error(`unexpected request ${url}`);
+        },
+      });
+
+      await catalog.refresh(1_000);
+
+      expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL, STATS_URL]);
+      expect(await catalog.search("")).toMatchObject([
+        {
+          entryId: "advisor",
+          displayName: "Live Advisor Name",
+          description: "Live registry description.",
+          icon: "Sparkles",
+          categoryId: "code-and-reviews",
+          category: "Code & Reviews",
+          screenshots: [],
+          newAndNotableRank: null,
+          source: "npm:bb-plugin-live-advisor@next",
+          author: {
+            name: "Live Author",
+            url: "https://github.com/live-author",
+          },
+        },
+        {
+          entryId: "ports",
+          displayName: "Live Ports",
+          categoryId: "system-management",
+          category: "Utilities",
+        },
+      ]);
+      expect(await catalog.search("registry")).toHaveLength(1);
+      expect(await catalog.search("not-yet-reviewed")).toEqual([]);
+      expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
+        manifestUrl: V1_MANIFEST_URL,
+        lastSuccessfulRefreshAt: 1_000,
+      });
+      expect(
+        JSON.parse(
+          getPluginMarketplace(db, "bb-community")?.manifestJson ?? "null",
+        ),
+      ).toEqual({
+        schemaVersion: 2,
+        name: "bb-community",
+        displayName: "BB Community",
+        newAndNotable: [],
+        plugins: [
+          {
+            ...liveAdvisor,
+            category: "code-and-reviews",
+            ...REVIEWED_COMMUNITY_ENTRY_DATES.advisor,
+          },
+          {
+            ...remoteEntryV1({
+              id: "ports",
+              displayName: "Live Ports",
+              icon: "Network",
+            }),
+            category: "system-management",
+            ...REVIEWED_COMMUNITY_ENTRY_DATES.ports,
+          },
+        ],
+      });
+      for (const entry of [
+        REVIEWED_COMMUNITY_ENTRY_DATES.advisor,
+        REVIEWED_COMMUNITY_ENTRY_DATES.ports,
+      ]) {
+        expect(Number.isNaN(Date.parse(entry?.publishedAt ?? ""))).toBe(false);
+      }
+    });
+
+    it("does not hide v2 failures behind the v1 fallback", async () => {
+      const requests: string[] = [];
+      const catalog = service({
+        fetch: async (url) => {
+          requests.push(url);
+          return new Response(null, { status: 500 });
+        },
+      });
+
+      await expect(catalog.refresh(1_000)).rejects.toThrow(/HTTP 500/u);
+      expect(requests).toEqual([MANIFEST_URL]);
+    });
+
     it("tints a catalog SVG but keeps a raster icon's own colors", async () => {
       const PNG = Buffer.from([
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
@@ -366,7 +790,8 @@ describe("plugin catalog service", () => {
       expect(results[0]).toMatchObject({
         entryId: "widgets",
         displayName: "Acme Widgets",
-        category: "Interface",
+        categoryId: "thread-lists-and-navigation",
+        category: "Thread Management",
         icon: null,
         source:
           "git:https://github.com/acme/plugins.git@v1.0.0#plugins/widgets",
@@ -598,6 +1023,88 @@ describe("plugin catalog service", () => {
         lastError: expect.stringContaining("icon write failed"),
       });
     });
+
+    it("keeps a committed refresh successful when listing reconciliation fails", async () => {
+      upsertInstalledPlugin(db, {
+        id: "author-tools",
+        source: "path:/plugins/author-tools",
+        provenance: { kind: "direct" },
+        sourceIntent: {
+          kind: "path",
+          canonicalPath: "/plugins/author-tools",
+        },
+        exactResolution: { kind: "path" },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: "/plugins/author-tools",
+        version: "1.0.0",
+        enabled: true,
+      });
+      savePluginListingDraft(db, "author-tools", {
+        id: "author-tools",
+        displayName: "Author tools",
+        description: "Tools for maintaining authored plugins.",
+        icon: "Puzzle",
+        author: { name: "Author", github: "author" },
+        source: {
+          git: {
+            url: "https://github.com/author/bb-plugin-author-tools.git",
+            range: "^1.0.0",
+          },
+        },
+        category: "plugin-development",
+        screenshots: [],
+      });
+      recordPluginListingSubmission(db, "author-tools", {
+        url: "https://github.com/get-bb/marketplace/pull/42",
+        openedAt: 1_000,
+      });
+      db.$client
+        .prepare(
+          "UPDATE plugin_listing_lifecycles SET lifecycle_json = ? WHERE plugin_id = ?",
+        )
+        .run("{not json", "author-tools");
+
+      const events: string[] = [];
+      const catalog = service({
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return jsonResponse(manifest([remoteEntry()]));
+          }
+          if (url === STATS_URL) {
+            return jsonResponse({
+              schemaVersion: 1,
+              generatedAt: "2026-08-21T00:00:00.000Z",
+              plugins: {},
+            });
+          }
+          return new Response(VALID_SVG, { status: 200 });
+        },
+        notifyCatalogChanged: () => {
+          events.push(
+            `notified:${getPluginMarketplace(db, "bb-community")?.lastSuccessfulRefreshAt}`,
+          );
+        },
+        warn: (message) => events.push(`warned:${message}`),
+      });
+
+      await expect(catalog.refresh(4_000)).resolves.toBeUndefined();
+      expect(events[0]).toBe("notified:4000");
+      expect(events[1]).toMatch(
+        /^warned:marketplace bb-community listing lifecycle reconciliation failed:/u,
+      );
+      expect(await catalog.search("widgets")).toHaveLength(1);
+      expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
+        lastSuccessfulRefreshAt: 4_000,
+        lastAttemptedRefreshAt: 4_000,
+        lastError: null,
+      });
+    });
   });
 
   describe("install counts", () => {
@@ -736,7 +1243,7 @@ describe("plugin catalog service", () => {
               schemaVersion: 1,
               name: "acme",
               displayName: "Acme",
-              plugins: [remoteEntry({ icon: "ZoomIn" })],
+              plugins: [remoteEntryV1({ icon: "ZoomIn" })],
             });
           }
           return new Response(null, { status: 404 });

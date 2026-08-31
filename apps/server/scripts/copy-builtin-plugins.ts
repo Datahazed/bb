@@ -106,6 +106,7 @@ async function copyBuiltinPlugin(args: {
   bbVersion: string;
   build: boolean;
   name: string;
+  screenshots: readonly string[];
   sourceRoot: string;
   targetRoot: string;
 }): Promise<void> {
@@ -158,6 +159,7 @@ async function copyBuiltinPlugin(args: {
     logo?.light,
     logo?.dark,
     ...declaredIcons,
+    ...args.screenshots,
   ]) {
     if (asset === undefined) continue;
     const sourcePath = path.resolve(args.sourceRoot, asset);
@@ -179,7 +181,7 @@ async function copyBuiltinPlugin(args: {
 export async function copyBuiltinPlugins(args: {
   bbVersion: string;
   build?: boolean;
-  plugins?: readonly Pick<BundledPluginDefinition, "name">[];
+  plugins?: readonly Pick<BundledPluginDefinition, "name" | "screenshots">[];
   sourceModuleDir?: string;
   targetRoot?: string;
 }): Promise<void> {
@@ -199,6 +201,7 @@ export async function copyBuiltinPlugins(args: {
       bbVersion: args.bbVersion,
       build,
       name: plugin.name,
+      screenshots: plugin.screenshots ?? [],
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
         moduleDir: resolvedSourceModuleDir,
         name: plugin.name,

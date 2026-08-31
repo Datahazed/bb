@@ -585,6 +585,7 @@ export function createApp(
     appVersion: deps.config.appVersion,
     marketplaceUrl: deps.config.marketplaceUrl,
     dataDir: deps.config.dataDir,
+    isDevelopment: deps.config.isDevelopment,
     plugins: pluginService,
     notifyCatalogChanged: () => deps.hub.notifySystem(["plugins-changed"]),
     warn: (message) => deps.logger.warn(message),

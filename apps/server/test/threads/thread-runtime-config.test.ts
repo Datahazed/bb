@@ -1587,7 +1587,14 @@ describe("thread runtime config", () => {
       setPluginAgentContributions({
         listSkillRootContributions: () => [],
         listAgentTools: () => args.tools ?? [],
-        listInstructionContributions: () => args.instructions ?? [],
+        listInstructionContributions: () =>
+          (args.instructions ?? []).map((contribution) => ({
+            ...contribution,
+            provider: async (context: {
+              threadId: string;
+              projectId: string;
+            }) => contribution.provider(context),
+          })),
         findAgentTool: () => undefined,
         invokeAgentTool: async () => ({
           success: false,

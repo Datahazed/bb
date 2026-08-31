@@ -28,7 +28,6 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
-  BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
   OFFICIAL_PLUGINS,
   resolveBuiltinPluginRootPath,
@@ -61,7 +60,7 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
   sourceModuleDir: string;
 }> {
   const sourceModuleDir = join(workDir, "source-module");
-  for (const name of BUILTIN_PLUGIN_NAMES) {
+  for (const { name, screenshots } of BUILTIN_PLUGINS) {
     const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
     const usesPluginOwnedIcon = name === "automations";
     const usesDeclaredIcons = name === "provider-acp";
@@ -110,6 +109,10 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
     if (usesDeclaredIcons) {
       await mkdir(join(sourceRoot, "icons"), { recursive: true });
       await writeFile(join(sourceRoot, "icons", "cursor.svg"), "<svg/>\n");
+    }
+    for (const screenshot of screenshots ?? []) {
+      await mkdir(dirname(join(sourceRoot, screenshot)), { recursive: true });
+      await writeFile(join(sourceRoot, screenshot), "packaged screenshot\n");
     }
     await writeFile(
       join(sourceRoot, "dist", "server.js"),
@@ -177,6 +180,7 @@ function createService(args: {
               autoInstall: args.autoInstall ?? true,
               rootDir: args.rootDir ?? fixtureRoot,
               defaultEnabled: args.defaultEnabled ?? true,
+              category: "thread-content",
             },
           ],
     watchBuiltinPluginSources: args.watchBuiltinPluginSources,
@@ -1034,6 +1038,16 @@ describe("builtin plugin packaging", () => {
     await expect(
       readFile(join(targetRoot, "provider-acp", "icons", "cursor.svg"), "utf8"),
     ).resolves.toBe("<svg/>\n");
+
+    const docs = BUILTIN_PLUGINS.find(
+      (plugin) => plugin.name === "plugin-api-docs",
+    );
+    expect(docs?.screenshots ?? []).not.toHaveLength(0);
+    for (const screenshot of docs?.screenshots ?? []) {
+      await expect(
+        readFile(join(targetRoot, "plugin-api-docs", screenshot), "utf8"),
+      ).resolves.toBe("packaged screenshot\n");
+    }
 
     const connectRoot = join(targetRoot, "connect");
     await expect(stat(join(connectRoot, "package.json"))).resolves.toBeTruthy();

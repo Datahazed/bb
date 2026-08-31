@@ -113,6 +113,17 @@ describe("scaffoldPlugin SDK dependency", () => {
     );
     expect(skill).toContain("bb scoped list");
     expect(skill).not.toContain("@acme/");
+    const normalizedSkill = skill.replace(/\s+/g, " ");
+    expect(normalizedSkill).toContain(
+      "Run `bb scoped list` before you change the list",
+    );
+    expect(normalizedSkill).toContain("never guess an id");
+    expect(normalizedSkill).toContain("Do not remove a todo to mark it done");
+    expect(normalizedSkill).toContain(
+      "Remove a todo only when the user asks for it",
+    );
+    expect(normalizedSkill).toContain("Do not edit bb.db or the plugin's");
+    expect(normalizedSkill).toContain('A non-zero exit with "No todo with id"');
   });
 });
 

@@ -8,15 +8,20 @@ field against the current marketplace schema.
 Create entries/<plugin-id>.json. The filename, entry ID, and plugin manifest ID
 must match. Do not add fields that the schema does not define.
 
-The current required fields are id, displayName, description, icon, author, and
-source. Use tags and engines when they add useful search or compatibility data.
+The current required fields are id, displayName, description, icon, author,
+source, category, and screenshots. Use tags when they add useful search data.
 
 Use the product name for displayName. Write one concrete description sentence
 that states the feature and user value. Do not make subjective marketing claims.
 
 Use no more than ten specific lowercase tags. Use hyphens inside multiword tags.
-Copy honest engine ranges from the plugin manifest. An entry can narrow those
-ranges but cannot widen them.
+
+Choose exactly one current marketplace category ID. The vocabulary is closed:
+never invent a category and never use `Other`.
+
+Capture honest listing screenshots for a visual plugin and vendor them with the
+entry. Use an empty screenshots array only when the plugin has no visual
+surface. Do not fabricate screenshots or use remote image URLs.
 
 Set author.github to the account that opens the pull request. Get it with:
 
@@ -40,18 +45,23 @@ Use this shape only as a guide:
     "github": "acme",
     "url": "https://acme.example"
   },
-  "engines": {
-    "bb": ">=0.40.0",
-    "bbPluginSdk": ">=0.5.0"
-  },
   "source": {
     "git": {
       "url": "https://github.com/acme/bb-plugin-notes.git",
       "range": "^1.2.3"
     }
-  }
+  },
+  "category": "memory-and-context",
+  "screenshots": ["./screenshots/notes-overview.png"]
 }
 ```
+
+## Add listing screenshots
+
+Follow the `plugin-listing-screenshots` skill for its seeding and quality gate.
+Use `bb plugin screenshot [path] --capture <dir>` to find and capture the
+plugin's registered visual surfaces. Seed realistic data first and inspect each
+image. Do not submit empty, loading, thin, or sensitive screenshots.
 
 ## Add the icon
 
@@ -64,8 +74,8 @@ entry can also use a supported BB host icon name.
 Use SVG, PNG, or WebP for a file icon. Keep it at or below 256 KB. Prefer a
 simple square image with clear contrast at small sizes.
 
-BB masks SVG icons with the surrounding text color. Use a single-color SVG for
-theme-aware artwork. Use PNG or WebP for multicolor artwork. Do not include
+BB renders author-supplied icons without recoloring them. Make sure SVG, PNG,
+and WebP artwork remains legible on both light and dark surfaces. Do not include
 scripts, remote resources, or private data in an SVG.
 
 Use a content hash in the filename:

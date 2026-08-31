@@ -17,6 +17,7 @@ import {
   getInstalledPlugin,
   migrate,
   upsertInstalledPlugin,
+  upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import { PLUGIN_SDK_VERSION, type SystemChangeKind } from "@bb/domain";
@@ -150,6 +151,114 @@ describe("plugin service", () => {
   afterEach(async () => {
     await service.stop();
     await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("projects v2 listing discovery and preserves v1 category absence", () => {
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.example/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 2,
+        name: "acme",
+        displayName: "Acme",
+        newAndNotable: [],
+        plugins: [
+          {
+            id: "listed",
+            displayName: "Listed",
+            description: "A listed plugin.",
+            icon: "Zap",
+            category: "thread-content",
+            screenshots: ["./screenshots/listed.png"],
+            author: { name: "Acme" },
+            source: { npm: { package: "bb-plugin-listed", range: "^1" } },
+          },
+        ],
+      }),
+      statsJson: null,
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 1,
+      lastAttemptedRefreshAt: 1,
+      lastError: null,
+    });
+    upsertInstalledPlugin(db, {
+      id: "listed",
+      source: "npm:bb-plugin-listed@^1",
+      provenance: {
+        kind: "catalog",
+        marketplace: "acme",
+        entryId: "listed",
+      },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-listed",
+        registry: "https://registry.npmjs.org",
+        requestedSpec: "^1",
+        specKind: "range",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.2.3",
+        integrity: "sha512-listed",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/listed",
+      version: "1.2.3",
+      enabled: false,
+    });
+
+    expect(
+      service.list().find((plugin) => plugin.id === "listed"),
+    ).toMatchObject({
+      categoryId: "thread-content",
+      category: "Thread Content",
+      screenshots: ["https://plugins.example/screenshots/listed.png"],
+    });
+
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.example/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 1,
+        name: "acme",
+        displayName: "Acme",
+        plugins: [
+          {
+            id: "listed",
+            displayName: "Listed",
+            description: "A listed plugin.",
+            icon: "Zap",
+            author: { name: "Acme" },
+            source: { npm: { package: "bb-plugin-listed", range: "^1" } },
+          },
+        ],
+      }),
+      statsJson: null,
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 2,
+      lastAttemptedRefreshAt: 2,
+      lastError: null,
+    });
+    const legacyListing = service
+      .list()
+      .find((plugin) => plugin.id === "listed");
+    expect(legacyListing).not.toHaveProperty("categoryId");
+    expect(legacyListing).not.toHaveProperty("category");
+    expect(legacyListing?.screenshots).toEqual([]);
   });
 
   it("installs a path plugin, runs its factory, and reports running", async () => {
@@ -891,6 +1000,61 @@ describe("plugin service", () => {
       await observing.stop();
     }
   });
+
+  it("wraps settings listeners and restores their compact failure count", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-health-listener",
+      serverSource: `
+        export default function plugin(bb) {
+          const settings = bb.settings.define({
+            token: { type: "string", label: "Token", default: "before" },
+          });
+          settings.onChange(() => {
+            throw new Error("listener boom" + String.fromCharCode(10) + "private detail");
+          });
+        }`,
+    });
+    await service.installPath(rootDir);
+
+    await service.updateSettings("health-listener", { token: "after" });
+    expect(
+      service.list().find((entry) => entry.id === "health-listener"),
+    ).toMatchObject({
+      handlerStats: { errorCount: 1 },
+      lastProblem: {
+        class: "error",
+        message: "listener boom",
+        at: expect.any(Number),
+      },
+    });
+
+    await service.stop();
+    service = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+    });
+    await service.start();
+
+    expect(
+      service.list().find((entry) => entry.id === "health-listener"),
+    ).toMatchObject({
+      handlerStats: { count: 0, errorCount: 1 },
+      lastProblem: {
+        class: "error",
+        message: "listener boom",
+      },
+    });
+  }, 15_000);
 
   it("re-points a path plugin at a new checkout and keeps its settings, secrets, and schedules", async () => {
     const serverSource = (marker: string) => `

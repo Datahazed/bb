@@ -1,13 +1,15 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { PluginCatalogCategoryId } from "@bb/server-contract";
 
 export interface BundledPluginDefinition {
   name: string;
   pluginId: string;
   autoInstall: boolean;
   defaultEnabled: boolean;
-  category?: string;
+  category: PluginCatalogCategoryId;
+  screenshots?: readonly string[];
 }
 
 export interface BundledPluginRegistration extends BundledPluginDefinition {
@@ -23,158 +25,166 @@ export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
-export const PLUGIN_CATALOG_CATEGORIES = [
-  "Workflow management",
-  "Agent interaction",
-  "Context & knowledge",
-  "Developer tools",
-  "Host access",
-  "Interface",
-] as const;
-
-export const BUILTIN_PLUGINS = [
+const BUILTIN_PLUGIN_DEFINITIONS = [
   {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
-    category: "Agent interaction",
+    category: "thread-content",
   },
   {
     name: "automations",
     pluginId: "automations",
     defaultEnabled: true,
-    category: "Workflow management",
+    category: "tasks-workflows",
+    screenshots: [
+      "screenshots/automations-catalog.png",
+      "screenshots/automations-sidebar.png",
+    ],
   },
   {
     name: "connect",
     pluginId: "connect",
     defaultEnabled: true,
-    category: "Host access",
+    category: "remote-development",
   },
   {
     name: "custom-instructions",
     pluginId: "custom-instructions",
     defaultEnabled: true,
-    category: "Context & knowledge",
+    category: "memory-and-context",
   },
   {
     name: "plugin-api-tester",
     pluginId: "plugin-api-tester",
     defaultEnabled: false,
-    category: "Developer tools",
+    category: "plugin-development",
   },
   {
     name: "inline-vis",
     pluginId: "inline-vis",
     defaultEnabled: true,
-    category: "Interface",
+    category: "thread-content",
   },
   {
     name: "monaco-editor",
     pluginId: "monaco-editor",
     defaultEnabled: false,
-    category: "Interface",
+    category: "files-and-viewers",
   },
   {
     name: "pdf-preview",
     pluginId: "pdf-preview",
     defaultEnabled: true,
-    category: "Interface",
+    category: "files-and-viewers",
   },
   {
     name: "provider-codex",
     pluginId: "provider-codex",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "provider-claude-code",
     pluginId: "provider-claude-code",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "provider-pi",
     pluginId: "provider-pi",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "provider-acp",
     pluginId: "provider-acp",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "keep-awake",
     pluginId: "keep-awake",
     defaultEnabled: true,
-    category: "Host access",
+    category: "system-management",
   },
   {
     name: "plugin-api-docs",
     pluginId: "plugin-api-docs",
     defaultEnabled: false,
-    category: "Developer tools",
+    category: "plugin-development",
+    screenshots: [
+      "screenshots/plugin-guide-map.png",
+      "screenshots/plugin-guide-surfaces.png",
+      "screenshots/plugin-guide-reference.png",
+    ],
   },
   {
     name: "provider-retry",
     pluginId: "provider-retry",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "secrets",
     pluginId: "secrets",
     defaultEnabled: true,
-    category: "Developer tools",
+    category: "security",
   },
   {
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "thread-content",
   },
   {
     name: "workflows",
     pluginId: "workflows",
     defaultEnabled: false,
-    category: "Workflow management",
+    category: "tasks-workflows",
   },
-].map((plugin): BundledPluginDefinition => ({
-  ...plugin,
-  autoInstall: true,
-}));
+] satisfies Omit<BundledPluginDefinition, "autoInstall">[];
 
-export const OFFICIAL_PLUGINS = [
+export const BUILTIN_PLUGINS = BUILTIN_PLUGIN_DEFINITIONS.map(
+  (plugin): BundledPluginDefinition => ({
+    ...plugin,
+    autoInstall: true,
+  }),
+);
+
+const OFFICIAL_PLUGIN_DEFINITIONS = [
   {
     name: "github",
     pluginId: "github",
     defaultEnabled: true,
-    category: "Developer tools",
+    category: "code-and-reviews",
   },
   {
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,
-    category: "Context & knowledge",
+    category: "files-and-viewers",
   },
   {
     name: "memory",
     pluginId: "memory",
     defaultEnabled: true,
-    category: "Context & knowledge",
+    category: "memory-and-context",
   },
   {
     name: "tasks",
     pluginId: "tasks",
     defaultEnabled: true,
-    category: "Workflow management",
+    category: "tasks-workflows",
   },
-].map((plugin): BundledPluginDefinition => ({
-  ...plugin,
-  autoInstall: false,
-}));
+] satisfies Omit<BundledPluginDefinition, "autoInstall">[];
+
+export const OFFICIAL_PLUGINS = OFFICIAL_PLUGIN_DEFINITIONS.map(
+  (plugin): BundledPluginDefinition => ({
+    ...plugin,
+    autoInstall: false,
+  }),
+);
 
 export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,

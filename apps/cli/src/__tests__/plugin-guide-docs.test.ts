@@ -54,6 +54,21 @@ describe("plugins guide chapter", () => {
     expect(optionCount).toBeGreaterThan(0);
   });
 
+  it("documents every plugin listing subcommand and option", () => {
+    const listing = buildPluginCommand().commands.find(
+      (command) => command.name() === "listing",
+    );
+    expect(listing).toBeDefined();
+    if (listing === undefined) return;
+    const guide = renderTemplate("bbGuidePlugins", {});
+    for (const command of listing.commands) {
+      expect(guide).toContain(`bb plugin listing ${command.name()}`);
+      for (const option of command.options) {
+        expect(guide).toContain(option.long);
+      }
+    }
+  });
+
   it("mentions every bb marketplace subcommand", () => {
     const marketplace = buildGroupCommand("marketplace");
     const names = marketplace.commands.map((command) => command.name());

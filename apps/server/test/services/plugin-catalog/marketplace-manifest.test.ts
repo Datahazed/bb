@@ -3,15 +3,19 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   entryRepositoryUrl,
+  entryScreenshotUrls,
   entrySourceDisplay,
   parseMarketplaceManifest,
   resolveEntryIcon,
   resolvedEntrySource,
   type MarketplaceEntry,
+  entryIconTinted,
+  svgAdoptsTextColor,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
+const MANIFEST_V2_URL = "https://getbb.app/marketplace/v2/marketplace.json";
 
 const publishedSchemaShape = z.object({
   $defs: z.object({
@@ -65,6 +69,20 @@ function manifest(plugins: unknown[]): unknown {
   };
 }
 
+function entryV2(overrides: Record<string, unknown> = {}): unknown {
+  return entry({ category: "thread-content", screenshots: [], ...overrides });
+}
+
+function manifestV2(plugins: unknown[], newAndNotable: string[] = []): unknown {
+  return {
+    schemaVersion: 2,
+    name: "bb-community",
+    displayName: "BB Community",
+    newAndNotable,
+    plugins,
+  };
+}
+
 function parse(plugins: unknown[]) {
   return parseMarketplaceManifest(manifest(plugins), "manifest");
 }
@@ -77,31 +95,72 @@ function firstEntry(plugins: unknown[]): MarketplaceEntry {
 
 describe("marketplace manifest schema", () => {
   it("accepts a fully populated entry", () => {
-    const parsed = parse([
-      entry({
-        icon: { url: "./icons/widgets.svg" },
-        tags: ["interface", "threads"],
-        author: {
-          name: "Acme",
-          github: "acme-co",
-          url: "https://acme.example",
-        },
-      }),
-    ]);
+    const parsed = parseMarketplaceManifest(
+      manifestV2(
+        [
+          entryV2({
+            icon: { url: "./icons/widgets.svg" },
+            category: "thread-lists-and-navigation",
+            screenshots: [
+              "./screenshots/widgets.png",
+              "https://cdn.example/widgets-dark.webp",
+            ],
+            publishedAt: "2026-08-20T09:30:00Z",
+            updatedAt: "2026-08-24T16:45:00+02:00",
+            tags: ["interface", "threads"],
+            author: {
+              name: "Acme",
+              github: "acme-co",
+              url: "https://acme.example",
+            },
+          }),
+        ],
+        ["widgets"],
+      ),
+      "manifest",
+    );
     expect(parsed.plugins).toHaveLength(1);
+    expect(parsed).toMatchObject({
+      newAndNotable: ["widgets"],
+      plugins: [
+        {
+          publishedAt: "2026-08-20T09:30:00Z",
+          updatedAt: "2026-08-24T16:45:00+02:00",
+        },
+      ],
+    });
+  });
+
+  it("keeps old schemaVersion 1 entries valid without discovery fields", () => {
+    expect(parse([entry()])).toMatchObject({
+      schemaVersion: 1,
+      plugins: [{ id: "widgets" }],
+    });
   });
 
   it("rejects a schemaVersion it does not implement", () => {
     expect(() =>
       parseMarketplaceManifest(
-        { ...(manifest([entry()]) as object), schemaVersion: 2 },
+        { ...(manifest([entry()]) as object), schemaVersion: 3 },
         "manifest",
       ),
-    ).toThrow(/unknown schemaVersion 2/);
+    ).toThrow(/unknown schemaVersion 3/);
+  });
+
+  it("keeps v1 strict and reserves discovery fields for v2", () => {
+    expect(() => parse([entry({ category: "thread-content" })])).toThrow(
+      /unrecognized key/iu,
+    );
+    expect(() =>
+      parseMarketplaceManifest(
+        { ...(manifest([entry()]) as object), newAndNotable: [] },
+        "manifest",
+      ),
+    ).toThrow(/unrecognized key/iu);
   });
 
   it("rejects unknown fields anywhere in the document", () => {
-    expect(() => parse([entry({ category: "Interface" })])).toThrow(
+    expect(() => parse([entry({ surprise: "Interface" })])).toThrow(
       /unrecognized key/iu,
     );
     expect(() =>
@@ -110,6 +169,84 @@ describe("marketplace manifest schema", () => {
         "manifest",
       ),
     ).toThrow(/unrecognized key/iu);
+  });
+
+  it("rejects unknown categories and invalid screenshots", () => {
+    const parseV2 = (overrides: Record<string, unknown>) =>
+      parseMarketplaceManifest(manifestV2([entryV2(overrides)]), "manifest");
+    expect(() => parseV2({ category: "interface" })).toThrow();
+    expect(() =>
+      parseV2({ screenshots: ["http://cdn.example/screen.png"] }),
+    ).toThrow(/https/);
+    expect(() =>
+      parseV2({ screenshots: ["./screenshots/screen.gif"] }),
+    ).toThrow(/\.png/);
+    expect(() =>
+      parseV2({
+        screenshots: Array.from(
+          { length: 7 },
+          (_unused, index) => `./screenshots/${index}.png`,
+        ),
+      }),
+    ).toThrow();
+  });
+
+  it("requires one reviewed category on every v2 entry", () => {
+    expect(() =>
+      parseMarketplaceManifest(manifestV2([entry()]), "manifest"),
+    ).toThrow(/category/iu);
+  });
+
+  it("keeps publication timestamps optional and validates every supplied value", () => {
+    const parseV2 = (overrides: Record<string, unknown>) =>
+      parseMarketplaceManifest(manifestV2([entryV2(overrides)]), "manifest");
+
+    expect(parseV2({}).plugins[0]).not.toHaveProperty("publishedAt");
+    expect(parseV2({}).plugins[0]).not.toHaveProperty("updatedAt");
+    expect(() => parseV2({ publishedAt: "yesterday" })).toThrow();
+    expect(() => parseV2({ updatedAt: "2026-02-30T09:30:00Z" })).toThrow();
+  });
+
+  it("validates New & notable ids and order", () => {
+    const withNotable = (newAndNotable: string[]) =>
+      manifestV2([entryV2()], newAndNotable);
+    expect(
+      parseMarketplaceManifest(withNotable(["widgets"]), "manifest"),
+    ).toMatchObject({ newAndNotable: ["widgets"] });
+    expect(() =>
+      parseMarketplaceManifest(withNotable(["widgets", "widgets"]), "manifest"),
+    ).toThrow(/duplicate plugin id/);
+    expect(() =>
+      parseMarketplaceManifest(withNotable(["missing"]), "manifest"),
+    ).toThrow(/unknown plugin id/);
+  });
+
+  it("resolves relative screenshots beside an https manifest", () => {
+    const parsed = parseMarketplaceManifest(
+      manifestV2([
+        entryV2({
+          screenshots: [
+            "./screenshots/widgets.png",
+            "https://cdn.example/widgets.webp",
+          ],
+        }),
+      ]),
+      "manifest",
+    );
+    const listed = parsed.plugins[0];
+    if (listed === undefined) throw new Error("entry missing");
+    expect(
+      entryScreenshotUrls(listed, {
+        kind: "url",
+        manifestUrl: MANIFEST_V2_URL,
+      }),
+    ).toEqual([
+      "https://getbb.app/marketplace/v2/screenshots/widgets.png",
+      "https://cdn.example/widgets.webp",
+    ]);
+    expect(() =>
+      entryScreenshotUrls(listed, { kind: "dir", root: "/checkout" }),
+    ).toThrow(/requires an https marketplace/);
   });
 
   it("rejects duplicate entry ids", () => {
@@ -371,6 +508,23 @@ describe("marketplace manifest schema", () => {
         npmRegistry: "https://npm.acme.test",
       });
     });
+
+    it("applies server-only source validation when translating an entry", () => {
+      const parsed = parseMarketplaceManifest(
+        manifest([
+          entry({
+            source: { git: { url: "https://", ref: "v1.0.0" } },
+          }),
+        ]),
+        "manifest",
+      );
+      const invalid = parsed.plugins[0];
+      if (invalid === undefined) throw new Error("entry missing");
+
+      expect(() => resolvedEntrySource(invalid)).toThrow(
+        /must be an https URL/u,
+      );
+    });
   });
 
   describe("repository url", () => {
@@ -465,5 +619,61 @@ describe("marketplace manifest schema", () => {
     expect(() =>
       parseMarketplaceManifest(BUNDLED_CURATED_MARKETPLACE, "bundled snapshot"),
     ).not.toThrow();
+  });
+});
+
+describe("svgAdoptsTextColor", () => {
+  const svg = (body: string) =>
+    new TextEncoder().encode(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${body}</svg>`,
+    );
+
+  it("accepts artwork that names no colour of its own", () => {
+    expect(svgAdoptsTextColor(svg('<path d="M0 0h24v24H0z"/>'))).toBe(true);
+    expect(
+      svgAdoptsTextColor(
+        svg('<path fill="currentColor" stroke="none" d="M0 0"/>'),
+      ),
+    ).toBe(true);
+    expect(
+      svgAdoptsTextColor(
+        svg('<path style="fill:inherit;stroke:transparent" d="M0 0"/>'),
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses artwork that paints from its own source", () => {
+    expect(svgAdoptsTextColor(svg('<path fill="#ff6154" d="M0 0"/>'))).toBe(
+      false,
+    );
+    expect(
+      svgAdoptsTextColor(svg('<path style="fill: rgb(12,34,56)" d="M0 0"/>')),
+    ).toBe(false);
+    expect(
+      svgAdoptsTextColor(svg('<path stroke="rebeccapurple" d="M0 0"/>')),
+    ).toBe(false);
+    expect(
+      svgAdoptsTextColor(
+        svg(
+          '<linearGradient id="g"><stop stop-color="#fff"/></linearGradient>',
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      svgAdoptsTextColor(svg('<image href="data:image/png;base64,AA"/>')),
+    ).toBe(false);
+  });
+
+  it("ignores colours that only appear inside comments", () => {
+    expect(
+      svgAdoptsTextColor(svg('<!-- fill="#ff0000" --><path d="M0 0"/>')),
+    ).toBe(true);
+  });
+
+  it("only tints SVGs", () => {
+    const mono = svg('<path d="M0 0"/>');
+    expect(entryIconTinted("image/svg+xml", mono)).toBe(true);
+    expect(entryIconTinted("image/png", mono)).toBe(false);
+    expect(entryIconTinted("image/webp", mono)).toBe(false);
   });
 });

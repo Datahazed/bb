@@ -18,10 +18,10 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import {
   BUNDLED_PLUGINS,
-  PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
   type BundledPluginRegistration,
 } from "../../../src/services/plugins/builtin-registry.js";
+import { PLUGIN_CATALOG_CATEGORIES } from "../../../src/services/plugin-catalog/plugin-category-registry.js";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
@@ -50,7 +50,7 @@ function officialEntry(
     pluginId: "builtin-fixture",
     autoInstall: false,
     defaultEnabled: true,
-    category: "Productivity",
+    category: "tasks-workflows",
     rootDir: fixtureRoot,
     ...overrides,
   };
@@ -90,28 +90,28 @@ describe("official plugin registry invariants", () => {
 
   it("assigns every bundled plugin to one curated store category", () => {
     const expectedCategories = {
-      "ask-user-question": "Agent interaction",
-      automations: "Workflow management",
-      connect: "Host access",
-      "custom-instructions": "Context & knowledge",
-      "plugin-api-tester": "Developer tools",
-      docs: "Context & knowledge",
-      github: "Developer tools",
-      "inline-vis": "Interface",
-      "keep-awake": "Host access",
-      memory: "Context & knowledge",
-      "monaco-editor": "Interface",
-      "pdf-preview": "Interface",
-      "plugin-api-docs": "Developer tools",
-      "provider-acp": "Agent interaction",
-      "provider-claude-code": "Agent interaction",
-      "provider-codex": "Agent interaction",
-      "provider-pi": "Agent interaction",
-      "provider-retry": "Agent interaction",
-      secrets: "Developer tools",
-      "side-chat": "Agent interaction",
-      tasks: "Workflow management",
-      workflows: "Workflow management",
+      "ask-user-question": "thread-content",
+      automations: "tasks-workflows",
+      connect: "remote-development",
+      "custom-instructions": "memory-and-context",
+      "plugin-api-tester": "plugin-development",
+      docs: "files-and-viewers",
+      github: "code-and-reviews",
+      "inline-vis": "thread-content",
+      "keep-awake": "system-management",
+      memory: "memory-and-context",
+      "monaco-editor": "files-and-viewers",
+      "pdf-preview": "files-and-viewers",
+      "plugin-api-docs": "plugin-development",
+      "provider-acp": "agents-and-providers",
+      "provider-claude-code": "agents-and-providers",
+      "provider-codex": "agents-and-providers",
+      "provider-pi": "agents-and-providers",
+      "provider-retry": "agents-and-providers",
+      secrets: "security",
+      "side-chat": "thread-content",
+      tasks: "tasks-workflows",
+      workflows: "tasks-workflows",
     };
 
     expect(new Set(BUNDLED_PLUGINS.map((plugin) => plugin.name)).size).toBe(
@@ -122,11 +122,11 @@ describe("official plugin registry invariants", () => {
         BUNDLED_PLUGINS.map((plugin) => [plugin.name, plugin.category]),
       ),
     ).toEqual(expectedCategories);
-    const validCategories = new Set<string>(PLUGIN_CATALOG_CATEGORIES);
+    const validCategories = new Set<string>(
+      PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
+    );
     expect(
-      BUNDLED_PLUGINS.every((plugin) =>
-        validCategories.has(plugin.category ?? ""),
-      ),
+      BUNDLED_PLUGINS.every((plugin) => validCategories.has(plugin.category)),
     ).toBe(true);
   });
 });

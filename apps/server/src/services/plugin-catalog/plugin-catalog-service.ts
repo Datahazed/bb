@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import { extname, isAbsolute, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   deletePluginMarketplace,
@@ -26,11 +26,11 @@ import type {
   PluginCatalogStatus,
   PluginMarketplace,
   PluginMarketplaceRefreshResult,
+  PluginCatalogCategoryId,
 } from "@bb/server-contract";
 import {
   builtinPluginSource,
   listBundledPluginRegistrations,
-  PLUGIN_CATALOG_CATEGORIES,
   type BundledPluginRegistration,
 } from "../plugins/builtin-registry.js";
 import {
@@ -60,31 +60,83 @@ import {
   entryIconName,
   entryIconTinted,
   entryRepositoryUrl,
+  entryScreenshotUrls,
   entrySourceDisplay,
   CURATED_MARKETPLACE_NAME,
+  marketplaceNewAndNotable,
   parseMarketplaceManifestJson,
   resolvedEntrySource,
   type MarketplaceEntry,
   type MarketplaceManifest,
+  type MarketplaceManifestV1,
+  type MarketplaceManifestV2,
 } from "./marketplace-manifest.js";
+import {
+  marketplaceEntryCategoryId,
+  pluginCatalogCategory,
+  PLUGIN_CATALOG_CATEGORIES,
+  REVIEWED_COMMUNITY_ENTRY_CATEGORIES,
+  REVIEWED_COMMUNITY_ENTRY_DATES,
+} from "./plugin-category-registry.js";
 import {
   marketplaceSourceColumns,
   marketplaceSourceDisplay,
   marketplaceSourceFromRow,
   materializeMarketplace,
+  MarketplaceManifestMissingError,
   parseMarketplaceSource,
+  type MarketplaceSource,
+  type MaterializedMarketplace,
 } from "./marketplace-source.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
+import { reconcilePluginListingLifecycles } from "../plugins/plugin-listing-lifecycle.js";
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
 const BUNDLED_ICON_CONTENT_TYPE = "image/svg+xml";
 
+const BUNDLED_SCREENSHOT_CONTENT_TYPES = new Map<string, string>([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".webp", "image/webp"],
+]);
+
 interface PluginCatalogIcon {
   bytes: Buffer;
   contentType: string;
   hash: string;
+}
+
+interface PluginCatalogScreenshot {
+  bytes: Buffer;
+  contentType: string;
+  hash: string;
+}
+
+export interface OfficialMarketplaceManifestUrls {
+  v2: string;
+  v1: string | null;
+}
+
+export function officialMarketplaceManifestUrls(
+  configuredUrl: string,
+): OfficialMarketplaceManifestUrls {
+  const url = new URL(configuredUrl);
+  const match = /\/v[12]\/marketplace\.json$/u.exec(url.pathname);
+  if (match === null) return { v2: configuredUrl, v1: null };
+  const v1 = new URL(url);
+  v1.pathname = url.pathname.replace(
+    /\/v[12]\/marketplace\.json$/u,
+    "/v1/marketplace.json",
+  );
+  const v2 = new URL(url);
+  v2.pathname = url.pathname.replace(
+    /\/v[12]\/marketplace\.json$/u,
+    "/v2/marketplace.json",
+  );
+  return { v2: v2.toString(), v1: v1.toString() };
 }
 
 export interface PluginCatalogEntrySelector {
@@ -112,6 +164,11 @@ export interface PluginCatalogService {
     marketplace: string,
     entryId: string,
   ): Promise<PluginCatalogIcon | undefined>;
+  screenshot(
+    marketplace: string,
+    entryId: string,
+    index: number,
+  ): Promise<PluginCatalogScreenshot | undefined>;
   listMarketplaces(): PluginMarketplace[];
   addMarketplace(source: string): Promise<PluginMarketplace>;
   removeMarketplace(name: string): Promise<{ convertedPluginIds: string[] }>;
@@ -123,7 +180,7 @@ type ResolvedCatalogEntry =
   | { kind: "marketplace"; row: PluginMarketplaceRow; entry: MarketplaceEntry }
   | {
       kind: "bundled";
-      entry: BundledPluginRegistration & { category: string };
+      entry: BundledPluginRegistration & { category: PluginCatalogCategoryId };
     };
 
 export function createPluginCatalogService(deps: {
@@ -141,24 +198,16 @@ export function createPluginCatalogService(deps: {
   schedule?: (callback: () => void, delayMs: number) => () => void;
   notifyCatalogChanged?: () => void;
   warn?: (message: string) => void;
+  isDevelopment: boolean;
 }): PluginCatalogService {
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
-  const officialPlugins = bundledPlugins.map((plugin) => ({
-    ...plugin,
-    category: plugin.category ?? "Other",
-  }));
-  const categoryOrder = new Map<string, number>(
-    PLUGIN_CATALOG_CATEGORIES.map((category, index) => [category, index]),
+  const officialManifestUrls = officialMarketplaceManifestUrls(
+    deps.marketplaceUrl,
   );
-  const categoryByTag = new Map<string, string>(
-    PLUGIN_CATALOG_CATEGORIES.map((category) => [
-      category
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/gu, "-")
-        .replace(/^-+|-+$/gu, ""),
-      category,
-    ]),
+  const officialPlugins = bundledPlugins;
+  const categoryOrder = new Map<string, number>(
+    PLUGIN_CATALOG_CATEGORIES.map((category, index) => [category.id, index]),
   );
   const now = deps.now ?? Date.now;
   const fetchMarketplace = deps.fetch ?? publicMarketplaceFetch;
@@ -208,7 +257,8 @@ export function createPluginCatalogService(deps: {
     if (
       existing !== undefined &&
       existing.sourceKind === "https" &&
-      existing.manifestUrl === deps.marketplaceUrl
+      (existing.manifestUrl === officialManifestUrls.v2 ||
+        existing.manifestUrl === officialManifestUrls.v1)
     ) {
       try {
         parseMarketplaceManifestJson(
@@ -225,7 +275,7 @@ export function createPluginCatalogService(deps: {
     upsertPluginMarketplace(deps.db, {
       name: CURATED_MARKETPLACE_NAME,
       sourceKind: "https",
-      manifestUrl: deps.marketplaceUrl,
+      manifestUrl: officialManifestUrls.v2,
       sourceGitRef: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
@@ -330,16 +380,126 @@ export function createPluginCatalogService(deps: {
     }
   }
 
+  async function bundledScreenshotFile(
+    entry: BundledPluginRegistration,
+    declared: string,
+  ): Promise<{
+    path: string;
+    contentType: string;
+    size: number;
+    mtimeMs: number;
+  } | null> {
+    const refuse = (reason: string): null => {
+      deps.warn?.(
+        `bundled plugin ${entry.name} screenshot ${JSON.stringify(declared)} ${reason}`,
+      );
+      return null;
+    };
+    const contentType = BUNDLED_SCREENSHOT_CONTENT_TYPES.get(
+      extname(declared).toLowerCase(),
+    );
+    if (contentType === undefined) {
+      return refuse("is not a .png, .jpg, .jpeg, or .webp file");
+    }
+    if (isAbsolute(declared)) return refuse("must be plugin-relative");
+    const path = resolve(entry.rootDir, declared);
+    if (!path.startsWith(entry.rootDir + "/")) {
+      return refuse("escapes the plugin directory");
+    }
+    try {
+      const stats = await stat(path);
+      if (!stats.isFile()) return refuse("is not a file");
+      const [realRoot, realPath] = await Promise.all([
+        realpath(entry.rootDir),
+        realpath(path),
+      ]);
+      if (!realPath.startsWith(realRoot + "/")) {
+        return refuse("escapes the plugin directory through a symlink");
+      }
+      return {
+        path,
+        contentType,
+        size: stats.size,
+        mtimeMs: stats.mtimeMs,
+      };
+    } catch (error: unknown) {
+      return refuse(
+        `is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  const bundledScreenshotHashes = new Map<string, string>();
+
+  async function bundledScreenshotAsset(
+    entry: BundledPluginRegistration,
+    declared: string,
+  ): Promise<{ path: string; contentType: string; hash: string } | null> {
+    const file = await bundledScreenshotFile(entry, declared);
+    if (file === null) return null;
+    const revision = `${file.path}:${file.size}:${file.mtimeMs}`;
+    const cached = bundledScreenshotHashes.get(revision);
+    if (cached !== undefined) {
+      return { path: file.path, contentType: file.contentType, hash: cached };
+    }
+    try {
+      const hash = createHash("sha256")
+        .update(await readFile(file.path))
+        .digest("hex")
+        .slice(0, 16);
+      bundledScreenshotHashes.set(revision, hash);
+      return { path: file.path, contentType: file.contentType, hash };
+    } catch (error: unknown) {
+      deps.warn?.(
+        `bundled plugin ${entry.name} screenshot ${JSON.stringify(declared)} is unreadable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  async function bundledScreenshotUrls(
+    entry: BundledPluginRegistration,
+  ): Promise<string[]> {
+    const declared = entry.screenshots ?? [];
+    if (declared.length === 0) return [];
+    const assets = await Promise.all(
+      declared.map((path) => bundledScreenshotAsset(entry, path)),
+    );
+    return assets.flatMap((asset, index) =>
+      asset === null
+        ? []
+        : [
+            entryScreenshotAssetUrl(
+              CURATED_MARKETPLACE_NAME,
+              entry.name,
+              index,
+              asset.hash,
+            ),
+          ],
+    );
+  }
+
   function bundledSearchResult(
-    entry: { name: string; pluginId: string; category: string },
+    entry: {
+      name: string;
+      pluginId: string;
+      category: PluginCatalogCategoryId;
+    },
     manifest: PluginManifest,
     iconHash: string | null,
+    screenshotUrls: string[],
+    discoveryEnabled: boolean,
     installs: number | null,
   ): PluginCatalogSearchResult {
     const problem = compatibilityProblem({
       bbRange: manifest.bbEngineRange,
       sdkRange: manifest.bbPluginSdkRange,
     });
+    const category = discoveryEnabled
+      ? pluginCatalogCategory(entry.category)
+      : undefined;
     return {
       entryId: entry.name,
       pluginId: entry.pluginId,
@@ -351,9 +511,13 @@ export function createPluginCatalogService(deps: {
           ? null
           : entryIconAssetUrl(CURATED_MARKETPLACE_NAME, entry.name, iconHash),
       iconTinted: iconHash !== null,
-      category: entry.category,
+      ...(category === undefined
+        ? {}
+        : { categoryId: category.id, category: category.displayName }),
+      screenshots: screenshotUrls,
+      newAndNotableRank: null,
       source: builtinPluginSource(entry.name),
-      repositoryUrl: null,
+      repositoryUrl: `https://github.com/get-bb/bb/tree/main/plugins/${encodeURIComponent(entry.name)}`,
       marketplace: CURATED_MARKETPLACE_NAME,
       marketplaceDisplayName: BUNDLED_CURATED_MARKETPLACE.displayName,
       publisherKey: BUILTIN_PUBLISHER_KEY,
@@ -367,25 +531,34 @@ export function createPluginCatalogService(deps: {
     };
   }
 
-  function entryCategory(entry: MarketplaceEntry, official: boolean): string {
-    const tags = entry.tags ?? [];
-    if (official) {
-      for (const tag of tags) {
-        const category = categoryByTag.get(tag);
-        if (category !== undefined) return category;
-      }
-      return "Other";
-    }
-    const first = tags[0];
-    return first === undefined ? "Other" : titleCaseTag(first);
-  }
-
   function entryIconAssetUrl(
     marketplace: string,
     entryId: string,
     contentHash: string,
   ): string {
     return `/api/v1/plugin-catalog/icons/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}?h=${contentHash}`;
+  }
+
+  function entryScreenshotAssetUrl(
+    marketplace: string,
+    entryId: string,
+    index: number,
+    contentHash: string,
+  ): string {
+    return `/api/v1/plugin-catalog/screenshots/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}/${index}?h=${contentHash}`;
+  }
+
+  const iconTintedByHash = new Map<string, boolean>();
+  function cachedIconTinted(icon: {
+    contentHash: string;
+    contentType: string;
+    bytes: Uint8Array;
+  }): boolean {
+    const cached = iconTintedByHash.get(icon.contentHash);
+    if (cached !== undefined) return cached;
+    const tinted = entryIconTinted(icon.contentType, icon.bytes);
+    iconTintedByHash.set(icon.contentHash, tinted);
+    return tinted;
   }
 
   function entryIconAsset(
@@ -397,7 +570,7 @@ export function createPluginCatalogService(deps: {
       ? { iconUrl: null, iconTinted: false }
       : {
           iconUrl: entryIconAssetUrl(marketplace, entryId, icon.contentHash),
-          iconTinted: entryIconTinted(icon.contentType),
+          iconTinted: cachedIconTinted(icon),
         };
   }
 
@@ -410,6 +583,17 @@ export function createPluginCatalogService(deps: {
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === CURATED_MARKETPLACE_NAME;
+    const categoryId = marketplaceEntryCategoryId({
+      schemaVersion: catalog.schemaVersion,
+      entry,
+    });
+    const category =
+      categoryId === undefined ? undefined : pluginCatalogCategory(categoryId);
+    const screenshotBase =
+      row.sourceKind === "https"
+        ? ({ kind: "url", manifestUrl: row.manifestUrl } as const)
+        : ({ kind: "dir", root: "" } as const);
+    const notableIndex = marketplaceNewAndNotable(catalog).indexOf(entry.id);
     return {
       entryId: entry.id,
       pluginId: entry.id,
@@ -417,7 +601,15 @@ export function createPluginCatalogService(deps: {
       description: entry.description,
       icon: entryIconName(entry),
       ...entryIconAsset(row.name, entry.id),
-      category: entryCategory(entry, official),
+      ...(category === undefined
+        ? {}
+        : { categoryId: category.id, category: category.displayName }),
+      screenshots: entryScreenshotUrls(entry, screenshotBase),
+      newAndNotableRank: notableIndex < 0 ? null : notableIndex,
+      ...(entry.publishedAt === undefined
+        ? {}
+        : { publishedAt: entry.publishedAt }),
+      ...(entry.updatedAt === undefined ? {} : { updatedAt: entry.updatedAt }),
       source: entrySourceDisplay(entry),
       repositoryUrl: entryRepositoryUrl(entry),
       marketplace: row.name,
@@ -448,12 +640,46 @@ export function createPluginCatalogService(deps: {
     );
     if (colliding.length === 0) return { catalog, error: null };
     const ids = colliding.map((entry) => entry.id).join(", ");
+    const filteredCatalog: MarketplaceManifest =
+      catalog.schemaVersion === 1
+        ? {
+            ...catalog,
+            plugins: catalog.plugins.filter(
+              (entry) => !bundledIds.has(entry.id),
+            ),
+          }
+        : {
+            ...catalog,
+            plugins: catalog.plugins.filter(
+              (entry) => !bundledIds.has(entry.id),
+            ),
+            newAndNotable: catalog.newAndNotable.filter(
+              (entryId) => !bundledIds.has(entryId),
+            ),
+          };
     return {
-      catalog: {
-        ...catalog,
-        plugins: catalog.plugins.filter((entry) => !bundledIds.has(entry.id)),
-      },
+      catalog: filteredCatalog,
       error: `dropped ${colliding.length} catalog ${colliding.length === 1 ? "entry" : "entries"} whose id matches a bundled plugin: ${ids}`,
+    };
+  }
+
+  function synthesizeDevelopmentDiscoveryCatalog(
+    catalog: MarketplaceManifestV1,
+  ): MarketplaceManifestV2 {
+    return {
+      schemaVersion: 2,
+      name: catalog.name,
+      displayName: catalog.displayName,
+      ...(catalog.description === undefined
+        ? {}
+        : { description: catalog.description }),
+      newAndNotable: [],
+      plugins: catalog.plugins.flatMap((entry) => {
+        const category = REVIEWED_COMMUNITY_ENTRY_CATEGORIES[entry.id];
+        if (category === undefined) return [];
+        const dates = REVIEWED_COMMUNITY_ENTRY_DATES[entry.id];
+        return [{ ...entry, category, ...(dates ?? {}) }];
+      }),
     };
   }
 
@@ -482,18 +708,88 @@ export function createPluginCatalogService(deps: {
     attemptedAt: number,
   ): Promise<void> {
     let collisionError: string | null = null;
-    const source = marketplaceSourceFromRow(row);
-    if (source.kind === "git") await prepareMarketplaceStaging();
-    const materialized = await materializeMarketplace({
-      source,
-      cached: {
+    const cachedForVersion = (
+      schemaVersion: 1 | 2 | null,
+    ): {
+      manifestJson: string;
+      etag: string | null;
+      lastModified: string | null;
+    } | null => {
+      const stored = catalogOf(row);
+      if (
+        stored === null ||
+        (schemaVersion !== null && stored.schemaVersion !== schemaVersion)
+      ) {
+        return null;
+      }
+      return {
         manifestJson: row.manifestJson,
         etag: row.etag,
         lastModified: row.lastModified,
-      },
-      stagingDir,
-      fetch: fetchMarketplace,
-    });
+      };
+    };
+    const materialize = async (args: {
+      source: MarketplaceSource;
+      expectedVersion: 1 | 2 | null;
+    }): Promise<MaterializedMarketplace> => {
+      if (args.source.kind === "git") await prepareMarketplaceStaging();
+      const result = await materializeMarketplace({
+        source: args.source,
+        cached: cachedForVersion(args.expectedVersion),
+        stagingDir,
+        fetch: fetchMarketplace,
+      });
+      if (
+        args.expectedVersion !== null &&
+        result.catalog.schemaVersion !== args.expectedVersion
+      ) {
+        await result.dispose();
+        throw new Error(
+          `invalid marketplace manifest: expected schemaVersion ${args.expectedVersion}, got ${result.catalog.schemaVersion}`,
+        );
+      }
+      return result;
+    };
+    let source = marketplaceSourceFromRow(row);
+    let materialized: MaterializedMarketplace;
+    if (
+      row.name === CURATED_MARKETPLACE_NAME &&
+      officialManifestUrls.v1 !== null
+    ) {
+      source = { kind: "https", manifestUrl: officialManifestUrls.v2 };
+      try {
+        materialized = await materialize({ source, expectedVersion: 2 });
+      } catch (error) {
+        if (
+          deps.isDevelopment === false &&
+          !(error instanceof MarketplaceManifestMissingError)
+        ) {
+          throw error;
+        }
+        source = {
+          kind: "https",
+          manifestUrl: officialManifestUrls.v1,
+        };
+        materialized = await materialize({ source, expectedVersion: 1 });
+        if (deps.isDevelopment === true) {
+          if (materialized.catalog.schemaVersion !== 1) {
+            throw new Error(
+              "internal error: v1 marketplace fallback returned another schema version",
+            );
+          }
+          const catalog = synthesizeDevelopmentDiscoveryCatalog(
+            materialized.catalog,
+          );
+          materialized = {
+            ...materialized,
+            catalog,
+            manifestJson: JSON.stringify(catalog),
+          };
+        }
+      }
+    } else {
+      materialized = await materialize({ source, expectedVersion: null });
+    }
     try {
       if (materialized.catalog.name !== row.name) {
         throw new Error(
@@ -536,6 +832,23 @@ export function createPluginCatalogService(deps: {
         replacePluginMarketplaceIcons(tx, row.name, icons);
       });
       deps.notifyCatalogChanged?.();
+      if (row.name === CURATED_MARKETPLACE_NAME) {
+        try {
+          await reconcilePluginListingLifecycles({
+            db: deps.db,
+            acceptedEntries: new Map(
+              catalog.plugins.map((entry) => [entry.id, entry.source]),
+            ),
+            fetch: fetchMarketplace,
+            now,
+            ...(deps.warn === undefined ? {} : { warn: deps.warn }),
+          });
+        } catch (error) {
+          deps.warn?.(
+            `marketplace ${row.name} listing lifecycle reconciliation failed: ${marketplaceErrorMessage(error)}`,
+          );
+        }
+      }
     } finally {
       await materialized.dispose();
     }
@@ -914,6 +1227,29 @@ export function createPluginCatalogService(deps: {
           };
     },
 
+    async screenshot(marketplace, entryId, index) {
+      if (marketplace !== CURATED_MARKETPLACE_NAME) return undefined;
+      const bundled = officialPlugins.find((entry) => entry.name === entryId);
+      const declared = bundled?.screenshots?.[index];
+      if (bundled === undefined || declared === undefined) return undefined;
+      const asset = await bundledScreenshotAsset(bundled, declared);
+      if (asset === null) return undefined;
+      try {
+        return {
+          bytes: await readFile(asset.path),
+          contentType: asset.contentType,
+          hash: asset.hash,
+        };
+      } catch (error: unknown) {
+        deps.warn?.(
+          `bundled plugin ${bundled.name} screenshot ${JSON.stringify(declared)} is unreadable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return undefined;
+      }
+    },
+
     listMarketplaces() {
       return orderedMarketplaces().map(marketplaceView);
     },
@@ -999,19 +1335,21 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
-      const curatedRow = getPluginMarketplace(
-        deps.db,
-        CURATED_MARKETPLACE_NAME,
-      );
+      const curatedRow = requireRow(CURATED_MARKETPLACE_NAME);
+      const officialCatalog = catalogOf(curatedRow);
+      const officialDiscoveryEnabled = officialCatalog?.schemaVersion === 2;
       const curatedInstalls = installCountsFromStatsJson(
-        curatedRow?.statsJson ?? null,
+        curatedRow.statsJson,
         (message) => deps.warn?.(message),
       );
       const bundledEntries = await Promise.all(
         officialPlugins.map(async (entry) => {
           const manifest = await entryManifest(entry);
           if (manifest === null) return null;
-          const icon = await bundledIcon(manifest);
+          const [icon, screenshotUrls] = await Promise.all([
+            bundledIcon(manifest),
+            bundledScreenshotUrls(entry),
+          ]);
           return {
             pluginId: entry.pluginId,
             tags: [] as string[],
@@ -1020,6 +1358,8 @@ export function createPluginCatalogService(deps: {
               entry,
               manifest,
               icon?.hash ?? null,
+              screenshotUrls,
+              officialDiscoveryEnabled,
               curatedInstalls.get(entry.pluginId) ?? null,
             ),
           };
@@ -1042,7 +1382,10 @@ export function createPluginCatalogService(deps: {
           ),
       );
       const catalogEntries = orderedMarketplaces().flatMap((row, index) => {
-        const catalog = catalogOf(row);
+        const catalog =
+          row.name === CURATED_MARKETPLACE_NAME
+            ? officialCatalog
+            : catalogOf(row);
         if (catalog === null) return [];
         const official = row.name === CURATED_MARKETPLACE_NAME;
         return catalog.plugins.map((entry) => ({
@@ -1068,7 +1411,7 @@ export function createPluginCatalogService(deps: {
               entry.pluginId,
               entry.result.displayName,
               entry.result.description,
-              entry.result.category,
+              entry.result.category ?? "",
               entry.result.marketplaceDisplayName,
               ...entry.tags,
             ]
@@ -1081,11 +1424,19 @@ export function createPluginCatalogService(deps: {
             left.marketplaceRank - right.marketplaceRank;
           if (marketplaceDifference !== 0) return marketplaceDifference;
           const categoryDifference =
-            (categoryOrder.get(left.result.category) ?? categoryOrder.size) -
-            (categoryOrder.get(right.result.category) ?? categoryOrder.size);
+            (left.result.categoryId === undefined
+              ? categoryOrder.size
+              : (categoryOrder.get(left.result.categoryId) ??
+                categoryOrder.size)) -
+            (right.result.categoryId === undefined
+              ? categoryOrder.size
+              : (categoryOrder.get(right.result.categoryId) ??
+                categoryOrder.size));
           return (
             categoryDifference ||
-            left.result.category.localeCompare(right.result.category) ||
+            (left.result.category ?? "").localeCompare(
+              right.result.category ?? "",
+            ) ||
             left.result.displayName.localeCompare(right.result.displayName)
           );
         })
@@ -1205,12 +1556,4 @@ function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
       ? null
       : `https://github.com/${entry.author.github}`);
   return { name: entry.author.name, url };
-}
-
-function titleCaseTag(tag: string): string {
-  return tag
-    .split("-")
-    .filter((word) => word.length > 0)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }

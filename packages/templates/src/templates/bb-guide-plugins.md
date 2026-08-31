@@ -216,6 +216,16 @@ added/updated/unchanged counts.
   bb plugin list                 Status, services, schedules, handler timings.
                                  `bb status` also names enabled plugins that
                                  are incompatible, failed, or missing
+  bb plugin listing list [--json]
+                                 List local path-authored plugins and their
+                                 explicit marketplace listing state
+  bb plugin listing save-draft <id> <entry-file> [--json]
+                                 Validate and persist one marketplace v2 entry
+                                 draft; this performs no marketplace write
+  bb plugin listing record-submission <id> <pull-request-url>
+                                 [--opened-at <milliseconds>] [--json]
+                                 Record the one canonical get-bb/marketplace
+                                 PR opened by the submission thread
   bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
                                  semver range with its tag prefix and resolved
                                  tag, engine ranges, install time, and recent
@@ -273,6 +283,13 @@ added/updated/unchanged counts.
                                  major/version, artifactFormatVersion,
                                  pluginId, pluginVersion, and builtWith (bb +
                                  plugin SDK versions); no server required
+  bb plugin screenshot [path]    Plan listing screenshots (default: cwd).
+                                 --capture <outDir> drives a hidden window at
+                                 the running app and writes one PNG per live
+                                 plugin surface. --fixture-thread <id> includes
+                                 thread/composer/file-only surfaces; --app-url
+                                 <url> selects a separate app origin; --json
+                                 prints the plan
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
                                  on every change rebuild its declared frontend
                                  (unminified, for readable stack traces),
@@ -489,6 +506,12 @@ bb — depend on the published `bb-app` package and call the CLI:
 "devDependencies": { "bb-app": "^0.35.1" },
 "scripts": { "build": "bb plugin build" }
 ```
+
+Use `bb plugin screenshot [path] --capture <outDir>` for marketplace
+listing images. It detects the plugin's visual surfaces, photographs each live
+surface in the running app, and writes stable PNG names. Seed realistic data
+first and inspect every image with the `plugin-listing-screenshots` skill;
+pass `--fixture-thread <id>` for thread-, composer-, or file-only surfaces.
 
 `bb plugin build` talks to no server. Depending on `bb-app@X` builds with
 exactly that release's shim configuration, so the bundle cannot be built

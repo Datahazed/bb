@@ -107,7 +107,7 @@ describe("submit-a-plugin skill", () => {
       "git clone https://github.com/get-bb/marketplace.git /SAFE/NEW/PATH/marketplace",
     );
     expect(skill).toMatch(
-      /Return their paths, the clone path,\s+branch name, and results\./,
+      /Return their paths, the\s+clone path, branch name, and results\./,
     );
   });
 });

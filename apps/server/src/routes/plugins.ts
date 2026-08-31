@@ -21,16 +21,37 @@ import {
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import { pluginImageResponse } from "./plugin-image-response.js";
 import {
+  pluginListingRecordSubmissionRequestSchema,
+  pluginListingSaveDraftRequestSchema,
   pluginApplyUpdateRequestSchema,
   pluginInstallRequestSchema,
   pluginSettingsUpdateRequestSchema,
   pluginTokenRequestSchema,
   pluginUpdateCheckRequestSchema,
 } from "@bb/server-contract";
+import {
+  consumePluginListingNotice,
+  ensurePathPluginListingLifecycles,
+  getInstalledPlugin,
+  getPluginListingLifecycle,
+  getPluginMarketplace,
+  listPathPluginListingLifecycles,
+  listPluginListingNotices,
+  PluginListingDraftConflictError,
+  recordPluginListingSubmission,
+  savePluginListingDraft,
+  type DbConnection,
+} from "@bb/db";
+import {
+  CURATED_MARKETPLACE_NAME,
+  parseMarketplaceManifestJson,
+} from "../services/plugin-catalog/marketplace-manifest.js";
+import { parseGithubPullRequestUrl } from "../services/plugins/plugin-listing-lifecycle.js";
 
-interface PluginRoutesDeps {
+export interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
   db: import("@bb/db").DbConnection;
+  hub: Pick<import("../ws/hub.js").NotificationHub, "notifySystem">;
 }
 
 type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
@@ -166,6 +187,140 @@ function notRunningError(
   return `plugin "${id}" is not running (status: ${lookup.status}${detail})`;
 }
 
+function assertListingDraftIdAvailable(
+  db: DbConnection,
+  pluginId: string,
+): void {
+  const curated = getPluginMarketplace(db, CURATED_MARKETPLACE_NAME);
+  if (curated === undefined) return;
+  const catalog = parseMarketplaceManifestJson(
+    curated.manifestJson,
+    `stored marketplace ${JSON.stringify(CURATED_MARKETPLACE_NAME)}`,
+  );
+  if (!catalog.plugins.some((entry) => entry.id === pluginId)) return;
+  const current = getPluginListingLifecycle(db, pluginId);
+  if (current?.status === "published" && current.entryId === pluginId) return;
+  throw new PluginListingDraftConflictError(
+    `plugin ${JSON.stringify(pluginId)} is already listed in the curated marketplace`,
+  );
+}
+
+export function registerPluginListingRoutes(
+  app: Hono,
+  deps: PluginRoutesDeps,
+): void {
+  const listingRecord = (pluginId: string) => {
+    const lifecycle = getPluginListingLifecycle(deps.db, pluginId);
+    if (lifecycle === undefined) return null;
+    return { pluginId, authorship: "path" as const, lifecycle };
+  };
+
+  app.get("/plugin-listings", (context) => {
+    ensurePathPluginListingLifecycles(deps.db);
+    return context.json({
+      records: listPathPluginListingLifecycles(deps.db).map((record) => ({
+        ...record,
+        authorship: "path" as const,
+      })),
+      notices: listPluginListingNotices(deps.db),
+    });
+  });
+
+  app.post("/plugin-listings/notices/:noticeId/consume", (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) return context.json({ error: problem.error }, problem.status);
+    consumePluginListingNotice(deps.db, context.req.param("noticeId"));
+    return context.json({ ok: true as const });
+  });
+
+  app.post("/plugins/:id/listing/draft", async (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) return context.json({ error: problem.error }, problem.status);
+    const pluginId = context.req.param("id");
+    const installed = getInstalledPlugin(deps.db, pluginId);
+    if (installed?.sourceKind !== "path") {
+      return context.json(
+        { error: "listing drafts require a path-installed authored plugin" },
+        403,
+      );
+    }
+    const parsed = pluginListingSaveDraftRequestSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+    if (!parsed.success || parsed.data.entry.id !== pluginId) {
+      return context.json(
+        { error: "invalid v2 listing draft or mismatched entry id" },
+        422,
+      );
+    }
+    try {
+      assertListingDraftIdAvailable(deps.db, pluginId);
+      savePluginListingDraft(deps.db, pluginId, parsed.data.entry);
+      deps.hub.notifySystem(["plugins-changed"]);
+      return context.json({
+        ok: true as const,
+        record: listingRecord(pluginId)!,
+      });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        error instanceof PluginListingDraftConflictError ? 409 : 422,
+      );
+    }
+  });
+
+  app.post("/plugins/:id/listing/submission", async (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) return context.json({ error: problem.error }, problem.status);
+    const pluginId = context.req.param("id");
+    const installed = getInstalledPlugin(deps.db, pluginId);
+    if (installed?.sourceKind !== "path") {
+      return context.json(
+        {
+          error: "listing submissions require a path-installed authored plugin",
+        },
+        403,
+      );
+    }
+    const parsed = pluginListingRecordSubmissionRequestSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+    const pull = parsed.success
+      ? parseGithubPullRequestUrl(parsed.data.pullRequestUrl)
+      : null;
+    if (
+      !parsed.success ||
+      pull === null ||
+      pull.owner !== "get-bb" ||
+      pull.repository !== "marketplace"
+    ) {
+      return context.json(
+        {
+          error:
+            "expected a canonical https://github.com/get-bb/marketplace/pull/<number> URL",
+        },
+        422,
+      );
+    }
+    try {
+      recordPluginListingSubmission(deps.db, pluginId, {
+        url: parsed.data.pullRequestUrl,
+        openedAt: parsed.data.openedAt,
+      });
+      deps.hub.notifySystem(["plugins-changed"]);
+      return context.json({
+        ok: true as const,
+        record: listingRecord(pluginId)!,
+      });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        409,
+      );
+    }
+  });
+}
+
 export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
@@ -174,6 +329,8 @@ export function registerPluginRoutes(
   const appAssetCompressionCache = createAppAssetCompressionCache(
     MAX_CACHED_APP_ASSETS,
   );
+
+  registerPluginListingRoutes(app, deps);
 
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 

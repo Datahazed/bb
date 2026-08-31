@@ -59,6 +59,36 @@ export function registerPluginCatalogRoutes(
     });
   });
 
+  app.get(
+    "/plugin-catalog/screenshots/:marketplace/:entryId/:index",
+    async (context) => {
+      const index = Number(context.req.param("index"));
+      const screenshot =
+        Number.isInteger(index) && index >= 0
+          ? await catalog.screenshot(
+              context.req.param("marketplace"),
+              context.req.param("entryId"),
+              index,
+            )
+          : undefined;
+      if (screenshot === undefined) {
+        return context.json(
+          { ok: false, error: "unknown catalog screenshot" },
+          404,
+        );
+      }
+      return context.body(new Uint8Array(screenshot.bytes), 200, {
+        "content-type": screenshot.contentType,
+        "cache-control":
+          context.req.query("h") === screenshot.hash
+            ? "public, max-age=31536000, immutable"
+            : "no-store",
+        "content-security-policy": "default-src 'none'; sandbox",
+        "x-content-type-options": "nosniff",
+      });
+    },
+  );
+
   app.get("/plugin-catalog/install-plan", async (context) => {
     const selector = entrySelector(
       context.req.query("entryId"),

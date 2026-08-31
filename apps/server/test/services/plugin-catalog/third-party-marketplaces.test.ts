@@ -107,6 +107,7 @@ describe("third-party marketplaces", () => {
       appVersion: "1.0.0",
       marketplaceUrl: OFFICIAL_URL,
       dataDir,
+      isDevelopment: false,
       bundledPlugins: [],
       plugins: {
         installOfficialPlugin: async () => {
@@ -382,6 +383,7 @@ describe("third-party marketplaces", () => {
       appVersion: "1.0.0",
       marketplaceUrl: OFFICIAL_URL,
       dataDir,
+      isDevelopment: false,
       bundledPlugins: [
         {
           name: "docs",
@@ -389,7 +391,7 @@ describe("third-party marketplaces", () => {
           rootDir: join(dataDir, "missing-bundled-plugin"),
           autoInstall: false,
           defaultEnabled: true,
-          category: "Context & knowledge",
+          category: "memory-and-context",
         },
       ],
       plugins: {
@@ -652,16 +654,38 @@ describe("third-party marketplaces", () => {
         result.entryId,
       ]),
     ).toEqual([
-      ["bb-community", "Interface", "official-notes"],
-      ["acme-plugins", "Git Tools", "notes"],
-      ["acme-plugins", "Git Tools", "zebra"],
+      ["bb-community", undefined, "official-notes"],
+      ["acme-plugins", undefined, "notes"],
+      ["acme-plugins", undefined, "zebra"],
     ]);
+    expect(JSON.stringify(results)).not.toContain('"other"');
     expect(results[1]).toMatchObject({
       official: false,
       marketplaceDisplayName: "Acme Plugins",
       author: { name: "Acme", url: "https://github.com/acme" },
     });
     expect(results[0]?.official).toBe(true);
+  });
+
+  it("keeps third-party v1 entries category-less beside official v2 entries", async () => {
+    const catalog = service({
+      fetch: marketplaceFetch({
+        [ACME_URL]: manifest("acme-plugins", [entry()]),
+      }),
+    });
+    await catalog.addMarketplace(ACME_URL);
+
+    const results = await catalog.search("");
+    const officialV2 = results.find(
+      (result) => result.marketplace === "bb-community",
+    );
+    const legacyV1 = results.find(
+      (result) => result.marketplace === "acme-plugins",
+    );
+    expect(officialV2?.categoryId).toBeDefined();
+    expect(officialV2?.category).toBeDefined();
+    expect(legacyV1).not.toHaveProperty("categoryId");
+    expect(legacyV1).not.toHaveProperty("category");
   });
 
   describe("install plans", () => {

@@ -13,6 +13,7 @@ import {
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import {
+  entryScreenshotUrls,
   parseMarketplaceManifest,
   parseMarketplaceManifestJson,
   type MarketplaceIconBase,
@@ -23,7 +24,14 @@ const MARKETPLACE_MANIFEST_FILENAME = "marketplace.json";
 
 const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
 
-type MarketplaceSource =
+export class MarketplaceManifestMissingError extends Error {
+  constructor(readonly manifestUrl: string) {
+    super(`marketplace manifest not found at ${manifestUrl}`);
+    this.name = "MarketplaceManifestMissingError";
+  }
+}
+
+export type MarketplaceSource =
   | { kind: "https"; manifestUrl: string }
   | { kind: "git"; url: string; ref: string }
   | { kind: "path"; directory: string };
@@ -117,7 +125,7 @@ export function marketplaceSourceColumns(source: MarketplaceSource): {
   };
 }
 
-interface MaterializedMarketplace {
+export interface MaterializedMarketplace {
   catalog: MarketplaceManifest;
   manifestJson: string;
   unchanged: boolean;
@@ -168,6 +176,10 @@ async function materializeHttps(
     signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
   });
   const unchanged = response.status === 304 && cached !== null;
+  if (response.status === 404) {
+    await response.body?.cancel();
+    throw new MarketplaceManifestMissingError(source.manifestUrl);
+  }
   if (!unchanged && !response.ok) {
     await response.body?.cancel();
     throw new Error(`request failed with HTTP ${response.status}`);
@@ -192,6 +204,8 @@ async function materializeHttps(
     catalog = parseMarketplaceManifestJson(raw, "marketplace manifest");
     manifestJson = JSON.stringify(catalog);
   }
+  const iconBase = { kind: "url", manifestUrl: source.manifestUrl } as const;
+  for (const entry of catalog.plugins) entryScreenshotUrls(entry, iconBase);
   return {
     catalog,
     manifestJson,
@@ -201,7 +215,7 @@ async function materializeHttps(
       response.headers.get("last-modified") ??
       (unchanged ? cached.lastModified : null),
     commit: null,
-    iconBase: { kind: "url", manifestUrl: source.manifestUrl },
+    iconBase,
     dispose: async () => {},
   };
 }
@@ -234,6 +248,8 @@ async function materializeLocal(
       JSON.parse(raw) as unknown,
       "marketplace manifest",
     );
+    const iconBase = { kind: "dir", root } as const;
+    for (const entry of catalog.plugins) entryScreenshotUrls(entry, iconBase);
     return {
       catalog,
       manifestJson: JSON.stringify(catalog),
@@ -241,7 +257,7 @@ async function materializeLocal(
       etag: null,
       lastModified: null,
       commit,
-      iconBase: { kind: "dir", root },
+      iconBase,
       dispose,
     };
   } catch (error) {

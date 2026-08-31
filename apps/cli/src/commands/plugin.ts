@@ -16,6 +16,7 @@ import type {
   PluginCatalogSearchResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
+import { pluginListingDraftEntrySchema } from "@bb/server-contract";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { BbHttpError, pluginMutationResponseSchema } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
@@ -27,6 +28,12 @@ import {
   syncPluginTypes,
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
+import {
+  planPluginScreenshots,
+  resolvePluginCaptureHarnessPath,
+  resolveElectronBinary,
+  runPluginCapture,
+} from "../plugin-screenshot.js";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
@@ -662,10 +669,15 @@ function printPlugin(plugin: PluginEntry): void {
   console.log(`${plugin.id}@${plugin.version}  ${state}${detail}`);
   console.log(`  source: ${plugin.source}`);
   const stats = plugin.handlerStats;
-  if (stats && stats.count > 0) {
+  if (stats && (stats.count > 0 || stats.errorCount > 0)) {
     const errors = stats.errorCount > 0 ? `, ${stats.errorCount} errors` : "";
     console.log(
       `  handlers: ${stats.count} calls / ${formatMs(stats.totalMs)} total / ${formatMs(stats.maxMs)} max${errors}`,
+    );
+  }
+  if (plugin.lastProblem !== null) {
+    console.log(
+      `  last problem: ${plugin.lastProblem.class} at ${formatAbsoluteDate(plugin.lastProblem.at)} — ${plugin.lastProblem.message}`,
     );
   }
   for (const service of plugin.services ?? []) {
@@ -840,6 +852,81 @@ export function registerPluginCommands(
           printPlugin(entry);
         }
       }),
+    );
+
+  const listing = plugin
+    .command("listing")
+    .description("Read and explicitly advance authored plugin listing state");
+
+  listing
+    .command("list")
+    .description("List path-authored plugins and their persisted listing state")
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const result = await createCliBbSdk(getUrl()).plugins.listings.list();
+        if (opts.json) {
+          outputJson(opts, result);
+          return;
+        }
+        if (result.records.length === 0) {
+          console.log("No authored plugins installed from a path.");
+          return;
+        }
+        for (const record of result.records) {
+          console.log(`${record.pluginId}  ${record.lifecycle.status}`);
+        }
+      }),
+    );
+
+  listing
+    .command("save-draft <id> <entry-file>")
+    .description("Validate and save a marketplace v2 entry draft from JSON")
+    .option("--json", "Output JSON")
+    .action(
+      action(async (id: string, entryFile: string, opts: JsonOutputOptions) => {
+        const entry: unknown = JSON.parse(
+          await readFile(resolve(entryFile), "utf8"),
+        );
+        const record = await createCliBbSdk(
+          getUrl(),
+        ).plugins.listings.saveDraft({
+          pluginId: id,
+          entry: pluginListingDraftEntrySchema.parse(entry),
+        });
+        if (opts.json) outputJson(opts, record);
+        else console.log(`${record.pluginId}  ${record.lifecycle.status}`);
+      }),
+    );
+
+  listing
+    .command("record-submission <id> <pull-request-url>")
+    .description("Record the one opened get-bb/marketplace pull request")
+    .option("--opened-at <milliseconds>", "Submission time")
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          id: string,
+          pullRequestUrl: string,
+          opts: JsonOutputOptions & { openedAt?: string },
+        ) => {
+          const openedAt =
+            opts.openedAt === undefined ? Date.now() : Number(opts.openedAt);
+          if (!Number.isSafeInteger(openedAt) || openedAt < 0) {
+            throw new Error("--opened-at must be a non-negative integer");
+          }
+          const record = await createCliBbSdk(
+            getUrl(),
+          ).plugins.listings.recordSubmission({
+            pluginId: id,
+            pullRequestUrl,
+            openedAt,
+          });
+          if (opts.json) outputJson(opts, record);
+          else console.log(`${record.pluginId}  ${record.lifecycle.status}`);
+        },
+      ),
     );
 
   plugin
@@ -1390,6 +1477,105 @@ export function registerPluginCommands(
           console.log(relative(process.cwd(), file));
         }
       }),
+    );
+
+  plugin
+    .command("screenshot [path]")
+    .description(
+      "Plan the listing screenshots for a plugin: reads the surfaces its frontend registers and reports one shot per surface. Surfaces that only exist inside a thread, composer, or open file need the shared capture fixture",
+    )
+    .option("--json", "Output JSON")
+    .option(
+      "--fixture-thread <id>",
+      "Thread the shared capture fixture seeded, enabling the surfaces that need one",
+    )
+    .option(
+      "--app-url <url>",
+      "Where the app shell is served when it differs from the server (a source dev instance serves the app from Vite's port); defaults to the server URL",
+    )
+    .option(
+      "--capture <outDir>",
+      "Take the screenshots: drives a headless window at this bb, reads which surfaces the plugin registered from the running app, and writes one PNG per surface into <outDir>",
+    )
+    .action(
+      action(
+        async (
+          path: string | undefined,
+          opts: JsonOutputOptions & {
+            fixtureThread?: string;
+            capture?: string;
+            appUrl?: string;
+          },
+        ) => {
+          const rootDir = resolve(process.cwd(), path ?? ".");
+          const raw: unknown = JSON.parse(
+            await readFile(join(rootDir, "package.json"), "utf8"),
+          );
+          const packageName = pluginPackageSummarySchema.parse(raw).name;
+          if (packageName === undefined) {
+            throw new Error(
+              `No plugin package name in ${rootDir}/package.json`,
+            );
+          }
+          const plan = await planPluginScreenshots({
+            rootDir,
+            pluginId: derivePluginId(packageName),
+            ...(opts.fixtureThread === undefined
+              ? {}
+              : { fixtureThreadId: opts.fixtureThread }),
+          });
+          if (opts.capture === undefined && outputJson(opts, plan)) {
+            return;
+          }
+          if (plan.slots.length === 0 && opts.capture === undefined) {
+            console.log(
+              `${plan.pluginId} registers no visual surface — no listing screenshots to take.`,
+            );
+            return;
+          }
+          if (!opts.json) {
+            for (const step of plan.steps) {
+              console.log(`${step.outputFile}  ${step.url}  (${step.slot})`);
+            }
+            for (const slot of plan.needsFixture) {
+              console.log(
+                `skipped ${slot} — needs the capture fixture; pass --fixture-thread <id>`,
+              );
+            }
+          }
+          if (opts.capture !== undefined) {
+            const harnessPath = resolvePluginCaptureHarnessPath(
+              import.meta.dirname,
+            );
+            const electronBinary = resolveElectronBinary(
+              process.env,
+              harnessPath,
+            );
+            if (electronBinary === null) {
+              throw new Error(
+                "No Electron found for the capture harness. Run from a bb checkout, or set BB_ELECTRON to an Electron binary.",
+              );
+            }
+            const report = await runPluginCapture({
+              appUrl: opts.appUrl ?? getUrl(),
+              pluginId: plan.pluginId,
+              outDir: resolve(process.cwd(), opts.capture),
+              harnessPath,
+              electronBinary,
+              ...(opts.fixtureThread === undefined
+                ? {}
+                : { fixtureThreadId: opts.fixtureThread }),
+            });
+            if (outputJson(opts, report)) return;
+            if (report.written.length === 0) {
+              console.log("Capture ran; the app reports no surfaces to shoot.");
+            }
+            for (const shot of report.written) {
+              console.log(`wrote ${shot.file}  (${shot.slot})`);
+            }
+          }
+        },
+      ),
     );
 
   plugin

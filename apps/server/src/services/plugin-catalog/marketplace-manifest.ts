@@ -1,5 +1,11 @@
 import { join } from "node:path";
 import {
+  marketplaceEntryV1Schema,
+  marketplaceEntryV2Schema,
+  type MarketplaceEntryV1 as DomainMarketplaceEntryV1,
+  type MarketplaceEntryV2 as DomainMarketplaceEntryV2,
+} from "@bb/domain";
+import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
   pluginMarketplaceNameSchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -16,8 +22,10 @@ import {
   parsePluginSource,
 } from "../plugins/install-sources.js";
 
-const MARKETPLACE_SCHEMA_URL =
+export const MARKETPLACE_V1_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
+export const MARKETPLACE_V2_SCHEMA_URL =
+  "https://getbb.app/schemas/marketplace-v2.schema.json";
 
 export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
 
@@ -29,231 +37,97 @@ const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const manifestNameSchema = pluginMarketplaceNameSchema;
-const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
-const ICON_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
-const ICON_EXTENSIONS = [".svg", ".png", ".webp"] as const;
 
-const semverRange = z
-  .string()
-  .min(1)
-  .refine((value) => semver.validRange(value) !== null, {
-    message: "must be a valid semver range",
+function uniqueMarketplaceEntries<T extends { id: string }>(
+  entries: T[],
+  ctx: z.RefinementCtx,
+): void {
+  const seen = new Set<string>();
+  entries.forEach((entry, index) => {
+    if (seen.has(entry.id)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [index, "id"],
+        message: `duplicate plugin id "${entry.id}"`,
+      });
+    }
+    seen.add(entry.id);
   });
-
-const httpsUrl = z
-  .string()
-  .min(1)
-  .refine(
-    (value) => {
-      try {
-        return new URL(value).protocol === "https:";
-      } catch {
-        return false;
-      }
-    },
-    { message: "must be an https URL" },
-  );
-
-function iconExtensionProblem(pathname: string): string | null {
-  const lower = pathname.toLowerCase();
-  return ICON_EXTENSIONS.some((extension) => lower.endsWith(extension))
-    ? null
-    : `must point at a ${ICON_EXTENSIONS.join(", ")} file`;
 }
 
-const iconUrlSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value);
-    if (absolute && !value.toLowerCase().startsWith("https:")) {
-      ctx.addIssue({ code: "custom", message: "must be an https URL" });
-      return;
-    }
-    let pathname: string;
-    try {
-      pathname = new URL(value, "https://marketplace.invalid/base/").pathname;
-    } catch {
-      ctx.addIssue({ code: "custom", message: "is not a valid URL" });
-      return;
-    }
-    const problem = iconExtensionProblem(pathname);
-    if (problem !== null) ctx.addIssue({ code: "custom", message: problem });
-  });
-
-const iconSchema = z.union([
-  z.string().regex(ICON_NAME_PATTERN, "must be a host icon name"),
-  z.object({ url: iconUrlSchema }).strict(),
-]);
-
-const authorSchema = z
+const marketplaceManifestV1Schema = z
   .object({
-    name: z.string().min(1),
-    github: z.string().regex(GITHUB_LOGIN_PATTERN).optional(),
-    url: httpsUrl.optional(),
-  })
-  .strict();
-
-const npmSourceSchema = z
-  .object({
-    npm: z
-      .object({
-        package: z
-          .string()
-          .min(1)
-          .superRefine((value, ctx) => {
-            try {
-              const parsed = parsePluginSource(`npm:${value}`);
-              if (
-                parsed.kind !== "npm" ||
-                parsed.name !== value ||
-                parsed.spec.length !== 0
-              ) {
-                throw new Error("package name is ambiguous");
-              }
-            } catch (error) {
-              ctx.addIssue({
-                code: "custom",
-                message: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }),
-        range: semverRange.optional(),
-        tag: z
-          .string()
-          .min(1)
-          .regex(/^[A-Za-z][A-Za-z0-9._-]*$/u)
-          .optional(),
-        registry: httpsUrl.optional(),
-      })
-      .strict()
-      .refine((npm) => npm.range === undefined || npm.tag === undefined, {
-        message: "range and tag are mutually exclusive",
-      }),
-  })
-  .strict();
-
-const gitSubdirSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    try {
-      normalizePluginSubdirectory(value);
-    } catch (error) {
-      ctx.addIssue({
-        code: "custom",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-const gitRefSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    try {
-      const parsed = parsePluginSource(
-        `git:https://marketplace.invalid/plugin.git@${value}`,
-      );
-      if (
-        parsed.kind !== "git" ||
-        parsed.selector.kind !== "ref" ||
-        parsed.selector.ref !== value
-      ) {
-        throw new Error("git ref is ambiguous");
-      }
-    } catch (error) {
-      ctx.addIssue({
-        code: "custom",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-const gitTagPrefixSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    try {
-      normalizeGitTagPrefix(value);
-    } catch (error) {
-      ctx.addIssue({
-        code: "custom",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-const gitSourceSchema = z.union([
-  z
-    .object({
-      git: z
-        .object({
-          url: httpsUrl,
-          subdir: gitSubdirSchema.optional(),
-          ref: gitRefSchema,
-        })
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      git: z
-        .object({
-          url: httpsUrl,
-          subdir: gitSubdirSchema.optional(),
-          range: semverRange,
-          tagPrefix: gitTagPrefixSchema.optional(),
-        })
-        .strict(),
-    })
-    .strict(),
-]);
-
-const entrySchema = z
-  .object({
-    id: z.string().regex(NAME_PATTERN),
-    displayName: z.string().min(1),
-    description: z.string().min(1),
-    icon: iconSchema,
-    tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).optional(),
-    author: authorSchema,
-    source: z.union([npmSourceSchema, gitSourceSchema]),
-  })
-  .strict();
-
-const marketplaceManifestSchema = z
-  .object({
-    $schema: z.literal(MARKETPLACE_SCHEMA_URL).optional(),
+    $schema: z.literal(MARKETPLACE_V1_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
     name: manifestNameSchema,
     displayName: z.string().min(1),
     description: z.string().min(1).optional(),
     plugins: z
-      .array(entrySchema)
+      .array(marketplaceEntryV1Schema)
       .max(
         MARKETPLACE_MAX_ENTRIES,
         `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
       )
-      .superRefine((entries, ctx) => {
-        const seen = new Set<string>();
-        entries.forEach((entry, index) => {
-          if (seen.has(entry.id)) {
-            ctx.addIssue({
-              code: "custom",
-              path: [index, "id"],
-              message: `duplicate plugin id "${entry.id}"`,
-            });
-          }
-          seen.add(entry.id);
-        });
-      }),
+      .superRefine(uniqueMarketplaceEntries),
   })
   .strict();
 
-export type MarketplaceManifest = z.infer<typeof marketplaceManifestSchema>;
-export type MarketplaceEntry = MarketplaceManifest["plugins"][number];
+const marketplaceManifestV2Schema = z
+  .object({
+    $schema: z.literal(MARKETPLACE_V2_SCHEMA_URL).optional(),
+    schemaVersion: z.literal(2),
+    name: manifestNameSchema,
+    displayName: z.string().min(1),
+    description: z.string().min(1).optional(),
+    newAndNotable: z.array(z.string().regex(NAME_PATTERN)),
+    plugins: z
+      .array(marketplaceEntryV2Schema)
+      .max(
+        MARKETPLACE_MAX_ENTRIES,
+        `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
+      )
+      .superRefine(uniqueMarketplaceEntries),
+  })
+  .strict()
+  .superRefine((manifest, ctx) => {
+    const seen = new Set<string>();
+    const entryIds = new Set(manifest.plugins.map((entry) => entry.id));
+    manifest.newAndNotable.forEach((entryId, index) => {
+      if (seen.has(entryId)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["newAndNotable", index],
+          message: `duplicate plugin id ${JSON.stringify(entryId)}`,
+        });
+      } else if (!entryIds.has(entryId)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["newAndNotable", index],
+          message: `unknown plugin id ${JSON.stringify(entryId)}`,
+        });
+      }
+      seen.add(entryId);
+    });
+  });
+
+export type MarketplaceManifestV1 = z.infer<typeof marketplaceManifestV1Schema>;
+export type MarketplaceManifestV2 = z.infer<typeof marketplaceManifestV2Schema>;
+export type MarketplaceManifest = MarketplaceManifestV1 | MarketplaceManifestV2;
+export type MarketplaceEntryV1 = DomainMarketplaceEntryV1;
+export type MarketplaceEntryV2 = DomainMarketplaceEntryV2;
+export type MarketplaceEntry = MarketplaceEntryV1 &
+  Partial<
+    Pick<
+      MarketplaceEntryV2,
+      "category" | "screenshots" | "publishedAt" | "updatedAt"
+    >
+  >;
+
+export function marketplaceNewAndNotable(
+  manifest: MarketplaceManifest,
+): readonly string[] {
+  return manifest.schemaVersion === 2 ? manifest.newAndNotable : [];
+}
 
 export function parseMarketplaceManifest(
   input: unknown,
@@ -263,13 +137,21 @@ export function parseMarketplaceManifest(
     typeof input === "object" &&
     input !== null &&
     "schemaVersion" in input &&
-    input.schemaVersion !== 1
+    input.schemaVersion !== 1 &&
+    input.schemaVersion !== 2
   ) {
     throw new Error(
-      `invalid ${location}: unknown schemaVersion ${JSON.stringify(input.schemaVersion)}; supported value is 1`,
+      `invalid ${location}: unknown schemaVersion ${JSON.stringify(input.schemaVersion)}; supported values are 1 and 2`,
     );
   }
-  const parsed = marketplaceManifestSchema.safeParse(input);
+  const schema =
+    typeof input === "object" &&
+    input !== null &&
+    "schemaVersion" in input &&
+    input.schemaVersion === 2
+      ? marketplaceManifestV2Schema
+      : marketplaceManifestV1Schema;
+  const parsed = schema.safeParse(input);
   if (!parsed.success) {
     throw new Error(`invalid ${location}: ${formatIssues(parsed.error)}`);
   }
@@ -295,8 +177,54 @@ export function entryIconName(entry: MarketplaceEntry): string | null {
   return typeof entry.icon === "string" ? entry.icon : null;
 }
 
-export function entryIconTinted(contentType: string): boolean {
-  return contentType === "image/svg+xml";
+export function entryScreenshotUrls(
+  entry: MarketplaceEntry,
+  base: MarketplaceIconBase,
+): string[] {
+  return (entry.screenshots ?? []).map((declared) => {
+    const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(declared);
+    if (absolute) return new URL(declared).toString();
+    if (base.kind !== "url") {
+      throw new Error(
+        `relative screenshot URL ${JSON.stringify(declared)} requires an https marketplace manifest`,
+      );
+    }
+    return new URL(declared, base.manifestUrl).toString();
+  });
+}
+
+const INHERITED_PAINT_KEYWORDS = new Set([
+  "",
+  "none",
+  "currentcolor",
+  "inherit",
+  "transparent",
+  "context-fill",
+  "context-stroke",
+]);
+
+export function svgAdoptsTextColor(bytes: Uint8Array): boolean {
+  const document = new TextDecoder("utf-8", { fatal: false })
+    .decode(bytes)
+    .replace(/<!--[\s\S]*?-->/gu, "");
+  if (/<(?:linearGradient|radialGradient|pattern|image)\b/iu.test(document)) {
+    return false;
+  }
+  for (const declaration of document.matchAll(
+    /\b(?:fill|stroke|stop-color|flood-color|lighting-color)\s*[=:]\s*["']?\s*([^"';>\s]*)/giu,
+  )) {
+    if (!INHERITED_PAINT_KEYWORDS.has(declaration[1].toLowerCase())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function entryIconTinted(
+  contentType: string,
+  bytes: Uint8Array,
+): boolean {
+  return contentType === "image/svg+xml" && svgAdoptsTextColor(bytes);
 }
 
 export type MarketplaceIconBase =
@@ -374,9 +302,61 @@ interface ResolvedEntrySource {
   npmRegistry?: string;
 }
 
+function assertHttpsUrl(value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("must be an https URL");
+  }
+  if (parsed.protocol !== "https:") throw new Error("must be an https URL");
+}
+
+function assertTranslatableEntrySource(entry: MarketplaceEntry): void {
+  if ("npm" in entry.source) {
+    const npm = entry.source.npm;
+    const parsed = parsePluginSource(`npm:${npm.package}`);
+    if (
+      parsed.kind !== "npm" ||
+      parsed.name !== npm.package ||
+      parsed.spec.length !== 0
+    ) {
+      throw new Error("package name is ambiguous");
+    }
+    if (npm.range !== undefined && semver.validRange(npm.range) === null) {
+      throw new Error("must be a valid semver range");
+    }
+    if (npm.registry !== undefined) assertHttpsUrl(npm.registry);
+    return;
+  }
+
+  const git = entry.source.git;
+  assertHttpsUrl(git.url);
+  if (git.subdir !== undefined) normalizePluginSubdirectory(git.subdir);
+  if ("ref" in git) {
+    const parsed = parsePluginSource(
+      `git:https://marketplace.invalid/plugin.git@${git.ref}`,
+    );
+    if (
+      parsed.kind !== "git" ||
+      parsed.selector.kind !== "ref" ||
+      parsed.selector.ref !== git.ref
+    ) {
+      throw new Error("git ref is ambiguous");
+    }
+    return;
+  }
+
+  if (semver.validRange(git.range) === null) {
+    throw new Error("must be a valid semver range");
+  }
+  if (git.tagPrefix !== undefined) normalizeGitTagPrefix(git.tagPrefix);
+}
+
 export function resolvedEntrySource(
   entry: MarketplaceEntry,
 ): ResolvedEntrySource {
+  assertTranslatableEntrySource(entry);
   if ("npm" in entry.source) {
     const spec = entry.source.npm.range ?? entry.source.npm.tag ?? "";
     return {

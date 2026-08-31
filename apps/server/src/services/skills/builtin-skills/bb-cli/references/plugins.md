@@ -102,6 +102,14 @@
     to move it; both keep its configuration.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
+  - `bb plugin listing list [--json]` — list local path-authored plugins and
+    their `not-published`, `draft`, `in-review`, or `published` marketplace
+    state.
+  - `bb plugin listing save-draft <id> <entry-file> [--json]` — validate and
+    save a complete marketplace v2 entry draft without creating a tag or pull
+    request.
+  - `bb plugin listing record-submission <id> <pull-request-url> [--opened-at <milliseconds>] [--json]` —
+    record the canonical `get-bb/marketplace` pull request after it is opened.
   - `bb plugin source <id> [--json]` — requested and resolved source, the
     repository subdirectory for a nested plugin, the semver range with its tag
     prefix and resolved tag for a Git range install, engine ranges, install
@@ -153,6 +161,10 @@
     mismatch (for CI). `bb plugin build` and `bb plugin dev` refresh vendored
     declarations automatically and leave npm-package plugins alone. Needs no
     server.
+  - `bb plugin screenshot [path] [--fixture-thread <id>] [--capture <out-dir>] [--app-url <url>] [--json]` —
+    plan one marketplace screenshot per registered visual surface. `--capture`
+    drives the app and writes PNGs; thread, composer, and file surfaces need a
+    seeded fixture thread.
   - `bb plugin migrate [path] [--yes]` — convert a plugin that still vendors
     `types/` to the `@get-bb/plugin-sdk` npm package (default: cwd): add the
     exact `devDependencies` pin, raise `engines.bbPluginSdk` when this bb's SDK

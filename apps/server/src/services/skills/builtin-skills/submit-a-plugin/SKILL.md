@@ -42,15 +42,16 @@ rules.
 2. Validate the plugin with its package manager and bb plugin build.
 3. Select and verify one public release source.
 4. Get separate approval before any release mutation.
-5. Create one marketplace entry and a vendored icon.
+5. Create one marketplace entry and its vendored listing assets.
 6. Validate the marketplace repository.
-7. Commit only the entry and icon.
+7. Commit only the entry and listing assets.
 8. Open a pull request from the submitter account.
 
 Read these references as the task reaches each stage:
 
 - Read references/plugin-release.md before validating or releasing a plugin.
-- Read references/marketplace-entry.md before creating the entry or icon.
+- Read references/marketplace-entry.md before creating the entry or listing
+  assets.
 - Read references/pull-request.md before cloning, validating, or submitting
   the marketplace repository.
 

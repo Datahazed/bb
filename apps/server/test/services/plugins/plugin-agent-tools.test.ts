@@ -637,9 +637,13 @@ describe("bb.agents.contributeInstructions", () => {
 
     const listed = service.listInstructionContributions();
     expect(listed.map((c) => c.pluginId)).toEqual(["alpha", "zebra"]);
-    expect(
-      listed.map((c) => c.provider({ threadId: "thr_1", projectId: "proj_1" })),
-    ).toEqual(["from alpha", "from zebra"]);
+    await expect(
+      Promise.all(
+        listed.map((c) =>
+          c.provider({ threadId: "thr_1", projectId: "proj_1" }),
+        ),
+      ),
+    ).resolves.toEqual(["from alpha", "from zebra"]);
   });
 
   it("reload without contributeInstructions clears the previous provider", async () => {

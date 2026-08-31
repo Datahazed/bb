@@ -45,6 +45,12 @@ import {
   marketplacePublisherLabels,
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
+import {
+  marketplaceEntryKey,
+  marketplaceListingMetadata,
+  pluginCatalogCategory,
+  type PluginCatalogListingMetadata,
+} from "../plugin-catalog/plugin-category-registry.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -1143,6 +1149,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const publisherLabels = rows.some((row) => row.provenance === "catalog")
       ? marketplacePublisherLabels(deps.db)
       : new Map<string, string>();
+    const installedCatalogEntryKeys = new Set(
+      rows.flatMap((row) =>
+        row.catalogMarketplaceName === null || row.catalogEntryId === null
+          ? []
+          : [
+              marketplaceEntryKey(
+                row.catalogMarketplaceName,
+                row.catalogEntryId,
+              ),
+            ],
+      ),
+    );
+    const catalogMetadata =
+      installedCatalogEntryKeys.size > 0
+        ? marketplaceListingMetadata(deps.db, installedCatalogEntryKeys)
+        : new Map<string, PluginCatalogListingMetadata>();
+    const bundledByName = new Map(
+      bundledPlugins.map((plugin) => [plugin.name, plugin]),
+    );
     return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
@@ -1152,6 +1177,29 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
+        const bundled =
+          row.sourceBuiltinName === null
+            ? undefined
+            : bundledByName.get(row.sourceBuiltinName);
+        const category =
+          bundled === undefined
+            ? null
+            : pluginCatalogCategory(bundled.category);
+        const listing =
+          category === null
+            ? row.catalogMarketplaceName === null || row.catalogEntryId === null
+              ? undefined
+              : catalogMetadata.get(
+                  marketplaceEntryKey(
+                    row.catalogMarketplaceName,
+                    row.catalogEntryId,
+                  ),
+                )
+            : {
+                categoryId: category.id,
+                category: category.displayName,
+                screenshots: [],
+              };
         return {
           id: row.id,
           source: row.source,
@@ -1183,6 +1231,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             identity?.manifest.description ??
             null,
           name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          ...(listing?.categoryId === undefined ||
+          listing.category === undefined
+            ? {}
+            : {
+                categoryId: listing.categoryId,
+                category: listing.category,
+              }),
+          screenshots: listing?.screenshots ?? [],
           icon:
             loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
@@ -1197,9 +1253,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : row.enabled
               ? "not loaded"
               : null,
+          lastProblem:
+            row.lastProblemClass === null ||
+            row.lastProblemMessage === null ||
+            row.lastProblemAt === null
+              ? null
+              : {
+                  class: row.lastProblemClass,
+                  message: row.lastProblemMessage,
+                  at: row.lastProblemAt,
+                },
           handlerStats: stats
             ? { ...stats }
-            : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+            : {
+                count: 0,
+                totalMs: 0,
+                maxMs: 0,
+                errorCount: row.handlerErrorCount,
+              },
           services: (loadedPlugin?.services ?? []).map((service) => ({
             name: service.record.name,
             state: service.state,
@@ -1753,13 +1824,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const next = await readPluginSettingsValues(storeArgs);
       if (JSON.stringify(next) !== JSON.stringify(prev)) {
         for (const listener of plugin.handle.settings.listeners) {
-          try {
-            listener(next, prev);
-          } catch (error) {
-            logger.warn(
-              `plugin ${id} settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+          await invokeWrapped(id, "settings onChange listener", () =>
+            listener(next, prev),
+          );
         }
         deps.onSettingsChanged?.(id);
         notifyPluginsChanged();
@@ -1988,7 +2055,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       )) {
         const provider = plugin.handle.instructionProvider;
         if (provider === null) continue;
-        out.push({ pluginId: id, provider });
+        out.push({
+          pluginId: id,
+          provider: async (context) => {
+            const outcome = await invokeWrapped(
+              id,
+              "instruction contribution",
+              () => provider(context),
+            );
+            return outcome.ok ? outcome.value : null;
+          },
+        });
       }
       return out;
     },
