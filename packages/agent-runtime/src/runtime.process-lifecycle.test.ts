@@ -44,7 +44,10 @@ interface CreateProviderProcessManagerArgs {
   workspacePath: string;
 }
 
-const CODEX_SCRIPT: ScriptedEchoLaunchScript = { identifyProcess: true };
+const CODEX_SCRIPT: ScriptedEchoLaunchScript = {
+  identifyProcess: true,
+  sessionRestorable: true,
+};
 
 const MANAGER_BRIDGE_LAUNCH = createScriptedEchoLaunch();
 
@@ -265,64 +268,6 @@ describe("createAgentRuntime process lifecycle", () => {
         providerId: "fake",
       }),
     ).toBe(staleProcess);
-
-    await manager.shutdown();
-  });
-
-  it("retires an old-hash bridge process when it loses its last thread", async () => {
-    const manager = createProviderProcessManager({
-      onProcessExit: vi.fn(),
-      workspacePath: tmpDir,
-    });
-
-    const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
-    await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-      processKey: staleKey,
-      providerId: "fake",
-    });
-    const staleProcess = manager.requireProviderProcess({
-      processKey: staleKey,
-      providerId: "fake",
-    });
-    staleProcess.identity.threadIds.add("thread-live");
-
-    await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-      processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
-      providerId: "fake",
-    });
-    expect(staleProcess.child.killed).toBe(false);
-
-    await manager.retireSupersededBridgeProcessIfIdle(staleProcess);
-    expect(staleProcess.child.killed).toBe(false);
-
-    staleProcess.identity.threadIds.delete("thread-live");
-    await manager.retireSupersededBridgeProcessIfIdle(staleProcess);
-    expect(staleProcess.child.killed).toBe(true);
-
-    await manager.shutdown();
-  });
-
-  it("keeps the current-hash bridge process when a thread is released", async () => {
-    const manager = createProviderProcessManager({
-      onProcessExit: vi.fn(),
-      workspacePath: tmpDir,
-    });
-
-    const currentKey = "fake#bridge:aaaaaaaaaaaaaaaa";
-    await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-      processKey: currentKey,
-      providerId: "fake",
-    });
-    const providerProcess = manager.requireProviderProcess({
-      processKey: currentKey,
-      providerId: "fake",
-    });
-
-    await manager.retireSupersededBridgeProcessIfIdle(providerProcess);
-    expect(providerProcess.child.killed).toBe(false);
 
     await manager.shutdown();
   });
@@ -811,7 +756,7 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
-  it("keeps the codex provider process when one session construction fails", async () => {
+  it("retires the provider process when session construction fails", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({
       events,
@@ -831,10 +776,10 @@ describe("createAgentRuntime process lifecycle", () => {
       }),
     ).rejects.toThrow("no rollout found");
     expect(runtime.getProviderSession("t1")).toBeNull();
-    expect(runtime.listRunningProviders()).toEqual(["codex"]);
+    expect(runtime.listRunningProviders()).toEqual([]);
     expect(
       processLog.read().filter((line) => line.startsWith("exit:")),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     await runtime.shutdown();
   });
 
@@ -929,7 +874,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({
@@ -939,16 +883,16 @@ describe("createAgentRuntime process lifecycle", () => {
         }),
       ]);
       expect(runtime.getProviderSession("t1")).toBeNull();
-      expect(runtime.listRunningProviders()).toEqual(["codex"]);
+      expect(runtime.listRunningProviders()).toEqual([]);
       expect(
         processLog.read().filter((line) => line.startsWith("exit:")),
-      ).toHaveLength(0);
+      ).toHaveLength(1);
     } finally {
       await runtime.shutdown();
     }
   });
 
-  it("reaps an idle codex session and resumes it later on the same process", async () => {
+  it("reaps an idle codex session and resumes it on a new process", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });
     try {
@@ -980,7 +924,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const belowThresholdResult = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 29 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       expect(belowThresholdResult.reapedSessions).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(true);
@@ -991,7 +934,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 31 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       const reapedSession = result.reapedSessions[0];
       if (!reapedSession) {
@@ -1006,7 +948,7 @@ describe("createAgentRuntime process lifecycle", () => {
       expect(reapedSession.idleForMs).toBeGreaterThanOrEqual(30 * 60 * 1000);
       expect(runtime.hasThread("t1")).toBe(false);
       expect(runtime.getProviderSession("t1")).toBeNull();
-      expect(runtime.listRunningProviders()).toEqual(["codex"]);
+      expect(runtime.listRunningProviders()).toEqual([]);
 
       await runtime.resumeThread({
         environmentId: "env-1",
@@ -1031,10 +973,10 @@ describe("createAgentRuntime process lifecycle", () => {
       });
       const logLines = processLog.read();
       expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
-        1,
+        2,
       );
       expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
-        0,
+        1,
       );
       expect(
         logLines.some(
@@ -1075,12 +1017,10 @@ describe("createAgentRuntime process lifecycle", () => {
       const firstResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       const secondResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       expect(firstResult.reapedSessions).toEqual([]);
       expect(secondResult.reapedSessions).toEqual([]);
@@ -1093,10 +1033,12 @@ describe("createAgentRuntime process lifecycle", () => {
     }
   });
 
-  it("reaps a restorable non-Codex session only when the experiment is on", async () => {
+  it("reaps a restorable non-Codex session", async () => {
     const events: ThreadEvent[] = [];
+    const processLog = createScriptedEchoProcessLog();
     const runtime = createScriptedEchoRuntime({
       runtime: {
+        env: processLog.env,
         workspacePath: tmpDir,
         onEvent: (event) => events.push(event),
       },
@@ -1113,18 +1055,9 @@ describe("createAgentRuntime process lifecycle", () => {
         providerId: "claude-code",
         options: fullRuntimeOptions,
       });
-      await expect(
-        runtime.reapIdleProviderSessions({
-          idleForMs: 0,
-          nowMs: Date.now(),
-          providerSessionReapingEnabled: false,
-        }),
-      ).resolves.toEqual({ reapedSessions: [] });
-      expect(runtime.hasThread("t1")).toBe(true);
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({
@@ -1133,6 +1066,10 @@ describe("createAgentRuntime process lifecycle", () => {
         }),
       ]);
       expect(runtime.hasThread("t1")).toBe(false);
+      expect(runtime.listRunningProviders()).toEqual([]);
+      expect(
+        processLog.read().filter((line) => line.startsWith("exit:")),
+      ).toHaveLength(1);
     } finally {
       await runtime.shutdown();
     }
@@ -1159,7 +1096,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({ providerId: "claude-code", threadId: "t1" }),
@@ -1191,7 +1127,6 @@ describe("createAgentRuntime process lifecycle", () => {
         runtime.reapIdleProviderSessions({
           idleForMs: 0,
           nowMs: Date.now(),
-          providerSessionReapingEnabled: true,
         }),
       ).resolves.toEqual({ reapedSessions: [] });
       expect(runtime.hasThread("t1")).toBe(true);
@@ -1228,7 +1163,6 @@ describe("createAgentRuntime process lifecycle", () => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({ threadId: "t2" }),
