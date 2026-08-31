@@ -245,6 +245,20 @@ export const installedPlugins = sqliteTable("plugins", {
   lastFailureVersion: text("last_failure_version"),
   lastFailureAt: integer("last_failure_at"),
   lastFailureDetail: text("last_failure_detail"),
+  handlerErrorCount: integer("handler_error_count").notNull().default(0),
+  lastProblemClass: text("last_problem_class", {
+    enum: [
+      "running",
+      "error",
+      "incompatible",
+      "missing",
+      "disabled",
+      "degraded",
+      "needs-configuration",
+    ],
+  }),
+  lastProblemMessage: text("last_problem_message"),
+  lastProblemAt: integer("last_problem_at"),
   activeArtifactId: text("active_artifact_id").references(
     (): AnySQLiteColumn => pluginArtifacts.id,
   ),
@@ -311,6 +325,28 @@ export const pluginMarketplaceIcons = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [primaryKey({ columns: [table.marketplaceName, table.entryId] })],
+);
+
+export const pluginListingLifecycles = sqliteTable(
+  "plugin_listing_lifecycles",
+  {
+    pluginId: text("plugin_id")
+      .primaryKey()
+      .references(() => installedPlugins.id, { onDelete: "cascade" }),
+    status: text("status", {
+      enum: ["not-published", "draft", "in-review", "published"],
+    }).notNull(),
+    lifecycleJson: text("lifecycle_json").notNull(),
+    noticeKind: text("notice_kind", {
+      enum: ["none", "published", "returned"],
+    })
+      .notNull()
+      .default("none"),
+    noticeId: text("notice_id").notNull().default(""),
+    noticeJson: text("notice_json").notNull().default('{"kind":"none"}'),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
 );
 
 export const pluginStateSnapshots = sqliteTable(

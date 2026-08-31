@@ -33,9 +33,7 @@ export {
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
 } from "./prompt-history.js";
-export type {
-  StoredPromptHistoryEntryRow,
-} from "./prompt-history.js";
+export type { StoredPromptHistoryEntryRow } from "./prompt-history.js";
 
 export {
   getProjectExecutionDefaults,
@@ -124,6 +122,8 @@ export {
   setInstalledPluginUpdateState,
   setInstalledPluginSourceClassification,
   setInstalledPluginLastFailure,
+  setInstalledPluginLastProblem,
+  recordInstalledPluginHandlerError,
   upsertInstalledPlugin,
   type InstalledPluginRow,
   type LegacyPluginExactResolution,
@@ -133,7 +133,23 @@ export {
   type PluginProvenance,
   type PluginSourceIntent,
   type PluginUpdateState,
+  type PluginLastProblem,
+  type PluginProblemClass,
 } from "./plugins.js";
+export {
+  consumePluginListingNotice,
+  ensurePathPluginListingLifecycles,
+  getPluginListingLifecycle,
+  listInReviewPluginListingLifecycles,
+  listPathPluginListingLifecycles,
+  listPluginListingNotices,
+  publishPluginListing,
+  recordPluginListingSubmission,
+  returnPluginListingToDraft,
+  savePluginListingDraft,
+  PluginListingDraftConflictError,
+} from "./plugin-listing-lifecycles.js";
+export type { PluginListingLifecycleRow } from "./plugin-listing-lifecycles.js";
 export {
   createPluginArtifact,
   deletePluginArtifact,
@@ -212,9 +228,7 @@ export {
   listRetiredLoadedEnvironmentIdsOnHost,
   updateEnvironmentMetadata,
 } from "./environments.js";
-export type {
-  CreateEnvironmentInput,
-} from "./environments.js";
+export type { CreateEnvironmentInput } from "./environments.js";
 
 export {
   upsertHost,
@@ -335,9 +349,7 @@ export {
   setPendingInteractionResolving,
   setPendingInteractionResolved,
 } from "./pending-interactions.js";
-export type {
-  PendingInteractionRow,
-} from "./pending-interactions.js";
+export type { PendingInteractionRow } from "./pending-interactions.js";
 
 export {
   openSession,
@@ -347,9 +359,7 @@ export {
   heartbeatSession,
   listLatestSessionsForHosts,
 } from "./sessions.js";
-export type {
-  HostDaemonSessionRow,
-} from "./sessions.js";
+export type { HostDaemonSessionRow } from "./sessions.js";
 
 export {
   claimQueuedThreadMessage,

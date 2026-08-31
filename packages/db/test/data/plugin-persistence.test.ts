@@ -6,6 +6,8 @@ import {
   getInstalledPluginRegistration,
   getInstalledPlugin,
   listPluginArtifacts,
+  recordInstalledPluginHandlerError,
+  setInstalledPluginLastProblem,
   upsertInstalledPlugin,
   type DbConnection,
 } from "../../src/index.js";
@@ -67,7 +69,10 @@ describe("normalized plugin persistence", () => {
       validationResult: "valid",
       validatedAt: 100,
     });
-    upsertInstalledPlugin(db, { ...linearPlugin, activeArtifactId: "artifact-1" });
+    upsertInstalledPlugin(db, {
+      ...linearPlugin,
+      activeArtifactId: "artifact-1",
+    });
     expect(getInstalledPlugin(db, "linear")?.rootDir).toBe(
       "/cache/artifact-1.tgz",
     );
@@ -87,6 +92,69 @@ describe("normalized plugin persistence", () => {
     expect(getInstalledPluginRegistration(db, "linear")?.activeArtifactId).toBe(
       null,
     );
+  });
+
+  it("persists compact runtime health across registration updates", () => {
+    const plugin: UpsertInstalledPluginInput = {
+      id: "health",
+      source: "path:/plugins/health",
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: "/plugins/health" },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/health",
+      version: "1.0.0",
+      enabled: true,
+    };
+    upsertInstalledPlugin(db, plugin);
+
+    expect(
+      recordInstalledPluginHandlerError(db, "health", {
+        class: "error",
+        message: "first handler failure",
+        at: 100,
+      }),
+    ).toBe(true);
+    expect(
+      recordInstalledPluginHandlerError(db, "health", {
+        class: "error",
+        message: "latest handler failure",
+        at: 200,
+      }),
+    ).toBe(true);
+    expect(getInstalledPlugin(db, "health")).toMatchObject({
+      handlerErrorCount: 2,
+      lastProblemClass: "error",
+      lastProblemMessage: "latest handler failure",
+      lastProblemAt: 200,
+    });
+
+    upsertInstalledPlugin(db, { ...plugin, version: "1.0.1" });
+    expect(getInstalledPlugin(db, "health")).toMatchObject({
+      version: "1.0.1",
+      handlerErrorCount: 2,
+      lastProblemMessage: "latest handler failure",
+    });
+
+    expect(
+      setInstalledPluginLastProblem(db, "health", {
+        class: "incompatible",
+        message: "needs bb <0.39",
+        at: 300,
+      }),
+    ).toBe(true);
+    expect(getInstalledPlugin(db, "health")).toMatchObject({
+      handlerErrorCount: 2,
+      lastProblemClass: "incompatible",
+      lastProblemMessage: "needs bb <0.39",
+      lastProblemAt: 300,
+    });
   });
 
   it("rejects an npm artifact without registry integrity at runtime", () => {
@@ -203,7 +271,10 @@ describe("normalized plugin persistence", () => {
       validationResult: "valid",
       validatedAt: Date.now(),
     });
-    upsertInstalledPlugin(db, { ...retainedPlugin, activeArtifactId: "retained-artifact" });
+    upsertInstalledPlugin(db, {
+      ...retainedPlugin,
+      activeArtifactId: "retained-artifact",
+    });
 
     expect(deleteInstalledPlugin(db, "retained")).toBe(true);
     expect(listPluginArtifacts(db, "retained")).toHaveLength(1);
