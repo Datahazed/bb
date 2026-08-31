@@ -422,9 +422,9 @@ describe("mobile sidebar shelf stacking", () => {
     }
 
     expect(inset.className).toContain("data-[sidebar-shelf=open]:rounded-l-xl");
-    expect(inset.className).toContain("data-[panel-shelf=open]:rounded-r-xl");
+    expect(inset.className).toContain("data-[panel-shelf=shelf]:rounded-r-xl");
     expect(inset.className).toContain("data-[sidebar-shelf=open]:shadow-xl");
-    expect(inset.className).toContain("data-[panel-shelf=open]:shadow-xl");
+    expect(inset.className).toContain("data-[panel-shelf=shelf]:shadow-xl");
     expect(inset.className).not.toContain("shadow-2xl");
   });
 
