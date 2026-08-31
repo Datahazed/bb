@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,9 +12,16 @@ import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarDisplayOptionsMenu } from "./ProjectList";
+import {
+  sidebarChronologicalSortAtom,
+  sidebarOrganizationModeAtom,
+} from "./sidebarCollapsedAtoms";
 import { sidebarThreadLifecycleSelectionAtom } from "./sidebarThreadLifecycle";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 function renderMenu() {
   const store = createStore();
@@ -57,6 +65,15 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
     expect(getStatusItem("Drafts").textContent).toBe("Drafts");
     expect(getStatusItem("Archived").textContent).toBe("Archived");
     expect(
+      within(screen.getByRole("group", { name: "Organize" }))
+        .getAllByRole("menuitemcheckbox")
+        .map((item) => item.textContent),
+    ).toEqual(["By project", "By machine", "Manual"]);
+    for (const item of screen.getAllByRole("menuitemcheckbox")) {
+      expect(item.querySelector("svg")).not.toBeNull();
+      expect(item.querySelector(".absolute.right-2")).not.toBeNull();
+    }
+    expect(
       document.querySelector("[data-sidebar-display-filter-dot]"),
     ).toBeNull();
   });
@@ -77,6 +94,34 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
     expect([...store.get(sidebarThreadLifecycleSelectionAtom)]).toEqual([
       "drafts",
     ]);
+    expect(
+      screen.getByRole("button", {
+        name: "Sidebar display options (filtered)",
+      }),
+    ).toBeDefined();
+    expect(
+      document.querySelector("[data-sidebar-display-filter-dot]"),
+    ).not.toBeNull();
+  });
+
+  it("marks an off-default organization choice", () => {
+    const store = renderMenu();
+    act(() => store.set(sidebarOrganizationModeAtom, "manual"));
+
+    expect(
+      screen.getByRole("button", {
+        name: "Sidebar display options (filtered)",
+      }),
+    ).toBeDefined();
+    expect(
+      document.querySelector("[data-sidebar-display-filter-dot]"),
+    ).not.toBeNull();
+  });
+
+  it("marks an off-default sort choice", () => {
+    const store = renderMenu();
+    act(() => store.set(sidebarChronologicalSortAtom, "created"));
+
     expect(
       screen.getByRole("button", {
         name: "Sidebar display options (filtered)",

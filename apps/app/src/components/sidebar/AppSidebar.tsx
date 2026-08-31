@@ -9,6 +9,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
+import { useAtomValue } from "jotai";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
@@ -66,6 +67,11 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
+import { SidebarTopRegionCustomizeMenu } from "./SidebarTopRegionCustomizeMenu";
+import {
+  sidebarTopRegionItemPreferencesAtom,
+  type SidebarTopRegionItemId,
+} from "./sidebarTopRegionItemPreferences";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -165,6 +171,9 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
+  const topRegionItemPreferences = useAtomValue(
+    sidebarTopRegionItemPreferencesAtom,
+  );
   const pluginNavPanels = usePluginNavPanelChrome();
   const automationsNavPanel = pluginNavPanels.find(
     ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
@@ -278,6 +287,33 @@ export function AppSidebar({
       isCreatingProject={quickCreateProject.isCreating}
     />
   );
+  const topRegionItemNodes: Record<SidebarTopRegionItemId, ReactNode | null> = {
+    "new-thread": (
+      <ProjectListActionButtons
+        splitEnabled
+        newThreadSplit={newThreadSplit}
+        onNewChat={handleNewChat}
+        onSplit={onSplit}
+      />
+    ),
+    extensions: toolsRoutePath ? (
+      <ExtensionsNavSidebarItem
+        routePath={toolsRoutePath}
+        onNavigate={closeOnMobile}
+      />
+    ) : null,
+    automations: automationsNavPanel ? (
+      <AutomationsNavSidebarItem
+        chrome={automationsNavPanel.chrome}
+        onNavigate={closeOnMobile}
+      />
+    ) : null,
+  };
+  const visibleTopRegionItems = topRegionItemPreferences.order.flatMap((id) => {
+    if (topRegionItemPreferences.hiddenIds.includes(id)) return [];
+    const node = topRegionItemNodes[id];
+    return node === null ? [] : [<Fragment key={id}>{node}</Fragment>];
+  });
 
   const body = (
     <>
@@ -290,42 +326,28 @@ export function AppSidebar({
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
           )}
         >
-          <SidebarHistoryNavigationControls
-            onNavigate={closeOnMobile}
+          <div
             className={cn(
-              "group-data-[collapsible=icon]:hidden",
+              "flex items-center gap-1 group-data-[collapsible=icon]:hidden",
               usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
             )}
-          />
+          >
+            <SidebarHistoryNavigationControls onNavigate={closeOnMobile} />
+            <SidebarTopRegionCustomizeMenu />
+          </div>
         </div>
       ) : null}
       <SidebarTopLevelSections
         sections={{
-          "new-thread-extensions": (
-            <div
-              data-testid="app-sidebar-primary-actions"
-              className="space-y-1 px-2 py-2 group-data-[collapsible=icon]:hidden"
-            >
-              <ProjectListActionButtons
-                splitEnabled
-                newThreadSplit={newThreadSplit}
-                onNewChat={handleNewChat}
-                onSplit={onSplit}
-              />
-              {toolsRoutePath ? (
-                <ExtensionsNavSidebarItem
-                  routePath={toolsRoutePath}
-                  onNavigate={closeOnMobile}
-                />
-              ) : null}
-              {automationsNavPanel ? (
-                <AutomationsNavSidebarItem
-                  chrome={automationsNavPanel.chrome}
-                  onNavigate={closeOnMobile}
-                />
-              ) : null}
-            </div>
-          ),
+          "new-thread-extensions":
+            visibleTopRegionItems.length > 0 ? (
+              <div
+                data-testid="app-sidebar-primary-actions"
+                className="space-y-1 px-2 py-2 group-data-[collapsible=icon]:hidden"
+              >
+                {visibleTopRegionItems}
+              </div>
+            ) : null,
           "plugin-pages": hasTraditionalPluginPanels ? (
             <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
           ) : null,

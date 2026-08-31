@@ -21,7 +21,7 @@ const MODE_SECTION_ORDER_CONFIG: Record<
     atom: sidebarSectionOrderAtom,
     legacyEntityAnchor: "projects",
   },
-  chronological: {
+  manual: {
     atom: sidebarManualSectionOrderAtom,
     legacyEntityAnchor: "sections",
   },

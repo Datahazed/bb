@@ -332,7 +332,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
   it("expands the threads section for unsectioned project threads in sections mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        organizationMode: "chronological",
+        organizationMode: "manual",
         isPinned: false,
         sidebarProjectId: "proj_app",
         selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
@@ -343,7 +343,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
   it("expands the containing section for sectioned threads in sections mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        organizationMode: "chronological",
+        organizationMode: "manual",
         isPinned: false,
         sidebarProjectId: "proj_app",
         selectedThread: thread({
@@ -381,7 +381,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
   it("expands the pinned section for pinned threads", () => {
     expect(
       getSelectedThreadSidebarExpansion({
-        organizationMode: "chronological",
+        organizationMode: "manual",
         isPinned: true,
         sidebarProjectId: "proj_app",
         selectedThread: thread({ sectionId: null, projectId: "proj_app" }),

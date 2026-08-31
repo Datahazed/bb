@@ -54,7 +54,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="interactive"
-        hint="open the menu · toggle By project/Manually · pick a fixed-order sort field"
+        hint="open the menu · toggle By project/Manual · pick a fixed-order sort field"
       >
         <InteractiveMenu />
       </StoryRow>

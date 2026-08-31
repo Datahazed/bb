@@ -29,7 +29,7 @@ export type {
   SidebarSectionId,
 } from "@bb/client-core";
 
-export type SidebarOrganizationMode = "project" | "chronological" | "machine";
+export type SidebarOrganizationMode = "project" | "manual" | "machine";
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
 
 const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
@@ -151,11 +151,44 @@ export const sidebarMachineSectionOrderAtom = atomWithStorage<string[]>(
   { getOnInit: true },
 );
 
+function normalizeSidebarOrganizationMode(
+  value: unknown,
+): SidebarOrganizationMode {
+  if (value === "manual" || value === "chronological") return "manual";
+  if (value === "machine") return "machine";
+  return "project";
+}
+
+const organizationModeJsonStorage = createJsonLocalStorage<unknown>();
+const sidebarOrganizationModeStorage: SyncStorage<SidebarOrganizationMode> = {
+  getItem(key, initialValue) {
+    const stored = organizationModeJsonStorage.getItem(key, initialValue);
+    const normalized = normalizeSidebarOrganizationMode(stored);
+    if (stored !== normalized) {
+      organizationModeJsonStorage.setItem(key, normalized);
+    }
+    return normalized;
+  },
+  setItem(key, value) {
+    organizationModeJsonStorage.setItem(
+      key,
+      normalizeSidebarOrganizationMode(value),
+    );
+  },
+  removeItem: organizationModeJsonStorage.removeItem,
+  subscribe: (key, callback, initialValue) =>
+    organizationModeJsonStorage.subscribe?.(
+      key,
+      (value) => callback(normalizeSidebarOrganizationMode(value)),
+      initialValue,
+    ),
+};
+
 export const sidebarOrganizationModeAtom =
   atomWithStorage<SidebarOrganizationMode>(
     SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
     "project",
-    createJsonLocalStorage<SidebarOrganizationMode>(),
+    sidebarOrganizationModeStorage,
     { getOnInit: true },
   );
 

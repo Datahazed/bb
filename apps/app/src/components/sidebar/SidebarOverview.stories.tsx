@@ -548,13 +548,13 @@ export function OrganizationModes() {
           navigation={emptySidebarNavigation}
         />
       </StoryRow>
-      <StoryRow label="Manually">
+      <StoryRow label="Manual">
         <OrganizationSidebar
-          mode="chronological"
+          mode="manual"
           navigation={loadedSidebarNavigation}
         />
         <OrganizationSidebar
-          mode="chronological"
+          mode="manual"
           navigation={emptySidebarNavigation}
         />
       </StoryRow>

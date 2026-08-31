@@ -83,6 +83,7 @@ export const SF_SYMBOL_MAP = {
   FileAttachment: "doc",
   FileQuestion: "questionmark.square.dashed",
   FileText: "doc.text",
+  Filter: "line.3.horizontal.decrease",
   Folder: "folder",
   FolderEdit: "folder.badge.gearshape",
   FolderExport: "square.and.arrow.up",
