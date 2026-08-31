@@ -17,7 +17,11 @@ import {
 } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
-import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
+import {
+  ActiveSidebarModeSections,
+  BuiltInSidebarLifecycleSections,
+  MachineModeSections,
+} from "./ProjectList";
 import { buildMachineThreadGroups } from "@bb/client-core";
 import {
   collapsedSidebarSectionIdsAtom,
@@ -196,6 +200,35 @@ afterEach(() => {
 });
 
 describe("sidebar organization mode sections", () => {
+  it.each<SidebarOrganizationMode>(["project", "chronological", "machine"])(
+    "keeps drafts above %s sections and archived rows trailing",
+    (mode) => {
+      const { container } = render(
+        <BuiltInSidebarLifecycleSections
+          draftRows={<div>Drafts</div>}
+          activeModeSections={
+            <ActiveSidebarModeSections
+              mode={mode}
+              renderChronological={() => <div>Chronological</div>}
+              renderMachine={() => <div>Machine</div>}
+              renderProject={() => <div>Project</div>}
+            />
+          }
+          archivedRows={<div>Archived</div>}
+          emptyState={null}
+        />,
+      );
+
+      const activeLabel =
+        mode === "chronological"
+          ? "Chronological"
+          : mode === "machine"
+            ? "Machine"
+            : "Project";
+      expect(container.textContent).toBe(`Drafts${activeLabel}Archived`);
+    },
+  );
+
   it("does not mount inactive ordering or machine-grouping work", async () => {
     const store = createStore();
     store.set(sidebarSectionOrderAtom, ["threads", "project:a", "pinned"]);
