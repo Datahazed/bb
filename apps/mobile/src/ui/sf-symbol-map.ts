@@ -101,6 +101,7 @@ export const SF_SYMBOL_MAP = {
   GridView: "square.grid.2x2",
   Info: "info.circle",
   Laptop: "laptopcomputer",
+  LaptopIssue: "laptopcomputer.trianglebadge.exclamationmark",
   Layers: "square.3.layers.3d",
   ListView: "list.bullet",
   SectionAdd: "text.badge.plus",
