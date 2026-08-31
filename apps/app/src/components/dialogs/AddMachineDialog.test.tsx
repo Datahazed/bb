@@ -79,6 +79,8 @@ function connectPlugin(
     logoDarkUrl: null,
     providerIds: [],
     icons: {},
+    screenshots: [],
+    lastProblem: null,
     ...overrides,
   };
 }
