@@ -20,7 +20,7 @@ const SELF_FILES = new Set([
   "sf-symbol-map.test.ts",
 ]);
 
-const BRAND_MARKS: readonly IconName[] = ["Discord", "Github"];
+const BRAND_MARKS: readonly IconName[] = ["Discord", "Github", "GithubFilled"];
 
 const MAX_SF_SYMBOLS_VERSION = "4.2";
 

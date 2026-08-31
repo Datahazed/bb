@@ -37,7 +37,7 @@ function colorMappings(css: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const block of css.matchAll(/@theme inline\s*\{([\s\S]*?)\n\}/g)) {
     for (const match of block[1].matchAll(
-      /--color-([a-z0-9-]+):\s*var\(--([a-z0-9-]+)\)/g,
+      /--color-([a-z0-9-]+):\s*var\(\s*--([a-z0-9-]+)\s*\)/g,
     )) {
       map.set(match[1], match[2]);
     }
