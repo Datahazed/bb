@@ -59,7 +59,7 @@ import {
 } from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
-import { PluginListingStatusPill } from "@/components/plugin/management/MyPluginsTab";
+import { PluginListingStatusPill } from "@/components/plugin/management/PluginListingStatusPill";
 import {
   usePluginSource,
   type PluginCatalogSearchEntry,

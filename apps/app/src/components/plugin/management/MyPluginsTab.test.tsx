@@ -8,7 +8,8 @@ import {
   type PluginListItem,
   usePluginListings,
 } from "@/hooks/queries/plugin-settings-queries";
-import { MyPluginsTab, PluginListingStatusPill } from "./MyPluginsTab";
+import { MyPluginsTab } from "./MyPluginsTab";
+import { PluginListingStatusPill } from "./PluginListingStatusPill";
 
 vi.mock("@/hooks/queries/plugin-settings-queries", async (importOriginal) => {
   const original =
