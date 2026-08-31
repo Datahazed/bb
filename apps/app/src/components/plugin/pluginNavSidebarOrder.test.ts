@@ -48,8 +48,6 @@ describe("arrangePluginNavPanels", () => {
   });
 
   it("renders no row for an unregistered key but keeps its slot in the order", () => {
-    // A plugin frontend can register after the sidebar mounts. Dropping the key
-    // here would persist a shortened order and lose the user's arrangement.
     const { ordered, normalizedOrder } = arrangePluginNavPanels({
       panels: [github, docs],
       storedOrder: ["strudel/repl", "docs/vault", "github/pulls"],

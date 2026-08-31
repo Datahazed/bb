@@ -2,7 +2,6 @@ import {
   Fragment,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -304,15 +303,6 @@ export function AppSidebar({
                 splitEnabled
                 newThreadSplit={newThreadSplit}
                 onNewChat={handleNewChat}
-                threadSearch={{
-                  activeDescendantId: threadSearch.activeDescendantId,
-                  inputRef: threadSearch.inputRef,
-                  isActive: threadSearch.isActive,
-                  onActivate: threadSearch.onActivate,
-                  onClose: threadSearch.onClose,
-                  onQueryChange: threadSearch.onQueryChange,
-                  query: threadSearch.query,
-                }}
               />
               {toolsRoutePath ? (
                 <ExtensionsNavSidebarItem
@@ -336,8 +326,8 @@ export function AppSidebar({
               <PluginThreadList
                 replacement={threadListReplacement}
                 original={originalThreadList}
-                searchQuery={threadSearch.query}
-                onNavigate={threadSearch.onExternalThreadOpen}
+                searchQuery=""
+                onNavigate={closeOnMobile}
               />
             </SidebarContent>
           ),

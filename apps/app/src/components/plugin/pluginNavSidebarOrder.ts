@@ -1,12 +1,3 @@
-/**
- * Ordering logic for the traditional plugin panel rows in the sidebar.
- *
- * Panels arrive from the slot registry in a fixed registration order (plugin id
- * then declaration order). One persisted order determines both the first five
- * rows and positional overflow. Preferences are keyed by
- * `<pluginId>/<panelId>`, so an uninstalled-and-reinstalled plugin keeps its
- * place and a renamed panel id starts fresh at the end of the list.
- */
 interface PluginNavPanelIdentity {
   pluginId: string;
   id: string;
@@ -22,18 +13,7 @@ interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
 }
 
 interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
-  /** Registered panels in user order. */
   ordered: TPanel[];
-  /**
-   * `storedOrder` with duplicates dropped and never-ordered panels appended.
-   * Callers persist this so newly installed panels get a slot.
-   *
-   * Keys of panels that are not registered right now keep their position. A
-   * plugin frontend can register late — the sidebar mounts before every plugin
-   * has loaded — so treating "absent" as "removed" would save a shortened order
-   * during startup and lose the user's arrangement. Keeping the key also makes
-   * an uninstalled-and-reinstalled plugin return to its old slot.
-   */
   normalizedOrder: string[];
 }
 
@@ -68,19 +48,10 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
 interface ReorderPluginNavPanelsArgs {
   activeKey: string;
   overKey: string;
-  /** Full persisted order, including temporarily unregistered panels. */
   order: readonly string[];
-  /** Registered keys in display order. */
   visibleKeys: readonly string[];
 }
 
-/**
- * Moves `activeKey` to `overKey`'s slot among registered rows and folds the
- * result back into the full order. Temporarily unregistered keys keep their
- * index so late plugin registration cannot erase the user's arrangement.
- *
- * Returns `null` when the drag is a no-op.
- */
 export function reorderPluginNavPanels({
   activeKey,
   overKey,
@@ -102,12 +73,6 @@ export function reorderPluginNavPanels({
   );
 }
 
-/**
- * Converts the old hide preference into position: previously visible keys
- * keep their relative order, followed by previously hidden keys. Unknown keys
- * stay in the order so a late-registering or reinstalled plugin retains its
- * slot.
- */
 export function migrateLegacyHiddenPluginNavPanelOrder(
   order: readonly string[],
   hiddenKeys: readonly string[],

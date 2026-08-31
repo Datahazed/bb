@@ -30,9 +30,6 @@ function preserveLegacyAutomationsHiddenKeys(
   if (automationsKeys.length === 0) {
     storage.removeItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY);
   } else {
-    // The later top-region preference layer translates this legacy choice to
-    // its host-owned Automations visibility. Do not erase it while migrating
-    // traditional plugin rows to positional overflow.
     storage.setItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY, automationsKeys);
   }
 }
@@ -81,12 +78,6 @@ function createPluginNavPanelOrderStorage(): SyncStorage<string[]> {
   };
 }
 
-/**
- * User-chosen order of traditional plugin panel rows, as
- * `<pluginId>/<panelId>` keys. Positions 0–4 render above the overflow and all
- * later positions render below it. Empty until the registry first normalizes
- * the order. Client-local, like the other sidebar layout preferences.
- */
 export const pluginNavPanelOrderAtom = atomWithStorage<string[]>(
   PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY,
   [],
