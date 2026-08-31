@@ -486,6 +486,8 @@ export function createPluginCatalogService(deps: {
       name: string;
       pluginId: string;
       category: PluginCatalogCategoryId;
+      publishedAt?: string;
+      updatedAt?: string;
     },
     manifest: PluginManifest,
     iconHash: string | null,
@@ -516,6 +518,10 @@ export function createPluginCatalogService(deps: {
         : { categoryId: category.id, category: category.displayName }),
       screenshots: screenshotUrls,
       newAndNotableRank: null,
+      ...(entry.publishedAt === undefined
+        ? {}
+        : { publishedAt: entry.publishedAt }),
+      ...(entry.updatedAt === undefined ? {} : { updatedAt: entry.updatedAt }),
       source: builtinPluginSource(entry.name),
       repositoryUrl: `https://github.com/get-bb/bb/tree/main/plugins/${encodeURIComponent(entry.name)}`,
       marketplace: CURATED_MARKETPLACE_NAME,

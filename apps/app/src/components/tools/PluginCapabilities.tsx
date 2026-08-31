@@ -30,7 +30,6 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
 import {
-  getPluginConfigurationRoutePath,
   getPluginPanelRoutePath,
   getRootComposeRoutePath,
   getSettingsRoutePath,
@@ -130,25 +129,14 @@ function namedSurface(
   prefix: string,
   id: string,
   title: string | undefined,
+  fallbackLabel: string,
   description: string,
   destinationPath?: string,
 ): PluginCapabilityItem {
-  const label = title?.trim() || id;
   return {
     key: `${prefix}:${id}`,
-    label,
-    detail:
-      label === id ? (
-        description
-      ) : (
-        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-          <span>{description}</span>
-          <span className="break-all font-mono text-subtle-foreground">
-            {id}
-          </span>
-        </span>
-      ),
-    mono: label === id,
+    label: title?.trim() || fallbackLabel,
+    detail: description,
     destinationPath,
   };
 }
@@ -159,6 +147,7 @@ function namedSlotItems<
   pluginId: string,
   slots: readonly Slot[],
   prefix: string,
+  fallbackLabel: string,
   description: string,
   destinationPath?: (slot: Slot) => string,
 ): PluginCapabilityItem[] {
@@ -169,6 +158,7 @@ function namedSlotItems<
         prefix,
         slot.id,
         slot.title,
+        fallbackLabel,
         description,
         destinationPath?.(slot),
       ),
@@ -180,25 +170,12 @@ function pluginAppSurfaceItems(
   slots: PluginSlotSnapshot,
 ): PluginCapabilityItem[] {
   const pluginId = plugin.id;
-  const settingsSections = slots.settingsSections.filter(
-    (section) => section.pluginId === pluginId,
-  );
   return [
-    ...(plugin.hasSettings || settingsSections.length > 0
-      ? [
-          namedSurface(
-            "settings",
-            "settings",
-            "Settings",
-            "Opens this plugin's configuration.",
-            getPluginConfigurationRoutePath({ pluginId }),
-          ),
-        ]
-      : []),
     ...namedSlotItems(
       pluginId,
       slots.navPanels,
       "nav",
+      "Sidebar page",
       "Adds a page to the app sidebar.",
       (panel) =>
         getPluginPanelRoutePath({
@@ -210,6 +187,7 @@ function pluginAppSurfaceItems(
       pluginId,
       slots.homepageSections,
       "homepage",
+      "Home content",
       "Adds content to the Home page.",
       (section) =>
         `${getRootComposeRoutePath()}#${getPluginHomepageSectionAnchor(pluginId, section.id)}`,
@@ -218,6 +196,7 @@ function pluginAppSurfaceItems(
       pluginId,
       slots.threadLists,
       "thread-list",
+      "Thread list",
       "Can replace the sidebar thread list; configured in Appearance.",
       () => getSettingsRoutePath("appearance"),
     ),
@@ -225,48 +204,56 @@ function pluginAppSurfaceItems(
       pluginId,
       slots.sourceCodeRenderers,
       "source-code-renderer",
+      "Source code viewer",
       "Replaces how source code is displayed everywhere in the app.",
     ),
     ...namedSlotItems(
       pluginId,
       slots.diffRenderers,
       "diff-renderer",
+      "Diff viewer",
       "Replaces how diffs are displayed everywhere in the app.",
     ),
     ...namedSlotItems(
       pluginId,
       slots.threadPanelActions,
       "thread-panel",
+      "Thread panel",
       "Adds an action that opens a panel beside a thread.",
     ),
     ...namedSlotItems(
       pluginId,
       slots.newThreadPanelActions,
       "new-thread-panel",
+      "New thread panel",
       "Adds an action that opens a panel beside the New thread screen.",
     ),
     ...namedSlotItems(
       pluginId,
       slots.pendingInteractions,
       "input",
+      "Thread interaction",
       "Renders a custom interaction inside a thread.",
     ),
     ...namedSlotItems(
       pluginId,
       slots.sidebarFooterActions,
       "sidebar",
+      "Sidebar action",
       "Adds an action to the app sidebar.",
     ),
     ...namedSlotItems(
       pluginId,
       slots.messageActions,
       "message-action",
+      "Message action",
       "Adds an action to messages in threads.",
     ),
     ...namedSlotItems(
       pluginId,
       slots.threadHeaderActions,
       "thread-header",
+      "Thread action",
       "Adds an action to thread headers.",
     ),
     ...slots.composerCustomizations
@@ -277,6 +264,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:action`,
             action.id,
             undefined,
+            "Composer action",
             "Adds an action beside the thread composer.",
           ),
         ),
@@ -285,6 +273,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:banner`,
             banner.id,
             undefined,
+            "Composer notice",
             "Shows information above the thread composer.",
           ),
         ),
@@ -293,6 +282,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:plus-menu`,
             item.id,
             item.label,
+            "Add-menu item",
             "Adds an item to the composer’s add menu.",
           ),
         ),
@@ -301,6 +291,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:rich-text`,
             effect.id,
             undefined,
+            "Composer formatting",
             "Adds rich-text behavior while composing a message.",
           ),
         ),
@@ -312,6 +303,7 @@ function pluginAppSurfaceItems(
           "file",
           slot.id,
           slot.title,
+          "File viewer",
           "Opens supported files in a plugin-provided viewer.",
           getSettingsRoutePath("files"),
         ),
@@ -425,11 +417,11 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
     plugin.status === "running" ||
     plugin.status === "degraded" ||
     plugin.status === "needs-configuration";
-  const liveCapabilitiesNote =
-    "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed.";
+  const liveIncludesNote =
+    "This plugin isn't running, so its commands, agent tools, app surfaces, and thread integrations can't be listed.";
 
   return (
-    <ResourceDetailIncludesSection label="Capabilities">
+    <ResourceDetailIncludesSection label="Includes">
       <div className="space-y-3">
         <PluginDetailTable>
           {items.map((item) => (
@@ -462,7 +454,7 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
         </PluginDetailTable>
         {live ? null : (
           <p className="text-xs leading-relaxed text-muted-foreground">
-            {liveCapabilitiesNote}
+            {liveIncludesNote}
           </p>
         )}
       </div>

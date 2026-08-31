@@ -2,11 +2,10 @@ import { useSyncExternalStore } from "react";
 import type { PluginListingLifecycle } from "@bb/server-contract";
 import {
   ResourceActivitySection,
-  ResourceDetailConfigurationSection,
   ResourceDetailOverviewSection,
   ResourceDetailPage,
-  ResourceDetailReleaseSection,
   ResourceDetailStack,
+  ResourceDefinitionSection,
   ResourceInstallControl,
   ResourceListState,
   ResourceOverflowMenu,
@@ -40,6 +39,7 @@ import {
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
 import {
+  PluginDetailMetadataItem,
   PluginMarketplaceCategoryPill,
   PluginMarketplaceListingSections,
   PluginMarketplaceHeaderMetadata,
@@ -53,10 +53,6 @@ import {
   PluginSchedules,
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
-import {
-  PluginDetailFieldRow,
-  PluginDetailTable,
-} from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { PluginListingStatusPill } from "@/components/plugin/management/PluginListingStatusPill";
@@ -240,6 +236,52 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
+function PluginInstalledDetails({
+  plugin,
+  updatesWithBb,
+  installedValue,
+  hasUpdateManagement,
+  hasReleaseControl,
+  hasReleaseUpdate,
+}: {
+  plugin: PluginListItem;
+  updatesWithBb: boolean;
+  installedValue: string;
+  hasUpdateManagement: boolean;
+  hasReleaseControl: boolean;
+  hasReleaseUpdate: boolean;
+}) {
+  return (
+    <>
+      <PluginDetailMetadataItem
+        label={updatesWithBb ? "Delivery" : "Installed"}
+      >
+        {installedValue}
+      </PluginDetailMetadataItem>
+      <PluginDetailMetadataItem label="Version">
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="font-mono text-xs text-foreground">
+            {plugin.version}
+          </span>
+          {hasReleaseControl ? (
+            <PluginDetailReleaseControl plugin={plugin} />
+          ) : hasUpdateManagement ? (
+            <CheckPluginUpdatesButton
+              pluginId={plugin.id}
+              appearance="inline"
+            />
+          ) : null}
+        </span>
+      </PluginDetailMetadataItem>
+      {hasReleaseUpdate ? (
+        <PluginDetailMetadataItem label="Update" className="sm:col-span-2">
+          <PluginDetailReleaseStatus plugin={plugin} />
+        </PluginDetailMetadataItem>
+      ) : null}
+    </>
+  );
+}
+
 export function PluginDetail({
   isLoading,
   plugin,
@@ -311,7 +353,9 @@ export function PluginDetail({
     hasUpdateManagement &&
     (plugin.updateState.availableVersion !== null ||
       plugin.updateState.blockedVersion !== null ||
-      plugin.updateState.lastFailure !== null);
+      plugin.updateState.lastFailure !== null ||
+      (plugin.updateState.outcome === "unavailable" &&
+        plugin.updateState.detail !== null));
   const hasConfiguration =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
@@ -409,9 +453,9 @@ export function PluginDetail({
         </span>
       }
       actions={
-        listingLifecycle !== null ? (
-          <>
-            {listingActions.map((action) => (
+        <>
+          {listingLifecycle !== null ? (
+            listingActions.map((action) => (
               <Button
                 key={action.id}
                 type="button"
@@ -421,19 +465,34 @@ export function PluginDetail({
               >
                 {action.label}
               </Button>
-            ))}
-          </>
-        ) : reportPrompt === null ? undefined : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => openComposer(reportPrompt)}
-          >
-            <Icon name="MessageSquarePlus" className="size-3.5" aria-hidden />
-            Report to author
-          </Button>
-        )
+            ))
+          ) : reportPrompt === null ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => openComposer(reportPrompt)}
+            >
+              <Icon name="MessageSquarePlus" className="size-3.5" aria-hidden />
+              Report to author
+            </Button>
+          )}
+          {hasConfiguration ? (
+            <Button
+              asChild
+              variant="secondary"
+              size="sm"
+              className="h-7 px-2.5"
+            >
+              <Link
+                to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
+              >
+                <Icon name="Settings" className="size-3.5" aria-hidden />
+                Settings
+              </Link>
+            </Button>
+          ) : null}
+        </>
       }
       lifecycleControl={
         <Switch
@@ -486,67 +545,40 @@ export function PluginDetail({
           </ResourceDetailOverviewSection>
         ) : null}
         {catalogEntry === null ? (
-          <ResourceDetailOverviewSection label="About">
-            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-              {plugin.description ?? "This plugin does not describe itself."}
-            </p>
-          </ResourceDetailOverviewSection>
-        ) : (
-          <PluginMarketplaceListingSections entry={catalogEntry} />
-        )}
-        {hasConfiguration ? (
-          <ResourceDetailConfigurationSection
-            id="configuration"
-            className="scroll-mt-4"
-            label="Configuration"
-          >
-            {}
-            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-              This plugin is configured from{" "}
-              <Link
-                to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
-                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                its Settings page
-                <Icon
-                  name="ChevronRight"
-                  className="size-3.5 no-underline"
-                  aria-hidden
+          <>
+            <ResourceDetailOverviewSection label="About">
+              <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+                {plugin.description ?? "This plugin does not describe itself."}
+              </p>
+            </ResourceDetailOverviewSection>
+            <ResourceDefinitionSection label="Details">
+              <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                <PluginInstalledDetails
+                  plugin={plugin}
+                  updatesWithBb={updatesWithBb}
+                  installedValue={installedValue}
+                  hasUpdateManagement={hasUpdateManagement}
+                  hasReleaseControl={hasReleaseControl}
+                  hasReleaseUpdate={hasReleaseUpdate}
                 />
-              </Link>
-            </p>
-          </ResourceDetailConfigurationSection>
-        ) : null}
-        <ResourceDetailReleaseSection
-          label="Release"
-          actions={
-            hasReleaseControl ? (
-              <PluginDetailReleaseControl plugin={plugin} />
-            ) : hasUpdateManagement ? (
-              <CheckPluginUpdatesButton
-                pluginId={plugin.id}
-                appearance="inline"
+              </dl>
+            </ResourceDefinitionSection>
+          </>
+        ) : (
+          <PluginMarketplaceListingSections
+            entry={catalogEntry}
+            details={
+              <PluginInstalledDetails
+                plugin={plugin}
+                updatesWithBb={updatesWithBb}
+                installedValue={installedValue}
+                hasUpdateManagement={hasUpdateManagement}
+                hasReleaseControl={hasReleaseControl}
+                hasReleaseUpdate={hasReleaseUpdate}
               />
-            ) : undefined
-          }
-        >
-          <PluginDetailTable>
-            <PluginDetailFieldRow
-              label={updatesWithBb ? "Delivery" : "Installed"}
-              labelClassName="font-medium"
-            >
-              {installedValue}
-            </PluginDetailFieldRow>
-            <PluginDetailFieldRow label="Version" labelClassName="font-medium">
-              <span className="font-mono text-xs">{plugin.version}</span>
-            </PluginDetailFieldRow>
-            {hasReleaseUpdate ? (
-              <PluginDetailFieldRow label="Update" stackOnNarrow>
-                <PluginDetailReleaseStatus plugin={plugin} />
-              </PluginDetailFieldRow>
-            ) : null}
-          </PluginDetailTable>
-        </ResourceDetailReleaseSection>
+            }
+          />
+        )}
         <PluginIncludes plugin={plugin} />
         {plugin.lastProblem === null ? null : (
           <ResourceActivitySection label="Recent errors">
@@ -571,8 +603,6 @@ export function PluginDetail({
             </div>
           </ResourceActivitySection>
         )}
-        {
-}
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">
             <PluginServices plugin={plugin} />
@@ -583,8 +613,6 @@ export function PluginDetail({
             <PluginSchedules plugin={plugin} />
           </ResourceActivitySection>
         ) : null}
-        {
-}
         {catalogEntry === null ? null : (
           <PluginMoreFromAuthorSection
             entry={catalogEntry}

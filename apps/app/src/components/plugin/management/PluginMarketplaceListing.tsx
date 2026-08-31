@@ -1,9 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Carousel,
   CarouselContent,
@@ -76,22 +71,21 @@ export function PluginMarketplaceCategoryPill({
   entry: PluginCatalogSearchEntry;
 }) {
   return entry.category === undefined ? null : (
-    <PluginCategoryLabel
-      categoryId={entry.categoryId}
-      label={entry.category}
-    />
+    <PluginCategoryLabel categoryId={entry.categoryId} label={entry.category} />
   );
 }
 
-function PluginMarketplaceDetail({
+export function PluginDetailMetadataItem({
   label,
   children,
+  className,
 }: {
   label: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="min-w-0 space-y-1">
+    <div className={cn("min-w-0 space-y-1", className)}>
       <dt className="text-2xs font-medium text-subtle-foreground">{label}</dt>
       <dd className="min-w-0 text-xs text-muted-foreground">{children}</dd>
     </div>
@@ -100,8 +94,10 @@ function PluginMarketplaceDetail({
 
 export function PluginMarketplaceDetails({
   entry,
+  children,
 }: {
   entry: PluginCatalogSearchEntry;
+  children?: ReactNode;
 }) {
   const updatedAt = entry.updatedAt;
   const updatedTimestamp =
@@ -118,7 +114,7 @@ export function PluginMarketplaceDetails({
         {updatedAt === undefined ||
         updatedRelativeTime === null ||
         updatedAbsoluteTime === null ? null : (
-          <PluginMarketplaceDetail label="Last updated">
+          <PluginDetailMetadataItem label="Last updated">
             <TooltipProvider delayDuration={250}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -134,11 +130,12 @@ export function PluginMarketplaceDetails({
                 <TooltipContent>{updatedAbsoluteTime}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          </PluginMarketplaceDetail>
+          </PluginDetailMetadataItem>
         )}
-        <PluginMarketplaceDetail label="Marketplace">
+        <PluginDetailMetadataItem label="Marketplace">
           {entry.publisherLabel}
-        </PluginMarketplaceDetail>
+        </PluginDetailMetadataItem>
+        {children}
       </dl>
     </ResourceDefinitionSection>
   );
@@ -359,14 +356,18 @@ export function PluginMoreFromAuthorSection({
 
 export function PluginMarketplaceListingSections({
   entry,
+  details,
 }: {
   entry: PluginCatalogSearchEntry;
+  details?: ReactNode;
 }) {
   return (
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      <PluginMarketplaceDetails entry={entry} />
+      <PluginMarketplaceDetails entry={entry}>
+        {details}
+      </PluginMarketplaceDetails>
     </>
   );
 }

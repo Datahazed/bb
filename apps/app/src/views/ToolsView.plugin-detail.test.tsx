@@ -240,7 +240,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
-    expect(screen.queryByText("Capabilities")).toBeNull();
+    expect(screen.queryByText("Includes")).toBeNull();
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
@@ -455,7 +455,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
+  it("keeps catalog provenance and lifecycle fields in the unified Details section", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -483,7 +483,11 @@ describe("PluginDetail official catalog lifecycle", () => {
     ).toBeNull();
 
     expect(screen.getByText("About")).toBeTruthy();
-    expect(screen.getByText("Release")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Release" })).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Configuration" }),
+    ).toBeNull();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
@@ -492,7 +496,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       meta
         .closest("[data-resource-detail-section]")
         ?.getAttribute("data-resource-detail-section"),
-    ).toBe("release");
+    ).toBe("definition");
     expect(screen.queryByText("~/.bb/plugins/github")).toBeNull();
     expect(
       screen.queryByRole("button", {
@@ -512,7 +516,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
   });
 
-  it("keeps update in the Release section without embedding it in the table", () => {
+  it("keeps update controls and status with Version in Details", () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const plugin: PluginListItem = {
       ...GITHUB_PLUGIN,
@@ -548,31 +552,27 @@ describe("PluginDetail official catalog lifecycle", () => {
     });
     const activation = screen.getByRole("switch", { name: "Disable GitHub" });
     const path = screen.getByText("~/.bb/plugins/github");
-    const releaseSection = document.querySelector(
-      '[data-resource-detail-section="release"]',
-    );
+    const detailsSection = screen
+      .getByRole("heading", { name: "Details" })
+      .closest('[data-resource-detail-section="definition"]');
+    const versionItem = screen
+      .getByText("Version", { selector: "dt" })
+      .closest("div");
+    const updateItem = screen
+      .getByText("Update", { selector: "dt" })
+      .closest("div");
 
-    expect(releaseSection?.contains(version)).toBe(true);
-    expect(releaseSection?.contains(update)).toBe(true);
-    expect(releaseSection?.contains(activation)).toBe(false);
-    expect(releaseSection?.contains(path)).toBe(false);
-    expect(version.closest("td")).not.toBe(update.closest("td"));
-    expect(update.closest("table")).toBeNull();
-    const updateRow = screen
-      .getByRole("rowheader", { name: "Update" })
-      .closest("tr");
-    const updateLabel = screen.getByRole("rowheader", { name: "Update" });
-    expect(updateRow).not.toBeNull();
-    if (updateRow === null) return;
-    const updateDetails = within(updateRow).getByRole("cell");
-    expect(updateRow?.textContent).toContain("1.5.0");
-    expect(updateRow?.textContent).toContain("Available");
-    expect(updateRow?.contains(update)).toBe(false);
-    expect(updateLabel.tagName).toBe("TH");
-    expect(updateDetails.tagName).toBe("TD");
-    expect(updateLabel).not.toBe(updateDetails);
-    const versionLabel = screen.getByRole("rowheader", { name: "Version" });
-    expect(releaseSection?.contains(versionLabel)).toBe(true);
+    expect(detailsSection?.contains(version)).toBe(true);
+    expect(detailsSection?.contains(update)).toBe(true);
+    expect(detailsSection?.contains(activation)).toBe(false);
+    expect(detailsSection?.contains(path)).toBe(false);
+    expect(versionItem?.contains(update)).toBe(true);
+    expect(updateItem?.textContent).toContain("1.5.0");
+    expect(updateItem?.textContent).toContain("Available");
+    expect(screen.queryByRole("heading", { name: "Release" })).toBeNull();
+    expect(
+      document.querySelector('[data-resource-detail-section="release"]'),
+    ).toBeNull();
   });
 
   it("never describes a managed plugin with an unknown install date as bundled", () => {
@@ -604,7 +604,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("rowheader", { name: "Installed" })).toBeTruthy();
+    expect(screen.getByText("Installed", { selector: "dt" })).toBeTruthy();
     expect(screen.getByText("Install date unavailable")).toBeTruthy();
     expect(screen.queryByText("Updates with bb")).toBeNull();
   });
@@ -634,8 +634,18 @@ describe("PluginDetail official catalog lifecycle", () => {
       expected: "Update blocked",
       actionName: null,
     },
+    {
+      state: "unavailable",
+      updateState: {
+        ...EMPTY_PLUGIN_UPDATE_STATE,
+        outcome: "unavailable",
+        detail: "The marketplace could not be reached.",
+      },
+      expected: "Update needs attention",
+      actionName: "Check for updates",
+    },
   ])(
-    "places $state information in the Update row and keeps its action above the table",
+    "places $state information and its action in lifecycle Details",
     ({ updateState, expected, actionName }) => {
       const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
       render(
@@ -662,19 +672,21 @@ describe("PluginDetail official catalog lifecycle", () => {
         </MemoryRouter>,
       );
 
-      const updateLabel = screen.getByRole("rowheader", { name: "Update" });
-      const updateRow = updateLabel.closest("tr");
+      const updateItem = screen
+        .getByText("Update", { selector: "dt" })
+        .closest("div");
+      const versionItem = screen
+        .getByText("Version", { selector: "dt" })
+        .closest("div");
       const status = screen.getByRole("status", { name: expected });
-      expect(updateRow?.contains(status)).toBe(true);
+      expect(updateItem?.contains(status)).toBe(true);
       expect(screen.queryByText(expected)).toBeNull();
-      expect(
-        screen.getByRole("rowheader", { name: "Version" }).closest("tr"),
-      ).not.toBe(updateRow);
+      expect(versionItem).not.toBe(updateItem);
       const action =
         actionName === null
           ? null
           : screen.getByRole("button", { name: actionName });
-      expect(action?.closest("table") ?? null).toBeNull();
+      expect(action === null || versionItem?.contains(action)).toBe(true);
       expect(screen.queryByRole("dialog")).toBeNull();
     },
   );
@@ -1117,7 +1129,7 @@ describe("PluginDetail runtime health", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("An API token is required.");
     expect(alert.textContent).toContain(
-      "Complete the Configuration section; bb reloads the plugin after you save.",
+      "Open Settings to finish configuration; bb reloads the plugin after you save.",
     );
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
   });

@@ -237,10 +237,29 @@ describe("plugin catalog service", () => {
         ),
       ],
       newAndNotableRank: null,
+      publishedAt: "2026-08-06T08:12:57-07:00",
+      updatedAt: "2026-08-31T04:12:23-07:00",
       source: "builtin:docs",
       installed: false,
       compatible: true,
     });
+    expect(
+      results.find((entry) => entry.entryId === "automations"),
+    ).toMatchObject({
+      publishedAt: "2026-07-06T13:50:43-07:00",
+      updatedAt: "2026-08-31T04:28:52-07:00",
+    });
+    const bundledResults = results.filter((entry) =>
+      BUNDLED_PLUGINS.some((plugin) => plugin.name === entry.entryId),
+    );
+    expect(bundledResults).toHaveLength(BUNDLED_PLUGINS.length);
+    for (const entry of bundledResults) {
+      const publishedAt = Date.parse(entry.publishedAt ?? "");
+      const updatedAt = Date.parse(entry.updatedAt ?? "");
+      expect(Number.isNaN(publishedAt)).toBe(false);
+      expect(Number.isNaN(updatedAt)).toBe(false);
+      expect(updatedAt).toBeGreaterThanOrEqual(publishedAt);
+    }
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
         .filter((entry) => entry.categoryId === category.id)

@@ -217,11 +217,10 @@ describe("Plugin detail recipe", () => {
     expect(title.parentElement?.nextElementSibling?.textContent).not.toContain(
       "Code & Reviews",
     );
-    expect(renderedRecipe(container).slice(0, 4)).toEqual([
+    expect(renderedRecipe(container).slice(0, 3)).toEqual([
       ["overview", "About"],
       ["definition", "Source"],
       ["definition", "Details"],
-      ["release", "Release"],
     ]);
     expect(screen.getByRole("link", { name: "BB" })).toBeTruthy();
     const authorAvatar = screen.getByRole("img", {
@@ -315,13 +314,27 @@ describe("Plugin detail recipe", () => {
     ).toBeTruthy();
   });
 
-  it("omits Capabilities when the plugin has no capability rows", () => {
+  it("omits Includes when the plugin has no user-facing additions", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
-      ["release", "Release"],
+      ["definition", "Details"],
     ]);
+  });
+
+  it("keeps Settings in the header without treating it as an included feature", () => {
+    const { container } = renderPlugin({ ...PLUGIN, hasSettings: true });
+
+    expect(
+      screen.getByRole("link", { name: "Settings" }).getAttribute("href"),
+    ).toBe("/settings/plugins/github");
+    expect(renderedRecipe(container)).toEqual([
+      ["overview", "About"],
+      ["definition", "Details"],
+    ]);
+    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Includes" })).toBeNull();
   });
 
   it("names each activity section after its own object, with no Health wrapper", () => {
@@ -342,7 +355,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
-      ["release", "Release"],
+      ["definition", "Details"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -356,7 +369,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
-      ["release", "Release"],
+      ["definition", "Details"],
       ["activity", "Background services"],
     ]);
   });
@@ -454,7 +467,7 @@ describe("Plugin detail recipe", () => {
     expect(container.textContent).toContain(description);
   });
 
-  it("keeps browser-registered app surfaces in Capabilities", () => {
+  it("keeps browser-registered app surfaces in Includes", () => {
     setPluginSlotRegistrations("github", {
       homepageSections: [],
       settingsSections: [],
@@ -587,13 +600,15 @@ describe("Plugin detail recipe", () => {
         href,
       );
     }
-    expect(renderedRecipe(container)).toContainEqual([
+    expect(renderedRecipe(container)).not.toContainEqual([
       "configuration",
       "Configuration",
     ]);
+    expect(renderedRecipe(container)).toContainEqual(["includes", "Includes"]);
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
+    expect(container.textContent).not.toContain("github-threads");
     expect(listSkills).not.toHaveBeenCalled();
   });
 
@@ -631,12 +646,12 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).not.toContainEqual([
       "includes",
-      "Capabilities",
+      "Includes",
     ]);
     expect(screen.queryByText("Frontend app")).toBeNull();
   });
 
-  it("hides the entire Capabilities section for a disabled plugin", () => {
+  it("hides the entire Includes section for a disabled plugin", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       enabled: false,
@@ -653,7 +668,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).not.toContainEqual([
       "includes",
-      "Capabilities",
+      "Includes",
     ]);
     expect(screen.queryByText("GitHub Dark")).toBeNull();
     expect(
@@ -663,7 +678,7 @@ describe("Plugin detail recipe", () => {
     ).toBeNull();
   });
 
-  it("keeps the Capabilities section for an enabled plugin", () => {
+  it("keeps the Includes section for an enabled plugin", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       capabilities: [
@@ -676,10 +691,7 @@ describe("Plugin detail recipe", () => {
       ],
     });
 
-    expect(renderedRecipe(container)).toContainEqual([
-      "includes",
-      "Capabilities",
-    ]);
+    expect(renderedRecipe(container)).toContainEqual(["includes", "Includes"]);
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
   });
 
@@ -699,10 +711,10 @@ describe("Plugin detail recipe", () => {
 
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
     expect(screen.queryByText(/This plugin isn't running/)).toBeNull();
-    expect(screen.queryByText(/commands, settings, agent tools/)).toBeNull();
+    expect(screen.queryByText(/commands, agent tools/)).toBeNull();
   });
 
-  it("omits Capabilities when an enabled plugin is not running and has no static rows", () => {
+  it("omits Includes when an enabled plugin is not running and has no static rows", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       enabled: true,
@@ -710,11 +722,11 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container).map(([, label]) => label)).not.toContain(
-      "Capabilities",
+      "Includes",
     );
   });
 
-  it("omits Capabilities when a disabled plugin has no static rows", () => {
+  it("omits Includes when a disabled plugin has no static rows", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       enabled: false,
@@ -722,7 +734,7 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container).map(([, label]) => label)).not.toContain(
-      "Capabilities",
+      "Includes",
     );
   });
 });

@@ -210,7 +210,7 @@ describe("pluginRuntimeStatusPresentation", () => {
       label: "Needs configuration",
       condition: "Required settings are incomplete.",
       recovery:
-        "Complete the Configuration section; bb reloads the plugin after you save.",
+        "Open Settings to finish configuration; bb reloads the plugin after you save.",
     });
   });
 });

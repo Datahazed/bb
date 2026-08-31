@@ -697,7 +697,7 @@ export function PluginDetailStates() {
     <PluginStoryQueryBoundary>
       <Story
         title="Plugin detail states"
-        description="An uninstalled BB Official plugin shows the catalog facts bb can verify and offers Install. Once installed, the page adds runtime capabilities, settings, services, and schedules when they apply."
+        description="An uninstalled BB Official plugin shows the catalog facts bb can verify and offers Install. Once installed, the page adds lifecycle details, a compact Settings action, included features, services, and schedules when they apply."
       >
         <State
           name="Before ownership"
@@ -721,21 +721,21 @@ export function PluginDetailStates() {
 
         <State
           name="Full"
-          note="Capabilities names what the plugin adds. Background services use a conventional Status/Service table; scheduled jobs use a separate table for next-run and failure detail."
+          note="Includes names what the plugin adds. Background services use a conventional Status/Service table; scheduled jobs use a separate table for next-run and failure detail."
         >
           <Plugin plugin={FULL_PLUGIN} />
         </State>
 
         <State
           name="Minimal"
-          note="Nothing user-facing is declared, so Capabilities says so rather than vanishing, and neither activity section renders."
+          note="Nothing user-facing is declared, so Includes is omitted, and neither activity section renders."
         >
           <Plugin plugin={PLUGIN} />
         </State>
 
         <State
           name="Disabled"
-          note="Manifest-declared skills and themes stay accurate; the live capabilities are deferred honestly."
+          note="Included features are omitted while the plugin is disabled because its live additions are unavailable."
         >
           <Plugin
             plugin={{
@@ -768,14 +768,14 @@ export function PluginDetailStates() {
 
         <State
           name="App surfaces"
-          note="Surfaces a plugin frontend registers in the browser once it loads. They enrich Capabilities; the manifest alone cannot name them."
+          note="Surfaces a plugin frontend registers in the browser once it loads. They enrich Includes; the manifest alone cannot name them."
         >
           <PluginWithAppSurfaces />
         </State>
 
         <State
           name="Awkward content"
-          note="Long unbroken names, a wordy description, and every capability group at once. Real plugins are messier than fixtures; this is where wrapping and truncation break."
+          note="Long unbroken names, a wordy description, and every included feature type at once. Real plugins are messier than fixtures; this is where wrapping and truncation break."
         >
           <Plugin plugin={AWKWARD_PLUGIN} />
         </State>
@@ -796,21 +796,21 @@ export function PluginDetailStates() {
 
         <State
           name="Update available"
-          note="Identity and path use the standard detail header. Installed date and current version remain passive table facts; the compact Update action sits in the Release section header, separate from activation and ownership."
+          note="Identity and path use the standard detail header. Installed date and current version remain compact Details facts; Update sits beside Version, separate from activation and ownership."
         >
           <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
         </State>
 
         <State
           name="Update failed"
-          note="The current version is still running after rollback. A dedicated Update row explains what was restored; Retry remains the primary Release action above the table."
+          note="The current version is still running after rollback. A dedicated Update fact explains what was restored; Retry remains beside Version."
         >
           <Plugin plugin={UPDATE_FAILED_PLUGIN} />
         </State>
 
         <State
           name="Compatibility blocked"
-          note="A newer release requires a newer bb. A dedicated Update row explains the requirement and preserved version; there is no unavailable action or modal."
+          note="A newer release requires a newer bb. A dedicated Update fact explains the requirement and preserved version; there is no unavailable action or modal."
         >
           <Plugin plugin={COMPATIBILITY_BLOCKED_PLUGIN} />
         </State>
@@ -929,7 +929,7 @@ export function PluginBannerStates() {
 
         <State
           name="Health · Needs configuration · external"
-          note="The required value lives outside the Settings section. The plugin-authored message names it, and Reload becomes the supported action after the user adds it."
+          note="The required value lives outside the plugin's Settings action. The plugin-authored message names it, and Reload becomes the supported action after the user adds it."
         >
           <Plugin
             plugin={{
@@ -949,35 +949,35 @@ export function PluginReleaseStates() {
   return (
     <PluginStoryQueryBoundary>
       <Story
-        title="Plugin release states"
-        description="Release actions stay beside the section label. A dedicated Update row appears only when a release is available, failed, or blocked; successful updates return to the normal release state after a transient confirmation."
+        title="Plugin update states"
+        description="Update actions stay beside Version in Details. A dedicated Update fact appears only when an update is available, failed, or blocked; successful updates return to the normal lifecycle state after a transient confirmation."
         renderedLabel="Rendered detail page"
-        renderedNote="The real Release section below plugin identity"
+        renderedNote="The real lifecycle fields in Details"
       >
         <State
-          name="Release · normal"
-          note="No update action or outcome is present. Release contains only the installed date and current version."
+          name="Details · normal"
+          note="No update outcome is present. Details contains the installed date and current version, with Check beside Version when bb can look for updates."
         >
           <Plugin plugin={PLUGIN} />
         </State>
 
         <State
-          name="Release · update available"
-          note="The Update row names the available version while the optional action stays in the Release section header and opens confirmation before changing anything."
+          name="Details · update available"
+          note="The Update fact names the available version while Update stays beside Version and opens confirmation before changing anything."
         >
           <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
         </State>
 
         <State
-          name="Release · failed / retry / updating / completed"
-          note="The Update row explains the rollback while Retry stays beside Release. Click Retry to inspect the real pending action for 8 seconds; success advances Version to 1.5.0, removes the stale Update row, and shows the production completion toast."
+          name="Details · failed / retry / updating / completed"
+          note="The Update fact explains the rollback while Retry stays beside Version. Click Retry to inspect the real pending action for 8 seconds; success advances Version to 1.5.0, removes the stale Update fact, and shows the production completion toast."
         >
           <FailedReleaseLifecycle />
         </State>
 
         <State
-          name="Release · update blocked"
-          note="Not a banner and not a failed attempt. The Update row names the bb-version requirement and preserved installed version; there is no unavailable action or dialog to dismiss."
+          name="Details · update blocked"
+          note="Not a banner and not a failed attempt. The Update fact names the bb-version requirement and preserved installed version; there is no unavailable action or dialog to dismiss."
         >
           <Plugin plugin={COMPATIBILITY_BLOCKED_PLUGIN} />
         </State>
@@ -1308,8 +1308,8 @@ export function ResourceControlStates() {
         </ControlTable>
 
         <ControlTable
-          title="Plugin release actions"
-          description="Update and Retry are primary Release actions. Their context stays with Version; a blocked update has no unavailable action. The complete flow is demonstrated in Plugin release states."
+          title="Plugin update actions"
+          description="Update and Retry stay with Version in Details; a blocked update has no unavailable action. The complete flow is demonstrated in Plugin update states."
         >
           <ControlRow
             state="Update available"
