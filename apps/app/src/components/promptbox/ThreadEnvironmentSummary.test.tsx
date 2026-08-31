@@ -99,7 +99,9 @@ describe("ThreadEnvironmentSummary", () => {
       '[aria-label="Machine: Bersabel\'s MacBook Pro"]',
     );
     expect(machineDisplay).not.toBeNull();
-    expect(machineDisplay!.parentElement?.className).toContain("max-w-[10rem]");
+    expect(
+      machineDisplay!.closest("[data-promptbox-secondary-context]")?.className,
+    ).toContain("max-w-[10rem]");
     fireEvent.focus(machineDisplay!);
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
