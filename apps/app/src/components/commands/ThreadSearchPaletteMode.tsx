@@ -179,6 +179,12 @@ export function ThreadSearchPaletteMode({
 
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Backspace" && query.length === 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        onExit();
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -210,7 +216,7 @@ export function ThreadSearchPaletteMode({
         openRow(row, event.metaKey || event.ctrlKey);
       }
     },
-    [activeIndex, onExit, openRow, result.rows],
+    [activeIndex, onExit, openRow, query.length, result.rows],
   );
 
   const isLoading =
@@ -247,12 +253,16 @@ export function ThreadSearchPaletteMode({
         />
       }
       footerKeys={presentation.footerKeys}
-      inputLabel={presentation.placeholder}
+      inputLabel="Search threads"
       inputRef={inputRef}
       listId={listId}
       listLabel="Threads"
       listRef={listRef}
-      modeChip={presentation.chip}
+      modeChip={{
+        ...presentation.chip,
+        clearLabel: "Return to commands",
+        onClear: onExit,
+      }}
       onInputChange={(value) => {
         setQuery(value);
         setHighlightedIndex(0);
@@ -274,7 +284,7 @@ export function ThreadSearchPaletteMode({
           />
         ))
       ) : (
-        <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+        <p className="px-3 py-8 text-center text-sm text-muted-foreground">
           {emptyMessage}
         </p>
       )}
@@ -316,7 +326,7 @@ function ThreadSearchScopeFilter({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Thread scope"
-        className="rounded-md px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-subtle-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -341,13 +351,14 @@ function ThreadSearchScopeFilter({
           }
         }}
       >
-        {current?.label ?? "All"} <span aria-hidden>▾</span>
+        <span>{current?.label ?? "All"}</span>
+        <span aria-hidden>▾</span>
       </button>
       {open ? (
         <div
           role="listbox"
           aria-label="Thread scope options"
-          className="absolute right-0 top-full z-50 mt-1 min-w-28 rounded-md border bg-popover p-1 shadow-md"
+          className="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg border border-border bg-popover p-1.5 shadow-md"
         >
           {PALETTE_THREAD_SEARCH_SCOPES.map((option) => (
             <div
@@ -355,7 +366,7 @@ function ThreadSearchScopeFilter({
               role="option"
               aria-selected={option.id === scope}
               className={cn(
-                "cursor-pointer rounded-sm px-2 py-1.5 text-sm",
+                "flex cursor-pointer items-center rounded-md px-2 py-1.5 text-sm",
                 option.id === scope && "bg-state-hover",
               )}
               onPointerDown={(event) => event.preventDefault()}
@@ -364,7 +375,7 @@ function ThreadSearchScopeFilter({
                 returnToInput();
               }}
             >
-              {option.label}
+              <span>{option.label}</span>
             </div>
           ))}
         </div>
@@ -427,22 +438,26 @@ function ThreadSearchPaletteRow({
       role="option"
       aria-selected={isActive}
       className={cn(
-        "flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm",
+        "flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm",
         isActive && "bg-state-hover text-foreground",
       )}
       onPointerMove={onActivate}
       onClick={onSelect}
     >
       <span className="min-w-0 flex-1">
-        <span ref={primaryRef} className="block min-w-0 truncate">
+        <span
+          ref={primaryRef}
+          className="block min-w-0 truncate text-foreground"
+        >
           <HighlightedText
             text={primary.text}
             ranges={primary.highlightRanges}
           />
         </span>
         <span
-          className="block min-w-0 truncate text-xs leading-4 text-muted-foreground"
+          className="block min-w-0 truncate text-xs leading-4 text-subtle-foreground"
           title={row.metadataText}
+          data-palette-thread-metadata
         >
           {row.metadataText}
         </span>
@@ -450,7 +465,7 @@ function ThreadSearchPaletteRow({
       {stateLabel === null ? null : (
         <span
           className={cn(
-            "shrink-0 text-muted-foreground",
+            "shrink-0 text-xs text-subtle-foreground",
             COARSE_POINTER_TEXT_SM_CLASS,
           )}
         >
