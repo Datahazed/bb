@@ -223,7 +223,7 @@ export interface PluginCatalogSearchEntry {
   icon: string | null;
   iconUrl: string | null;
   iconTinted: boolean;
-  category: string;
+  category?: string;
   source: string;
   repositoryUrl: string | null;
   marketplace: string;
@@ -249,7 +249,7 @@ function toPluginCatalogSearchEntry(
     icon: data.icon,
     iconUrl: data.iconUrl,
     iconTinted: data.iconTinted,
-    category: data.category,
+    ...(data.category === undefined ? {} : { category: data.category }),
     source: data.source,
     repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,
