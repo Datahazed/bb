@@ -1,0 +1,50 @@
+/* Browse hero: the archetype chips orbiting the mini bb window drift slowly
+ * so the hero reads as alive without competing with its central content.
+ * Duration and delay are per-chip custom properties so each chip drifts out of
+ * phase with its neighbours from one shared rule. */
+@keyframes bb-hero-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+.bb-hero-chip {
+  animation: bb-hero-drift var(--bb-hero-drift-duration, 6s) ease-in-out
+    infinite;
+  animation-delay: var(--bb-hero-drift-delay, 0s);
+}
+
+/* The active progress element is keyed by slide, so a slide change remounts it
+ * and restarts the animation from zero without an imperative reset. */
+@keyframes bb-hero-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.bb-hero-progress-fill {
+  transform-origin: left center;
+  animation: bb-hero-progress var(--bb-hero-slide-duration, 5s) linear forwards;
+}
+
+.bb-hero-progress-fill[data-paused="true"] {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-hero-chip {
+    animation: none;
+  }
+
+  .bb-hero-progress-fill {
+    animation: none;
+    transform: scaleX(1);
+  }
+}

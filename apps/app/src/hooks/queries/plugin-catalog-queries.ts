@@ -223,7 +223,12 @@ export interface PluginCatalogSearchEntry {
   icon: string | null;
   iconUrl: string | null;
   iconTinted: boolean;
-  category: string;
+  categoryId?: SdkPluginCatalogSearchResult["categoryId"];
+  category?: string;
+  screenshots: string[];
+  newAndNotableRank: number | null;
+  publishedAt?: string;
+  updatedAt?: string;
   source: string;
   repositoryUrl: string | null;
   marketplace: string;
@@ -249,7 +254,15 @@ function toPluginCatalogSearchEntry(
     icon: data.icon,
     iconUrl: data.iconUrl,
     iconTinted: data.iconTinted,
-    category: data.category,
+    ...(data.categoryId === undefined || data.category === undefined
+      ? {}
+      : { categoryId: data.categoryId, category: data.category }),
+    screenshots: data.screenshots,
+    newAndNotableRank: data.newAndNotableRank,
+    ...(data.publishedAt === undefined
+      ? {}
+      : { publishedAt: data.publishedAt }),
+    ...(data.updatedAt === undefined ? {} : { updatedAt: data.updatedAt }),
     source: data.source,
     repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,

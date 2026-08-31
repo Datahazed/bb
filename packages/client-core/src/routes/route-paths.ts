@@ -18,6 +18,8 @@ export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
   "/extensions/skills/registry/:registrySkillId";
 export const TOOLS_PLUGINS_ROUTE_PATH = "/extensions/plugins";
 export const TOOLS_PLUGIN_BROWSE_ROUTE_PATH = "/extensions/plugins/browse";
+export const TOOLS_PLUGIN_AUTHOR_ROUTE_PATH =
+  "/extensions/plugins/authors/:authorId";
 export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/extensions/plugins/:pluginId";
 export const LEGACY_TOOLS_PREFIX_ROUTE_PATH = "/tools";
 export const LEGACY_TOOLS_SPLAT_ROUTE_PATH = "/tools/*";
@@ -133,6 +135,16 @@ export function getPluginDetailRoutePath({
   return view === "installed" ? `${path}?view=installed` : path;
 }
 
+interface PluginAuthorRoutePathArgs {
+  authorId: string;
+}
+
+export function getPluginAuthorRoutePath({
+  authorId,
+}: PluginAuthorRoutePathArgs): string {
+  return `${TOOLS_PLUGINS_ROUTE_PATH}/authors/${encodeURIComponent(authorId)}`;
+}
+
 export function getPluginConfigurationRoutePath(
   args: PluginDetailRoutePathArgs,
 ): string {
@@ -211,6 +223,7 @@ const baseRoutePatterns: readonly string[] = [
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
+  TOOLS_PLUGIN_AUTHOR_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   LEGACY_TOOLS_PREFIX_ROUTE_PATH,
   LEGACY_TOOLS_SPLAT_ROUTE_PATH,

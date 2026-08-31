@@ -82,14 +82,17 @@ export interface ResourceOption {
   leading?: ReactNode;
   description?: string;
   disabled?: boolean;
+  omitDirection?: boolean;
 }
 
 function ResourceOptionContent({
   option,
   compact = false,
+  labelClassName,
 }: {
   option: ResourceOption;
   compact?: boolean;
+  labelClassName?: string;
 }) {
   return (
     <span
@@ -105,7 +108,7 @@ function ResourceOptionContent({
       ) : null}
       <span className="flex min-w-0 flex-col">
         <span
-          className="truncate text-xs"
+          className={cn("truncate text-xs", labelClassName)}
           title={compact ? option.label : undefined}
         >
           {option.label}
@@ -412,17 +415,28 @@ export function ResourceSortMenu({
   options,
   onChange,
   compact = false,
+  showDirectionForAllOptions = false,
+  onClear,
+  placeholderLabel = "Sort",
 }: {
-  value: string;
+  value: string | null;
   direction: "asc" | "desc";
   options: readonly ResourceOption[];
   onChange: (value: string) => void;
   compact?: boolean;
+  showDirectionForAllOptions?: boolean;
+  onClear?: () => void;
+  placeholderLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
   const directionLabel = direction === "asc" ? "ascending" : "descending";
-  const sortStateLabel = `Sort: ${selectedOption?.label ?? value}, ${directionLabel}`;
+  const sortStateLabel =
+    selectedOption === undefined
+      ? placeholderLabel
+      : selectedOption.omitDirection === true
+        ? `Sort: ${selectedOption.label}`
+        : `Sort: ${selectedOption.label}, ${directionLabel}`;
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
@@ -439,7 +453,7 @@ export function ResourceSortMenu({
       >
         <DropdownMenuLabel
           className={cn(
-            "text-xs font-normal text-subtle-foreground",
+            "text-2xs font-medium text-subtle-foreground",
             compact && "md:px-1.5 md:py-1",
           )}
         >
@@ -463,15 +477,45 @@ export function ResourceSortMenu({
                 compact && "md:gap-2 md:px-1.5 md:py-1",
               )}
             >
-              <ResourceOptionContent option={option} compact={compact} />
+              <ResourceOptionContent
+                option={option}
+                compact={compact}
+                labelClassName="font-medium text-foreground"
+              />
+              {
+}
               <Icon
                 name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
                 aria-hidden
-                className={cn("size-4", selected ? "opacity-100" : "opacity-0")}
+                className={cn(
+                  "size-4 text-subtle-foreground",
+                  option.omitDirection === true
+                    ? "hidden"
+                    : selected || showDirectionForAllOptions
+                      ? "opacity-100"
+                      : "opacity-0",
+                )}
               />
             </DropdownMenuItem>
           );
         })}
+        {onClear === undefined || value === null ? null : (
+          <>
+            <DropdownMenuSeparator className={cn(compact && "md:my-0.5")} />
+            <DropdownMenuItem
+              className={cn(
+                "text-muted-foreground",
+                compact && "md:gap-2 md:px-1.5 md:py-1",
+              )}
+              onSelect={(event) => {
+                event.preventDefault();
+                onClear();
+              }}
+            >
+              Clear sort
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

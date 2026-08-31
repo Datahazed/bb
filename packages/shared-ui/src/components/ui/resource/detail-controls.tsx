@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Button } from "../button";
 import { Icon, type IconName } from "../icon";
 import {
@@ -100,6 +100,7 @@ export function ResourceInstallControl({
   disabled = false,
   presentation = "label",
   tooltip,
+  count,
   className,
   onAction,
 }: {
@@ -111,9 +112,11 @@ export function ResourceInstallControl({
   disabled?: boolean;
   presentation?: "label" | "icon";
   tooltip?: ReactNode;
+  count?: { display: string; accessibleLabel: string };
   className?: string;
   onAction: () => void;
 }) {
+  const countId = useId();
   const control = (
     <Button
       type="button"
@@ -127,6 +130,7 @@ export function ResourceInstallControl({
       disabled={disabled || pending}
       aria-busy={pending}
       aria-label={accessibleLabel}
+      aria-describedby={count === undefined ? undefined : countId}
       onClick={onAction}
     >
       {pending ? (
@@ -142,7 +146,25 @@ export function ResourceInstallControl({
       )}
     </Button>
   );
-  return withTooltip(control, presentation === "icon" ? tooltip : undefined);
+  const tipped = withTooltip(
+    control,
+    presentation === "icon" ? tooltip : undefined,
+  );
+  if (count === undefined) return tipped;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {
+}
+      <span
+        id={countId}
+        aria-label={count.accessibleLabel}
+        className="shrink-0 whitespace-nowrap text-2xs text-subtle-foreground"
+      >
+        {count.display}
+      </span>
+      {tipped}
+    </span>
+  );
 }
 
 export function ResourceInstalledControl({

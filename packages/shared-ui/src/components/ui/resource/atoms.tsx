@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Icon, type IconName } from "../icon";
 import {
   Tooltip,
@@ -90,7 +90,7 @@ export function ResourceMeta({
 }) {
   const visibleItems = items.filter(Boolean);
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5">
       {visibleItems.map((item, index) => (
         <span key={index} className="inline-flex min-w-0 items-center gap-1.5">
           {index > 0 ? (
@@ -101,6 +101,40 @@ export function ResourceMeta({
           <span className="min-w-0 truncate">{item}</span>
         </span>
       ))}
+    </span>
+  );
+}
+
+export const RESOURCE_ICON_FRAME_SIZES = {
+  sm: { frame: "size-5", glyph: "size-3" },
+  md: { frame: "size-6", glyph: "size-3.5" },
+  lg: { frame: "size-8", glyph: "size-[1.125rem]" },
+} as const;
+
+export type ResourceIconFrameSize = keyof typeof RESOURCE_ICON_FRAME_SIZES;
+
+export function ResourceIconFrame({
+  size = "md",
+  className,
+  style,
+  children,
+}: {
+  size?: ResourceIconFrameSize;
+  className?: string;
+  style?: CSSProperties;
+  children: (glyphClassName: string) => ReactNode;
+}) {
+  const { frame, glyph } = RESOURCE_ICON_FRAME_SIZES[size];
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center overflow-hidden",
+        frame,
+        className,
+      )}
+      style={style}
+    >
+      {children(glyph)}
     </span>
   );
 }
@@ -123,18 +157,23 @@ export function ResourceLocationMeta({
 export function ResourceCardStat({
   icon,
   iconClassName,
+  className,
   accessibleLabel,
   children,
 }: {
   icon: IconName;
   iconClassName?: string;
+  className?: string;
   accessibleLabel?: string;
   children: ReactNode;
 }) {
   return (
     <span
       aria-label={accessibleLabel}
-      className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap px-1 text-muted-foreground"
+      className={cn(
+        "inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap px-1 text-muted-foreground",
+        className,
+      )}
     >
       <Icon
         name={icon}

@@ -1,5 +1,5 @@
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { ShowcaseExampleCard } from "@/components/showcase-hero/ShowcaseArchetypeCards";
+import { ShowcaseExampleCard } from "@bb/showcase-hero";
 import {
   BROWSE_ARCHETYPES,
   UTILITY_EXAMPLES,
@@ -32,7 +32,7 @@ export function BrowseArchetypeCards({
             />
           ))}
         </div>
-        <h4 className="mt-5 text-2xs font-medium text-subtle-foreground">
+        <h4 className="mt-5 text-xs font-medium text-subtle-foreground">
           Explore plugin capabilities
         </h4>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">

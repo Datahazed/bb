@@ -284,6 +284,7 @@ interface PersistentResponsiveDrawerShellProps {
   describedBy?: string;
   contentClassName?: string;
   motionDurationMs?: number;
+  placement?: "bottom" | "right";
   onContentAnimationEnd?: (open: boolean) => void;
   children: React.ReactNode;
 }
@@ -439,6 +440,7 @@ export function PersistentResponsiveDrawerShell({
   describedBy,
   contentClassName,
   motionDurationMs = 220,
+  placement = "bottom",
   onContentAnimationEnd,
   children,
 }: PersistentResponsiveDrawerShellProps) {
@@ -447,6 +449,9 @@ export function PersistentResponsiveDrawerShell({
   const dragRef = React.useRef<PersistentDrawerDrag | null>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
   const settledStateRef = React.useRef<boolean | null>(null);
+  const [rightEntryReady, setRightEntryReady] = React.useState(
+    () => placement !== "right" || !open,
+  );
   const labelId = React.useId();
   const portalScopeProps = usePortalScopeProps();
   const transition = `transform ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
@@ -460,6 +465,24 @@ export function PersistentResponsiveDrawerShell({
     resetDrawerKeyboardStyles(panelRef.current);
     onOpenChangeRef.current(false);
   }, []);
+
+  React.useEffect(() => {
+    if (placement !== "right" || !open || rightEntryReady) {
+      return;
+    }
+    let secondFrame: number | null = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() =>
+        setRightEntryReady(true),
+      );
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [open, placement, rightEntryReady]);
+
+  const panelVisuallyOpen = open && (placement !== "right" || rightEntryReady);
 
   const reportSettled = React.useCallback(
     (settledOpen: boolean) => {
@@ -645,11 +668,17 @@ export function PersistentResponsiveDrawerShell({
         role="dialog"
         tabIndex={-1}
         className={cn(
-          "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[92dvh] flex-col rounded-t-xl border bg-background outline-none",
+          placement === "bottom"
+            ? "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[92dvh] flex-col rounded-t-xl border bg-background outline-none"
+            : "fixed inset-0 z-50 flex h-dvh w-full flex-col bg-background outline-none",
           contentClassName,
         )}
         style={{
-          transform: open ? "translate3d(0, 0, 0)" : "translate3d(0, 100%, 0)",
+          transform: panelVisuallyOpen
+            ? "translate3d(0, 0, 0)"
+            : placement === "bottom"
+              ? "translate3d(0, 100%, 0)"
+              : "translate3d(100%, 0, 0)",
           transition,
           willChange: open ? "transform" : undefined,
         }}
@@ -662,16 +691,18 @@ export function PersistentResponsiveDrawerShell({
           }
         }}
       >
-        <div
-          data-persistent-drawer-handle=""
-          className="mx-auto flex h-8 w-16 shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
-          onPointerDown={handleDragStart}
-          onPointerMove={handleDragMove}
-          onPointerUp={(event) => finishDrag(event, false)}
-          onPointerCancel={(event) => finishDrag(event, true)}
-        >
-          <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
-        </div>
+        {placement === "bottom" ? (
+          <div
+            data-persistent-drawer-handle=""
+            className="mx-auto flex h-8 w-16 shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
+            onPointerDown={handleDragStart}
+            onPointerMove={handleDragMove}
+            onPointerUp={(event) => finishDrag(event, false)}
+            onPointerCancel={(event) => finishDrag(event, true)}
+          >
+            <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
+          </div>
+        ) : null}
         {srLabel === undefined ? null : (
           <h2 id={labelId} className="sr-only">
             {srLabel}

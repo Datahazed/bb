@@ -2,11 +2,18 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import { CatalogEntryIcon } from "./plugin-ui";
+import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
+import {
+  CatalogEntryIcon,
+  PluginCategoryLabel,
+  pluginCatalogCategoryAccentStyle,
+  pluginCatalogCategoryMutedAccentStyle,
+  pluginCatalogCategoryPillStyle,
+} from "./plugin-ui";
 
 afterEach(cleanup);
 
-it("masks a tinted icon instead of embedding it as an image", () => {
+it("renders author artwork as supplied even when catalog metadata marks it tinted", () => {
   const iconUrl = "/api/v1/plugin-catalog/icons/bb-community/agent-proxy?h=ab";
   const view = render(
     <CatalogEntryIcon
@@ -20,10 +27,10 @@ it("masks a tinted icon instead of embedding it as an image", () => {
     />,
   );
 
-  expect(view.container.querySelector("img")).toBeNull();
-  expect(
-    view.container.querySelector(`[data-plugin-icon-asset="${iconUrl}"]`),
-  ).toBeTruthy();
+  expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
+    iconUrl,
+  );
+  expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
 });
 
 it("embeds a marketplace listing's logo as an image", () => {
@@ -38,4 +45,36 @@ it("embeds a marketplace listing's logo as an image", () => {
   expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
     iconUrl,
   );
+});
+
+it("uses semantic category ink without changing the stronger pill fill", () => {
+  const view = render(
+    <PluginCategoryLabel
+      categoryId="memory-and-context"
+      label="Memory & Context"
+    />,
+  );
+
+  const pill = view.getByText("Memory & Context");
+  expect(pill.style.background).toBe(
+    "color-mix(in oklab, var(--success) 16%, var(--canvas))",
+  );
+  expect(pill.style.color).toBe(
+    "color-mix(in oklab, var(--success) 52%, var(--ink))",
+  );
+});
+
+it("derives every category treatment from the canonical category token", () => {
+  for (const category of PLUGIN_CATALOG_CATEGORIES) {
+    expect(pluginCatalogCategoryPillStyle(category.id)).toEqual({
+      background: `color-mix(in oklab, var(${category.accentToken}) 16%, var(--canvas))`,
+      color: `color-mix(in oklab, var(${category.accentToken}) 52%, var(--ink))`,
+    });
+    expect(pluginCatalogCategoryMutedAccentStyle(category.id)).toEqual({
+      background: `color-mix(in oklab, var(${category.accentToken}) 55%, var(--canvas))`,
+    });
+    expect(pluginCatalogCategoryAccentStyle(category.id)).toEqual({
+      background: `var(${category.accentToken})`,
+    });
+  }
 });

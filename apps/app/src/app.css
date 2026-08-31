@@ -1,6 +1,11 @@
 @import "@fontsource-variable/inter";
 @import "@/components/ui/theme.css";
 
+/* This source-only workspace package resolves through a node_modules symlink,
+ * which Tailwind v4 does not auto-scan. Keep its portable hero utilities in
+ * the app build while the package's own CSS supplies only the animations. */
+@source "../../../packages/showcase-hero/src";
+
 @layer base {
   /*
    * Keep the real app shell from becoming a second scroll container. These
@@ -405,6 +410,55 @@
  * The mobile path still owns its React state so software-keyboard expansion
  * remains synchronized with visualViewport changes.
  */
+/*
+ * Browse shelf preview: complete rows at every width.
+ *
+ * Columns and the visible-card cutoff now key off the same container. They
+ * used to disagree — the grid gained a third column from its own width at
+ * about 1060px, while the fifth and sixth cards waited on a 1280px viewport
+ * breakpoint, so for that whole band a shelf drew three cards and then one
+ * card alone on a second row. A viewport breakpoint could never have matched
+ * the column count anyway: opening the detail panel changes the grid's width
+ * without changing the viewport's.
+ *
+ * One column takes four cards, two columns take four, three take six. Every
+ * count divides its column count, and both multi-column counts are even.
+ */
+[data-plugin-shelf] {
+  container: plugin-shelf / inline-size;
+}
+
+[data-plugin-shelf-grid] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container plugin-shelf (min-width: 32.5rem) {
+  [data-plugin-shelf-grid] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container plugin-shelf (min-width: 49rem) {
+  [data-plugin-shelf-grid] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/*
+ * Stated as a max-width so the cards that stay simply keep their own
+ * display. Toggling one back on would have to name the card's display mode
+ * here, and `revert` resolves to the user-agent value, not the card's.
+ *
+ * Unlayered, like the composer container rules below: hiding a card has to
+ * beat the `grid` display utility on the card itself, and a rule in
+ * @layer components loses to the utilities layer no matter its specificity.
+ */
+@container plugin-shelf (max-width: 48.999rem) {
+  [data-plugin-shelf-grid] > :nth-child(n + 5) {
+    display: none;
+  }
+}
+
 @container promptbox-shell (max-width: 30rem) {
   [data-follow-up-composer] {
     --follow-up-composer-container-compact: true;
@@ -744,60 +798,5 @@
 @media (prefers-reduced-motion: reduce) {
   .bb-search-flash {
     animation: none;
-  }
-}
-
-/* Browse hero (Extensions → Browse): the archetype chips orbiting the mini bb
- * window drift slowly so the hero reads as alive without competing with the
- * composer sitting in the middle of it. Duration and delay are per-chip custom
- * properties so each chip drifts out of phase with its neighbours from one
- * shared rule. */
-@keyframes bb-hero-drift {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(0, -6px, 0);
-  }
-}
-
-.bb-hero-chip {
-  animation: bb-hero-drift var(--bb-hero-drift-duration, 6s) ease-in-out
-    infinite;
-  animation-delay: var(--bb-hero-drift-delay, 0s);
-}
-
-/* Autoplay progress for the active slide segment. The element is keyed by slide
- * in React, so a slide change remounts it and restarts the animation from zero
- * rather than needing an imperative reset. */
-@keyframes bb-hero-progress {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
-}
-
-.bb-hero-progress-fill {
-  transform-origin: left center;
-  animation: bb-hero-progress var(--bb-hero-slide-duration, 5s) linear forwards;
-}
-
-.bb-hero-progress-fill[data-paused="true"] {
-  animation-play-state: paused;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bb-hero-chip {
-    animation: none;
-  }
-
-  /* No autoplay under reduced motion, so the segment shows a resting full
-   * state instead of an animation frozen at zero width. */
-  .bb-hero-progress-fill {
-    animation: none;
-    transform: scaleX(1);
   }
 }
