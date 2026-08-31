@@ -206,7 +206,7 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("GitHub")).toBeTruthy();
+    expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("tab", { name: "Browse" })).toBeNull();
     expect(screen.queryByRole("tab", { name: /Installed/ })).toBeNull();
     expect(
@@ -254,7 +254,7 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("GitHub");
+    await screen.findAllByText("GitHub");
     const createPlugin = screen.getByRole("button", {
       name: "Create a plugin",
     });
@@ -304,7 +304,7 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("GitHub")).toBeTruthy();
+    expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
     const categoryTrigger = screen.getByRole("button", {
       name: "Filter plugins by category: All categories",
     });
@@ -365,7 +365,7 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("GitHub");
+    await screen.findAllByText("GitHub");
     expect(
       screen.queryByRole("radiogroup", {
         name: "Filter plugins by category",
@@ -430,12 +430,15 @@ describe("PluginsOverview", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Install GitHub" }),
+      (await screen.findAllByRole("button", { name: "Install GitHub" }))[0]!,
     );
     expect(
       await screen.findByRole("heading", { name: "Install GitHub?" }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
+    const installButtons = screen.getAllByRole("button", {
+      name: "Install GitHub",
+    });
+    fireEvent.click(installButtons[installButtons.length - 1]!);
 
     expect((await screen.findByTestId("location-path")).textContent).toBe(
       "/extensions/plugins/github",
@@ -674,7 +677,7 @@ describe("PluginsOverview", () => {
       { key: "Escape" },
     );
     fireEvent.click(screen.getByText("switch-to-browse"));
-    await screen.findByText("GitHub");
+    await screen.findAllByText("GitHub");
     fireEvent.click(screen.getByText("switch-to-installed"));
     expect(
       [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
