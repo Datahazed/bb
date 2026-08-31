@@ -405,12 +405,54 @@
     [data-promptbox-shell] [data-promptbox-hide-tiny] {
       display: none !important;
     }
+
+    [data-promptbox-shell] [data-promptbox-offline-machine-context] {
+      display: inline-flex !important;
+      max-inline-size: 1rem;
+      padding-inline: 0;
+    }
+
+    [data-promptbox-shell] [data-promptbox-machine-name-context] {
+      display: none !important;
+    }
+
+    [data-promptbox-shell] [data-promptbox-offline-machine-summary] {
+      gap: 0.25rem;
+      padding-inline-end: 0;
+    }
+
+    [data-promptbox-shell]
+      [data-promptbox-offline-machine-summary]
+      [data-promptbox-worktree-context] {
+      min-inline-size: 2.5rem !important;
+    }
   }
 
   @container promptbox (max-width: 22rem) {
     [data-promptbox] [data-promptbox-secondary-context],
     [data-promptbox] [data-promptbox-hide-branch-compact] {
       display: none !important;
+    }
+
+    [data-promptbox] [data-promptbox-offline-machine-context] {
+      display: inline-flex !important;
+      max-inline-size: 1rem;
+      padding-inline: 0;
+    }
+
+    [data-promptbox] [data-promptbox-machine-name-context] {
+      display: none !important;
+    }
+
+    [data-promptbox] [data-promptbox-offline-machine-summary] {
+      gap: 0.25rem;
+      padding-inline-end: 0;
+    }
+
+    [data-promptbox]
+      [data-promptbox-offline-machine-summary]
+      [data-promptbox-worktree-context] {
+      min-inline-size: 2.5rem !important;
     }
   }
 }

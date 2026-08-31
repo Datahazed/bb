@@ -8,6 +8,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { useIsElementTruncated } from "@/hooks/useIsElementTruncated";
 
 interface CopyButtonProps
   extends
@@ -63,6 +64,7 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
 interface CopyableInlineLabelProps extends ClipboardCopyOptions {
   label: string;
   tooltip: string;
+  truncatedTooltip?: string;
   className?: string;
   iconClassName?: string;
   children?: ReactNode;
@@ -72,6 +74,7 @@ export function CopyableInlineLabel({
   text,
   label,
   tooltip,
+  truncatedTooltip,
   className,
   iconClassName,
   successMessage,
@@ -82,6 +85,9 @@ export function CopyableInlineLabel({
     text,
     successMessage,
     errorMessage,
+  });
+  const { elementRef, isTruncated } = useIsElementTruncated({
+    measurementKey: text,
   });
 
   const button = (
@@ -96,7 +102,13 @@ export function CopyableInlineLabel({
       }}
       aria-label={label}
     >
-      <span className="min-w-0 truncate">{children ?? text}</span>
+      <span
+        ref={elementRef}
+        className="min-w-0 truncate"
+        data-copyable-inline-label-text=""
+      >
+        {children ?? text}
+      </span>
       <Icon
         name={copied ? "Check" : "Copy"}
         className={cn("size-3.5 shrink-0 text-muted-foreground", iconClassName)}
@@ -107,7 +119,9 @@ export function CopyableInlineLabel({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipContent>
+        {isTruncated && truncatedTooltip ? truncatedTooltip : tooltip}
+      </TooltipContent>
     </Tooltip>
   );
 }

@@ -152,6 +152,31 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
+  it("keeps offline status when responsive machine identity collapses", () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          environmentLabel="Design system polish"
+          environmentCompactLabel="Design system polish"
+          environmentIcon="FolderGit"
+          environmentTypeLabel="Worktree"
+          machineName="Build Mac mini"
+          machineConnected={false}
+        />
+      </TooltipProvider>,
+    );
+
+    const offlineIcon = screen.getByRole("img", { name: "Offline" });
+    expect(
+      offlineIcon.closest("[data-promptbox-offline-machine-context]"),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByLabelText("Machine: Build Mac mini, offline")
+        .closest("[data-promptbox-machine-name-context]"),
+    ).not.toBeNull();
+  });
+
   it("renders Git checkout context in the composer summary", () => {
     render(
       <TooltipProvider delayDuration={0}>

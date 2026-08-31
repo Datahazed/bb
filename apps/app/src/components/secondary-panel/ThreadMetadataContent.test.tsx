@@ -18,6 +18,7 @@ import {
   MachineRow,
   ParentSelectorRow,
   ThreadMetadataCard,
+  WorkspacePathRow,
 } from "./ThreadMetadataContent";
 import { parentThreads } from "./ThreadMetadataContent.fixtures";
 
@@ -100,6 +101,20 @@ function mockMachineNameTruncation(isTruncated: boolean): void {
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
     function scrollWidth(this: HTMLElement) {
       if (!this.hasAttribute("data-machine-name-text")) return 0;
+      return isTruncated ? 200 : 100;
+    },
+  );
+}
+
+function mockCopyableLabelTruncation(isTruncated: boolean): void {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+    function clientWidth(this: HTMLElement) {
+      return this.hasAttribute("data-copyable-inline-label-text") ? 100 : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+    function scrollWidth(this: HTMLElement) {
+      if (!this.hasAttribute("data-copyable-inline-label-text")) return 0;
       return isTruncated ? 200 : 100;
     },
   );
@@ -373,6 +388,35 @@ describe("EnvironmentRow", () => {
     );
 
     expect(markup).not.toContain('aria-label="Create thread in worktree"');
+  });
+});
+
+describe("WorkspacePathRow", () => {
+  it("reveals the full path when its value is truncated", async () => {
+    mockCopyableLabelTruncation(true);
+    const path =
+      "/Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/components/right-panel";
+    render(
+      <TooltipProvider delayDuration={0}>
+        <WorkspacePathRow environment={makeEnvironment({ path })} />
+      </TooltipProvider>,
+    );
+
+    fireEvent.focus(screen.getByRole("button", { name: `Copy path: ${path}` }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe(path);
+  });
+
+  it("keeps the concise copy tooltip when the full path fits", async () => {
+    mockCopyableLabelTruncation(false);
+    const path = "/workspace";
+    render(
+      <TooltipProvider delayDuration={0}>
+        <WorkspacePathRow environment={makeEnvironment({ path })} />
+      </TooltipProvider>,
+    );
+
+    fireEvent.focus(screen.getByRole("button", { name: `Copy path: ${path}` }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Copy path");
   });
 });
 

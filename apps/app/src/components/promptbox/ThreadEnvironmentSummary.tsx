@@ -160,6 +160,7 @@ function MachineContext({
   return (
     <span
       data-promptbox-secondary-context=""
+      data-promptbox-offline-machine-context={connected ? undefined : ""}
       className="inline-flex h-6 w-fit max-w-[10rem] min-w-0 shrink items-center gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
     >
       {connected === false ? (
@@ -167,14 +168,16 @@ function MachineContext({
       ) : (
         <Icon name="Laptop" className="size-4 shrink-0" aria-hidden />
       )}
-      {isNameTruncated ? (
-        <Tooltip>
-          <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
-          <TooltipContent>{name}</TooltipContent>
-        </Tooltip>
-      ) : (
-        nameDisplay
-      )}
+      <span data-promptbox-machine-name-context="" className="contents">
+        {isNameTruncated ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
+            <TooltipContent>{name}</TooltipContent>
+          </Tooltip>
+        ) : (
+          nameDisplay
+        )}
+      </span>
     </span>
   );
 }
@@ -207,7 +210,12 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
 
   const checkoutCopyAction = environmentCheckout?.copyAction ?? null;
   return (
-    <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
+    <div
+      data-promptbox-offline-machine-summary={
+        machineName && machineConnected === false ? "" : undefined
+      }
+      className="flex min-w-0 max-w-full items-center gap-2 pr-1.5"
+    >
       {projectName ? (
         <span data-promptbox-secondary-context="" className="contents">
           <OptionDisplay

@@ -497,6 +497,7 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
         text={environment.path}
         label={`Copy path: ${environment.path}`}
         tooltip="Copy path"
+        truncatedTooltip={environment.path}
         successMessage="Path copied"
         errorMessage="Failed to copy path"
       />
