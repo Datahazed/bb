@@ -42,6 +42,7 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import {
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_IDLE_STATUS_COLOR_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
@@ -50,6 +51,7 @@ import {
 import { SidebarWindowedItems } from "./SidebarWindowedItems";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 
 export interface SidebarDraftRowItem {
   id: string;
@@ -213,6 +215,7 @@ function SidebarDraftRow({
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const rowTargetRef = useRef<HTMLButtonElement>(null);
   const actionsOpen = dropdownOpen || contextOpen;
   const draftSplit = usePaneContentSplitDrag({
     content: { kind: "new-thread", draftSlotId: draft.id },
@@ -235,11 +238,26 @@ function SidebarDraftRow({
       )}
     >
       <button
+        ref={rowTargetRef}
         type="button"
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
         aria-label={`Open draft ${draft.title}`}
         onClick={() => onOpenDraft(draft.id)}
       />
+      <SidebarItemStatusSlot
+        status="draft"
+        tooltip="Draft"
+        onActivate={() => rowTargetRef.current?.click()}
+      >
+        <Icon
+          name="Edit"
+          className={cn(
+            COARSE_POINTER_ICON_SIZE_CLASS,
+            SIDEBAR_IDLE_STATUS_COLOR_CLASS,
+          )}
+          aria-hidden="true"
+        />
+      </SidebarItemStatusSlot>
       <span
         className={cn(
           SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
@@ -248,12 +266,6 @@ function SidebarDraftRow({
       >
         <span className="min-w-0 truncate" title={draft.title}>
           {draft.title}
-        </span>
-        <span
-          data-sidebar-draft-state=""
-          className="ml-auto shrink-0 text-xs text-muted-foreground transition-opacity group-hover/draft-row:opacity-0 group-focus-within/draft-row:opacity-0"
-        >
-          Draft
         </span>
       </span>
       <span
@@ -339,6 +351,7 @@ function SidebarArchivedThreadRow({
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const rowTargetRef = useRef<HTMLAnchorElement>(null);
   const actionsOpen = dropdownOpen || contextOpen;
   const title = getThreadDisplayTitle(thread);
 
@@ -362,6 +375,7 @@ function SidebarArchivedThreadRow({
       )}
     >
       <NavLink
+        ref={rowTargetRef}
         to={getThreadRoutePath({
           projectId: thread.projectId,
           threadId: thread.id,
@@ -372,6 +386,20 @@ function SidebarArchivedThreadRow({
         aria-label={`Open archived thread ${title}`}
         onClick={onNavigate}
       />
+      <SidebarItemStatusSlot
+        status="archived"
+        tooltip="Archived"
+        onActivate={() => rowTargetRef.current?.click()}
+      >
+        <Icon
+          name="Archive"
+          className={cn(
+            COARSE_POINTER_ICON_SIZE_CLASS,
+            SIDEBAR_IDLE_STATUS_COLOR_CLASS,
+          )}
+          aria-hidden="true"
+        />
+      </SidebarItemStatusSlot>
       <span
         className={cn(
           SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
@@ -380,12 +408,6 @@ function SidebarArchivedThreadRow({
       >
         <span className="min-w-0 truncate" title={title}>
           {title}
-        </span>
-        <span
-          data-sidebar-archived-state=""
-          className="ml-auto shrink-0 text-xs text-muted-foreground transition-opacity group-hover/archived-thread-row:opacity-0 group-focus-within/archived-thread-row:opacity-0"
-        >
-          Archived
         </span>
       </span>
       <span

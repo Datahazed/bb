@@ -97,7 +97,7 @@ function renderLifecycleRows(
   return render(
     <Provider store={store}>
       <CompactViewportOverrideProvider isCompactViewport={compact}>
-        <TooltipProvider>
+        <TooltipProvider delayDuration={0}>
           <MemoryRouter>{children}</MemoryRouter>
         </TooltipProvider>
       </CompactViewportOverrideProvider>
@@ -125,7 +125,7 @@ describe("SidebarDraftRows", () => {
     ];
   }
 
-  it("keeps the input's newest-first order and opens the selected slot", () => {
+  it("keeps newest-first order and a persistent leading Draft status", async () => {
     const drafts = createDrafts();
     const onOpenDraft = vi.fn();
     const { container } = renderLifecycleRows(
@@ -139,20 +139,19 @@ describe("SidebarDraftRows", () => {
       "newest",
       "older",
     ]);
-    expect(container.querySelector('[data-icon="EditFile"]')).toBeNull();
+    expect(container.querySelectorAll('[data-icon="Edit"]')).toHaveLength(2);
     expect(screen.getByText("Drafts")).not.toBeNull();
     expect(
       container.querySelectorAll('[data-sidebar-item-status="draft"]'),
     ).toHaveLength(2);
-    expect(screen.getAllByLabelText("Draft")).toHaveLength(2);
+    expect(screen.queryByText("Draft")).toBeNull();
+
+    const draftStatus = screen.getAllByRole("img", { name: "Draft" })[0]!;
     expect(
-      rows.every(
-        (row) =>
-          row.querySelector('[data-sidebar-row-slot="status"]') !== null &&
-          row.querySelector('[data-sidebar-row-slot="body"]') !== null &&
-          row.querySelector('[data-sidebar-row-slot="actions"]') !== null,
-      ),
-    ).toBe(true);
+      draftStatus.classList.contains("bb-sidebar-hover-actions-fade"),
+    ).toBe(false);
+    fireEvent.pointerMove(draftStatus);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Draft");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open draft Older draft" }),
@@ -282,7 +281,7 @@ describe("SidebarArchivedThreadGroup", () => {
     createThread("third", "Third archived"),
   ];
 
-  it("renders one labeled group in archive-query order and opens a thread", () => {
+  it("renders one labeled group with persistent leading Archived statuses", () => {
     const onNavigate = vi.fn();
     const { container } = renderLifecycleRows(
       <SidebarArchivedThreadGroup
@@ -305,12 +304,10 @@ describe("SidebarArchivedThreadGroup", () => {
       "second",
       "third",
     ]);
+    expect(container.querySelectorAll('[data-icon="Archive"]')).toHaveLength(3);
     expect(
       container.querySelectorAll('[data-sidebar-item-status="archived"]'),
     ).toHaveLength(3);
-    expect(container.querySelectorAll('[data-icon="Archive"]')).toHaveLength(
-      3,
-    );
     const secondLink = screen.getByRole("link", {
       name: "Open archived thread Second archived",
     });
@@ -321,7 +318,7 @@ describe("SidebarArchivedThreadGroup", () => {
     expect(onNavigate).toHaveBeenCalledOnce();
   });
 
-  it("keeps the archived state in the fixed status rail and offers Unarchive from both menus", () => {
+  it("keeps the Archived status while revealing quick Unarchive and both menus", async () => {
     const { container } = renderLifecycleRows(
       <SidebarArchivedThreadGroup
         threads={[archivedThreads[0]!]}
@@ -331,22 +328,12 @@ describe("SidebarArchivedThreadGroup", () => {
       />,
     );
 
-    const archivedState = container.querySelector<HTMLElement>(
-      '[data-sidebar-item-status="archived"]',
-    );
-    expect(archivedState?.getAttribute("aria-label")).toBe("Archived");
+    const archivedState = screen.getByRole("img", { name: "Archived" });
     expect(
-      archivedState?.closest('[data-sidebar-row-slot="status"]'),
-    ).not.toBeNull();
-    const archivedRow = archivedState?.closest(
-      "[data-sidebar-archived-thread-id]",
-    );
-    expect(
-      archivedRow?.querySelector('[data-sidebar-row-slot="body"]'),
-    ).not.toBeNull();
-    expect(
-      archivedRow?.querySelector('[data-sidebar-row-slot="actions"]'),
-    ).not.toBeNull();
+      archivedState.classList.contains("bb-sidebar-hover-actions-fade"),
+    ).toBe(false);
+    fireEvent.pointerMove(archivedState);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Archived");
     fireEvent.click(screen.getByRole("button", { name: "Unarchive thread" }));
     expect(threadActions.unarchiveThread).toHaveBeenCalledWith(
       archivedThreads[0],

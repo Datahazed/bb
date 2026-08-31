@@ -16,6 +16,10 @@ interface SidebarItemStatusSlotProps {
   tooltip?: string;
 }
 
+/**
+ * The fixed status cell shared by sidebar item rows. Empty rows retain the
+ * cell so status changes and hover actions never move adjacent content.
+ */
 export function SidebarItemStatusSlot({
   children,
   hoverAction,

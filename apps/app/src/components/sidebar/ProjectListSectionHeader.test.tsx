@@ -144,8 +144,8 @@ describe("TopLevelSidebarSection", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
-    const mobileStatusSlot = trailingControls?.querySelector(
-      "[data-sidebar-mobile-status-slot]",
+    const groupStatusSlot = row?.querySelector(
+      "[data-sidebar-group-status-slot]",
     );
     const action = screen.getByRole("button", { name: "Section action" });
 
@@ -164,9 +164,13 @@ describe("TopLevelSidebarSection", () => {
     expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(mobileStatusSlot).not.toBeNull();
+    expect(groupStatusSlot).not.toBeNull();
     expect(
-      mobileStatusSlot!.compareDocumentPosition(action) &
+      label.compareDocumentPosition(groupStatusSlot!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      groupStatusSlot!.compareDocumentPosition(action) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
   });
@@ -211,10 +215,14 @@ describe("TopLevelSidebarSection", () => {
       </Provider>,
     );
 
+    const splitIndicator = screen.getByRole("img", {
+      name: "Pinned — contains a thread open in split",
+    });
     expect(
-      screen.getByRole("img", {
-        name: "Pinned — contains a thread open in split",
-      }),
+      splitIndicator.closest("[data-sidebar-item-status-slot]"),
+    ).not.toBeNull();
+    expect(
+      splitIndicator.closest("[data-sidebar-group-status-slot]"),
     ).not.toBeNull();
     expect(screen.queryByText("Pinned thread")).toBeNull();
   });

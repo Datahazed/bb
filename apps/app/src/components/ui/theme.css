@@ -311,10 +311,9 @@
     opacity: 1;
   }
 
-  /* Row content beside a hover-actions overlay that grows past its rest slot
-   * (the thread row's archive button sits left of the menu trigger). Reserve
-   * one action width under the same row states that reveal the overlay, so the
-   * title truncates instead of running under the button. */
+  /* Row content beside a hover-actions overlay that grows past its rest slot.
+   * Reserve one action width under the same row states that reveal the overlay,
+   * so the title truncates instead of running under the button. */
   .bb-sidebar-hover-actions-inset {
     transition-property: padding;
     transition-duration: 0ms;
@@ -327,20 +326,6 @@
     )
     .bb-sidebar-hover-actions-inset {
     padding-right: 1.5rem;
-  }
-
-  /* A parent thread also owns the final caret slot, so its extra action width
-   * is present at rest. Hover changes only opacity; title and caret geometry
-   * stay fixed. */
-  .bb-sidebar-collapsible-hover-actions-inset {
-    padding-right: 1.5rem;
-  }
-
-  /* The caret is intentionally hidden at rest on fine pointers. Let the
-   * existing status occupy that final slot until hover/focus replaces it with
-   * the caret, while preserving the full action inset and stable row width. */
-  .bb-sidebar-collapsible-status-slot {
-    transform: translateX(calc(1.5rem + 0.5rem));
   }
 
   .bb-sidebar-hover-actions-fade {
@@ -357,14 +342,8 @@
 
   @media (max-width: 767px) and (pointer: coarse) {
     /* The overlay is hidden on coarse phones, so no room is reserved. */
-    .bb-sidebar-hover-actions-row .bb-sidebar-hover-actions-inset,
-    .bb-sidebar-hover-actions-row .bb-sidebar-collapsible-hover-actions-inset {
+    .bb-sidebar-hover-actions-row .bb-sidebar-hover-actions-inset {
       padding-right: 0;
-    }
-
-    /* Coarse mobile exposes status, overflow, and caret simultaneously. */
-    .bb-sidebar-collapsible-status-slot {
-      transform: none;
     }
 
     .bb-sidebar-hover-actions-row:hover:not(:has(:focus-visible))
@@ -414,6 +393,14 @@
     );
 
     margin-bottom: var(--bb-sidebar-sticky-toolbar-gap);
+  }
+
+  /* The thread toolbar replaces the top-level seam only when another sidebar
+     region precedes it. If Threads is reordered first, there is no boundary to
+     draw, but the controls keep the same right-aligned toolbar position. */
+  [data-sidebar-region="threads"]:not([data-sidebar-integrated-divider])
+    [data-sidebar-thread-list-divider] {
+    visibility: hidden;
   }
 
   [data-sidebar-sticky-stack] [data-sidebar-sticky-tier="project"] {
