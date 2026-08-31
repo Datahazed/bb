@@ -83,6 +83,7 @@ const GITHUB_CATALOG_ENTRY = {
   description: "Browse GitHub issues and pull requests in BB.",
   icon: "Github",
   iconUrl: null,
+  categoryId: "code-and-reviews",
   category: "Developer tools",
   source: "github-release:ymichael/bb/bb-plugin-github-{version}.tgz@^0.1.0",
   marketplace: "bb-community",
@@ -103,7 +104,8 @@ const AUTOMATIONS_CATALOG_ENTRY = {
   displayName: "Automations",
   description: AUTOMATIONS_PLUGIN.description,
   icon: AUTOMATIONS_PLUGIN.icon,
-  category: "Workflow management",
+  categoryId: "tasks-workflows",
+  category: "Tasks & Workflows",
   source: AUTOMATIONS_PLUGIN.source,
   installed: true,
 };
@@ -115,7 +117,8 @@ const DOCS_CATALOG_ENTRY = {
   displayName: "Docs",
   description: "Create and edit Markdown documents.",
   icon: "NotebookText",
-  category: "Context & knowledge",
+  categoryId: "files-and-viewers",
+  category: "File Viewers & Editors",
   source: "builtin:docs",
   installed: true,
 };
@@ -302,13 +305,14 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("GitHub")).toBeTruthy();
-    const categoryTrigger = screen.getByRole("button", { name: "Category" });
+    const categoryTrigger = screen.getByRole("button", {
+      name: "Filter plugins by category: All categories",
+    });
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
-    fireEvent.pointerDown(categoryTrigger);
+    fireEvent.click(categoryTrigger);
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Context & knowledge" }),
+      screen.getByRole("option", { name: /File Viewers & Editors/u }),
     );
-    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByText("Docs")).toBeTruthy();
     expect(screen.queryByText("GitHub")).toBeNull();
   });
@@ -374,8 +378,10 @@ describe("PluginsOverview", () => {
     ).toBeNull();
     const search = screen.getByRole("textbox", { name: "Search plugins" });
     const toolbar = search.parentElement?.parentElement as HTMLElement;
-    const category = screen.getByRole("button", { name: "Category" });
-    const sort = screen.getByRole("button", { name: /^Sort:/ });
+    const category = screen.getByRole("button", {
+      name: "Filter plugins by category: All categories",
+    });
+    const sort = screen.getByRole("button", { name: "Sort plugins" });
     expect(toolbar.contains(category)).toBe(true);
     expect(toolbar.contains(sort)).toBe(true);
     const heroHeading = screen.getByRole("heading", { level: 2 });
