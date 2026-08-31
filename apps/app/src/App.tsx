@@ -58,6 +58,7 @@ import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { AppLocalStateInitialization } from "./components/AppLocalStateInitialization";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -338,6 +339,7 @@ export function App() {
 
   return (
     <QuickCreateProjectProvider>
+      <AppLocalStateInitialization />
       <AppCommandProvider>
         <RouteNavigationProvider>
           <RouteNavigationIndicator />
@@ -352,7 +354,6 @@ export function App() {
                 />
                 <Route path="*" element={<AppRoutes />} />
               </Routes>
-              {}
               <ProviderCliInstallLogDialogHost />
             </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>

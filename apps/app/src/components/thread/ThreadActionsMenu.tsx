@@ -253,9 +253,11 @@ function ThreadActionsMenuItems({
 export function ThreadArchiveQuickAction({
   thread,
   className,
+  showLabel = false,
 }: {
   thread: Thread;
   className?: string;
+  showLabel?: boolean;
 }) {
   const { archiveThreadAndChildren, unarchiveThread } = useThreadActions();
   const isArchived = thread.archivedAt != null;
@@ -266,7 +268,7 @@ export function ThreadArchiveQuickAction({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
+          size={showLabel ? "sm" : "icon"}
           className={cn("rounded-md p-0", className)}
           aria-label={`${label} thread`}
           onClick={(event) => {
@@ -279,10 +281,14 @@ export function ThreadArchiveQuickAction({
             archiveThreadAndChildren(thread);
           }}
         >
-          <Icon
-            name={isArchived ? "ArchiveRestore" : "Archive"}
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
+          {showLabel ? (
+            label
+          ) : (
+            <Icon
+              name={isArchived ? "ArchiveRestore" : "Archive"}
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
+          )}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>
