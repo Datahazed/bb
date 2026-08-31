@@ -50,7 +50,11 @@ function catalogEntry(
     publisherKey: "bb-community",
     publisherLabel: "BB Community",
     official: true,
-    author: { name: "Pat Lee", url: "https://github.com/patlee" },
+    author: {
+      name: "Pat Lee",
+      github: "patlee",
+      url: "https://github.com/patlee",
+    },
     installed: false,
     installs: null,
     compatible: true,
@@ -103,14 +107,15 @@ describe("plugin discovery detail panel", () => {
         if (url.startsWith("/api/v1/plugin-catalog/search?q=")) {
           const query =
             new URL(url, "https://bb.test").searchParams.get("q") ?? "";
+          if (query.length > 0) {
+            return new Response(JSON.stringify({ error: "unavailable" }), {
+              status: 503,
+              headers: { "content-type": "application/json" },
+            });
+          }
           return new Response(
             JSON.stringify({
-              results:
-                query.length === 0
-                  ? entries
-                  : entries.filter((entry) =>
-                      entry.pluginId.includes(query.toLowerCase()),
-                    ),
+              results: entries,
             }),
             { headers: { "content-type": "application/json" } },
           );
@@ -147,7 +152,12 @@ describe("plugin discovery detail panel", () => {
     githubOpen.focus();
     fireEvent.click(githubOpen);
 
-    expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
+    const githubHeading = await screen.findByRole("heading", {
+      name: "GitHub",
+    });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(githubHeading);
+    });
     const closeFlyout = screen.getByRole("button", {
       name: /Close plugin details/u,
     });
@@ -159,6 +169,25 @@ describe("plugin discovery detail panel", () => {
       browseViewport,
     );
     expect(browseViewport.scrollTop).toBe(240);
+
+    fireEvent.click(screen.getByRole("button", { name: "Full Screen" }));
+    await waitFor(() => {
+      expect(
+        browseViewport.closest("[data-conversation-collapsed]")?.getAttribute(
+          "data-conversation-collapsed",
+        ),
+      ).toBe("true");
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Exit Full Screen" }),
+    );
+    await waitFor(() => {
+      expect(
+        browseViewport.closest("[data-conversation-collapsed]")?.getAttribute(
+          "data-conversation-collapsed",
+        ),
+      ).toBe("false");
+    });
 
     fireEvent.click(closeFlyout);
     await waitFor(() => {
@@ -182,16 +211,44 @@ describe("plugin discovery detail panel", () => {
       "/extensions/plugins/memory?sort=name",
     );
 
+    const splitLayout = document.querySelector(
+      "[data-split-resize-grid-root]",
+    );
+    const githubTab = screen.getByRole("button", { name: "GitHub" });
+    const memoryTab = screen.getByRole("button", { name: "Memory" });
+    const memoryDetailHeading = screen.getByRole("heading", {
+      name: "Memory",
+    });
+    expect(memoryTab.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("link", { name: "Pat Lee" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/extensions/plugins/memory?sort=name&author=12%3Abb-community%3Agithub%3Apatlee",
+      );
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Pat Lee" }),
+    ).toBeTruthy();
+    expect(document.querySelector("[data-split-resize-grid-root]")).toBe(
+      splitLayout,
+    );
+    expect(screen.getByRole("button", { name: "GitHub" })).toBe(githubTab);
+    expect(screen.getByRole("button", { name: "Memory" })).toBe(memoryTab);
+    expect(screen.getByRole("heading", { name: "Memory" })).toBe(
+      memoryDetailHeading,
+    );
+    expect(memoryTab.getAttribute("aria-pressed")).toBe("true");
+
     fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
     await waitFor(() => {
       expect(screen.getByTestId("location").textContent).toBe(
-        "/extensions/plugins/github?sort=name",
+        "/extensions/plugins/github?sort=name&author=12%3Abb-community%3Agithub%3Apatlee",
       );
     });
     fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
     await waitFor(() => {
       expect(screen.getByTestId("location").textContent).toBe(
-        "/extensions/plugins/memory?sort=name",
+        "/extensions/plugins/memory?sort=name&author=12%3Abb-community%3Agithub%3Apatlee",
       );
     });
     expect(screen.queryByRole("button", { name: "GitHub" })).toBeNull();
@@ -199,7 +256,7 @@ describe("plugin discovery detail panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close Memory" }));
     await waitFor(() => {
       expect(screen.getByTestId("location").textContent).toBe(
-        "/extensions/plugins?sort=name",
+        "/extensions/plugins/authors/12%3Abb-community%3Agithub%3Apatlee?sort=name",
       );
     });
     expect(screen.queryByText("This panel view is unavailable.")).toBeNull();

@@ -64,6 +64,7 @@ export const ResourceActivitySection = section("activity");
 
 export function ResourceDetailPage({
   title,
+  titleClassName,
   titleMeta,
   leading,
   lifecycleControl,
@@ -75,6 +76,7 @@ export function ResourceDetailPage({
   children,
 }: {
   title: ReactNode;
+  titleClassName?: string;
   titleMeta?: ReactNode;
   leading?: ReactNode;
   lifecycleControl?: ReactNode;
@@ -95,7 +97,12 @@ export function ResourceDetailPage({
                 {leading}
               </span>
             ) : null}
-            <h1 className="min-w-0 truncate text-base font-semibold">
+            <h1
+              className={cn(
+                "min-w-0 truncate text-base font-semibold",
+                titleClassName,
+              )}
+            >
               {title}
             </h1>
             {titleMeta ? (

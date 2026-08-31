@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { useState } from "react";
 import {
   act,
   cleanup,
@@ -22,19 +23,24 @@ const OPTIONS: PluginBrowseCategoryOption[] = [
 
 function renderFilter(
   overrides: Partial<
-    React.ComponentProps<typeof PluginBrowseCategoryFilter>
+    Extract<
+      React.ComponentProps<typeof PluginBrowseCategoryFilter>,
+      { selectionMode: "single" }
+    >
   > = {},
 ) {
   const onChange = vi.fn();
-  const result = render(
-    <PluginBrowseCategoryFilter
-      options={OPTIONS}
-      value={null}
-      totalCount={13}
-      onChange={onChange}
-      {...overrides}
-    />,
-  );
+  const props = {
+    selectionMode: "single",
+    options: OPTIONS,
+    value: null,
+    onChange,
+    ...overrides,
+  } satisfies Extract<
+    React.ComponentProps<typeof PluginBrowseCategoryFilter>,
+    { selectionMode: "single" }
+  >;
+  const result = render(<PluginBrowseCategoryFilter {...props} />);
   return { onChange, ...result };
 }
 
@@ -67,18 +73,48 @@ afterEach(() => {
 });
 
 describe("PluginBrowseCategoryFilter", () => {
+  it("fills the trigger only when a category filter is active", () => {
+    const { rerender } = renderFilter();
+    const defaultTrigger = screen.getByRole("button", {
+      name: "Filter plugins by category: All categories",
+    });
+
+    expect(defaultTrigger.classList.contains("bg-state-active")).toBe(false);
+
+    rerender(
+      <PluginBrowseCategoryFilter
+        selectionMode="single"
+        options={OPTIONS}
+        value="security"
+        onChange={vi.fn()}
+      />,
+    );
+    const activeTrigger = screen.getByRole("button", {
+      name: "Filter plugins by category: Security",
+    });
+
+    expect(activeTrigger.classList.contains("bg-state-active")).toBe(true);
+    expect(activeTrigger.classList.contains("text-foreground")).toBe(true);
+  });
+
   it("lists the taxonomy without a category-count label", () => {
     renderFilter();
     openMenu("All categories");
 
-    expect(screen.getAllByRole("option")).toHaveLength(OPTIONS.length + 1);
+    expect(screen.getAllByRole("option")).toHaveLength(OPTIONS.length);
     expect(screen.queryByText(/^\d+ categories$/u)).toBeNull();
+    expect(
+      screen.queryByRole("option", { name: /All categories/u }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Clear filter" }),
+    ).toBeNull();
     const security = screen.getByRole("option", { name: /Security/u });
     const count = security.querySelector("[data-category-option-count]");
     expect(count?.textContent).toBe("2");
     expect(count?.classList.contains("rounded-full")).toBe(true);
     expect(count?.classList.contains("p-1.5")).toBe(true);
-    expect(count?.classList.contains("bg-muted")).toBe(true);
+    expect(count?.classList.contains("bg-surface-recessed")).toBe(true);
     expect(security.children[0]?.classList.contains("w-8")).toBe(true);
     expect(security.children[1]?.textContent).toBe("Security");
     expect(
@@ -86,17 +122,10 @@ describe("PluginBrowseCategoryFilter", () => {
         "data-state",
       ),
     ).toBe("disabled");
-    expect(
-      screen
-        .getByRole("option", { name: /All categories/u })
-        .querySelector("[data-category-option-checkbox]")
-        ?.getAttribute("data-state"),
-    ).toBe("enabled");
-
     const search = screen.getByRole("combobox", {
       name: "Search plugin categories",
     });
-    expect(search.parentElement?.classList.contains("mx-1.5")).toBe(true);
+    expect(search.parentElement?.classList.contains("mx-2.5")).toBe(true);
     expect(search.parentElement?.classList.contains("mt-1.5")).toBe(true);
   });
 
@@ -117,16 +146,68 @@ describe("PluginBrowseCategoryFilter", () => {
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it("still selects a different category and the explicit All row", () => {
+  it("selects a different category and clears from the footer", () => {
     const { onChange } = renderFilter({ value: "security" });
     openMenu("Security");
+    expect(
+      screen.getByRole("button", { name: "Clear filter" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: /Tasks & Workflows/u }));
     expect(onChange).toHaveBeenCalledWith("tasks-workflows");
 
     onChange.mockClear();
     openMenu("Security");
-    fireEvent.click(screen.getByRole("option", { name: /All categories/u }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("keeps a multi-select menu open while categories are toggled", () => {
+    function MultiSelectHarness() {
+      const [value, setValue] = useState<string[]>([]);
+      return (
+        <PluginBrowseCategoryFilter
+          selectionMode="multiple"
+          options={OPTIONS}
+          value={value}
+          onChange={setValue}
+        />
+      );
+    }
+    render(<MultiSelectHarness />);
+    openMenu("All categories");
+
+    fireEvent.click(screen.getByRole("option", { name: /Security/u }));
+    expect(categoryList()).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("option", { name: /Tasks & Workflows/u }),
+    );
+
+    expect(categoryList().getAttribute("aria-multiselectable")).toBe("true");
+    expect(
+      screen
+        .getByRole("option", { name: /Security/u })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("option", { name: /Tasks & Workflows/u })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: Security, Tasks & Workflows",
+      }).textContent,
+    ).toContain("2 categories");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Clear filter" }),
+    ).toBeNull();
   });
 
   it("keeps keyboard traversal and toggle-off on the focused option", () => {
@@ -137,7 +218,7 @@ describe("PluginBrowseCategoryFilter", () => {
       name: "Search plugin categories",
     });
     fireEvent.keyDown(search, { key: "ArrowDown" });
-    expect(document.activeElement?.textContent).toContain("All categories");
+    expect(document.activeElement?.textContent).toContain("Memory & Context");
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
     const last = document.activeElement as HTMLElement;

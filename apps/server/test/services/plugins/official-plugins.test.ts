@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ import {
 import {
   BUNDLED_PLUGINS,
   listBundledPluginRegistrations,
+  OFFICIAL_PLUGINS,
   type BundledPluginRegistration,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { PLUGIN_CATALOG_CATEGORIES } from "../../../src/services/plugin-catalog/plugin-category-registry.js";
@@ -128,6 +129,26 @@ describe("official plugin registry invariants", () => {
     expect(
       BUNDLED_PLUGINS.every((plugin) => validCategories.has(plugin.category)),
     ).toBe(true);
+  });
+
+  it("ships multiple listing screenshots for every store-installed official plugin", async () => {
+    const registrations = new Map(
+      listBundledPluginRegistrations().map((plugin) => [plugin.name, plugin]),
+    );
+
+    for (const plugin of OFFICIAL_PLUGINS) {
+      expect(plugin.screenshots?.length ?? 0, plugin.name).toBeGreaterThan(1);
+      const registration = registrations.get(plugin.name);
+      expect(registration, plugin.name).toBeDefined();
+      if (registration === undefined) {
+        throw new Error(`Missing bundled registration for ${plugin.name}`);
+      }
+      for (const screenshot of plugin.screenshots ?? []) {
+        await expect(
+          stat(join(registration.rootDir, screenshot)),
+        ).resolves.toBeTruthy();
+      }
+    }
   });
 });
 

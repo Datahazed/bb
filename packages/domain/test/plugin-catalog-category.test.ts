@@ -69,6 +69,33 @@ describe("plugin catalog categories", () => {
     ]);
   });
 
+  it("groups related categories through five semantic theme aliases", () => {
+    expect(
+      PLUGIN_CATALOG_CATEGORIES.map((category) => category.accentToken),
+    ).toEqual([
+      "--plugin-category-family-experience",
+      "--plugin-category-family-experience",
+      "--plugin-category-family-experience",
+      "--plugin-category-family-agent-work",
+      "--plugin-category-family-oversight",
+      "--plugin-category-family-agent-work",
+      "--plugin-category-family-oversight",
+      "--plugin-category-family-oversight",
+      "--plugin-category-family-development",
+      "--plugin-category-family-development",
+      "--plugin-category-family-environment",
+      "--plugin-category-family-environment",
+      "--plugin-category-family-environment",
+      "--plugin-category-family-development",
+      "--plugin-category-family-agent-work",
+    ]);
+    expect(
+      new Set(
+        PLUGIN_CATALOG_CATEGORIES.map((category) => category.accentToken),
+      ).size,
+    ).toBe(5);
+  });
+
   it("keeps the category vocabulary closed", () => {
     expect(pluginCatalogCategoryIdSchema.safeParse("Other").success).toBe(
       false,

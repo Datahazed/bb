@@ -35,6 +35,7 @@ export const EXTENDED_ICON_NAMES = [
   "Discord",
   "DateTime",
   "Github",
+  "GithubFilled",
   "DragDropHorizontal",
   "DragDropVertical",
   "EditFile",

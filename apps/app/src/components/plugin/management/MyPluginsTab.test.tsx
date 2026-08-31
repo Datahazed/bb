@@ -126,6 +126,7 @@ describe("MyPluginsTab", () => {
             plugin("published", "Release Notes"),
           ]}
           onOpenPlugin={onOpenPlugin}
+          onCreatePlugin={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -135,10 +136,10 @@ describe("MyPluginsTab", () => {
       "Not published · 1",
       "In review · 1",
       "Published · 1",
+      "Create another plugin",
     ]);
     expect(
-      screen.getByRole("button", { name: "Usage listing details" })
-        .textContent,
+      screen.getByRole("button", { name: "Usage listing details" }).textContent,
     ).not.toContain("Not published");
     expect(
       screen.getByRole("button", { name: "Review listing details" })
@@ -154,6 +155,77 @@ describe("MyPluginsTab", () => {
       screen.getByRole("button", { name: "Release Notes listing details" }),
     );
     expect(onOpenPlugin).toHaveBeenCalledWith("published");
+  });
+
+  it("keeps the full creation examples alongside one to four authored plugins", () => {
+    vi.mocked(usePluginListings).mockReturnValue({
+      data: {
+        records: [
+          {
+            pluginId: "usage",
+            authorship: "path",
+            lifecycle: { status: "draft", entry: draftEntry },
+          },
+        ],
+        notices: [],
+      },
+      isError: false,
+      isFetching: false,
+    } as never);
+    const onCreatePlugin = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <MyPluginsTab
+          plugins={[plugin("usage", "Usage")]}
+          onOpenPlugin={vi.fn()}
+          onCreatePlugin={onCreatePlugin}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Create another plugin")).toBeTruthy();
+    expect(screen.getByText("Video editor")).toBeTruthy();
+    expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
+    fireEvent.click(screen.getByText("Kanban board"));
+    expect(onCreatePlugin).toHaveBeenCalledOnce();
+  });
+
+  it("collapses creation examples after five authored plugins and expands them on request", () => {
+    const ids = ["one", "two", "three", "four", "five"];
+    vi.mocked(usePluginListings).mockReturnValue({
+      data: {
+        records: ids.map((id) => ({
+          pluginId: id,
+          authorship: "path" as const,
+          lifecycle: {
+            status: "draft" as const,
+            entry: { ...draftEntry, id, displayName: id },
+          },
+        })),
+        notices: [],
+      },
+      isError: false,
+      isFetching: false,
+    } as never);
+
+    render(
+      <MemoryRouter>
+        <MyPluginsTab
+          plugins={ids.map((id) => plugin(id, id))}
+          onOpenPlugin={vi.fn()}
+          onCreatePlugin={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Kanban board")).toBeTruthy();
+    expect(screen.queryByText("Video editor")).toBeNull();
+    expect(screen.queryByText("Explore plugin capabilities")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "View all examples" }));
+    expect(screen.getByText("Video editor")).toBeTruthy();
+    expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show fewer" })).toBeTruthy();
   });
 
   it("uses the exact status token treatments", () => {

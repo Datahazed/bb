@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Carousel,
   CarouselContent,
@@ -10,81 +14,175 @@ import {
 } from "@bb/shared-ui/carousel";
 import { Icon } from "@bb/shared-ui/icon";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
+import {
   ResourceBrowseCard,
   ResourceDefinitionSection,
-  ResourceDetailOverviewSection,
-  ResourceMeta,
+  ResourceShelfAction,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { getPluginAuthorRoutePath } from "@/lib/route-paths";
-import { CatalogEntryIconChip } from "./plugin-ui";
+import {
+  CatalogEntryIconChip,
+  formatAbsoluteDate,
+  PluginCategoryLabel,
+} from "./plugin-ui";
 import {
   entriesByMarketplaceAuthor,
   pluginMarketplaceAuthorId,
 } from "./plugin-marketplace-author";
-import { pluginInstalls } from "./plugin-browse-discovery";
+import { PluginAuthorLink } from "./PluginAuthorLink";
+import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 
 function repositoryLinkLabel(url: string): string {
   return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
 }
 
-export function PluginMarketplaceMetadata({
+export function PluginMarketplaceHeaderMetadata({
   entry,
 }: {
   entry: PluginCatalogSearchEntry;
 }) {
   const authorId = pluginMarketplaceAuthorId(entry);
-  const author =
-    entry.author === null || authorId === null
-      ? null
-      : { id: authorId, name: entry.author.name };
-  const updatedRelativeTime =
-    entry.updatedAt === undefined
-      ? null
-      : formatRelativeTime({
-          timestamp: Date.parse(entry.updatedAt),
-          now: Date.now(),
-        });
-  const installs = pluginInstalls(entry);
+  if (entry.author === null || authorId === null) return null;
   return (
-    <ResourceMeta
-      items={[
-        entry.category,
-        author === null ? null : (
-          <span>
-            By{" "}
-            <Link
-              to={getPluginAuthorRoutePath({ authorId: author.id })}
-              className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {author.name}
-            </Link>
-          </span>
-        ),
-        installs === undefined
-          ? null
-          : `${installs.toLocaleString()} installs`,
-        updatedRelativeTime === null ? null : `updated ${updatedRelativeTime}`,
-        entry.repositoryUrl === null ? null : (
-          <a
-            href={entry.repositoryUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            {repositoryLinkLabel(entry.repositoryUrl)}
-            <Icon
-              name="ExternalLink"
-              className="ml-0.5 inline size-3"
-              aria-hidden
-            />
-          </a>
-        ),
-      ]}
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <PluginAuthorAvatar
+        name={entry.author.name}
+        github={entry.author.github}
+        size="detail"
+      />
+      <span className="min-w-0">
+        By{" "}
+        <PluginAuthorLink
+          authorId={authorId}
+          className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {entry.author.name}
+        </PluginAuthorLink>
+      </span>
+    </span>
+  );
+}
+
+export function PluginMarketplaceCategoryPill({
+  entry,
+}: {
+  entry: PluginCatalogSearchEntry;
+}) {
+  return entry.category === undefined ? null : (
+    <PluginCategoryLabel
+      categoryId={entry.categoryId}
+      label={entry.category}
     />
   );
+}
+
+function PluginMarketplaceDetail({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <dt className="text-2xs font-medium text-subtle-foreground">{label}</dt>
+      <dd className="min-w-0 text-xs text-muted-foreground">{children}</dd>
+    </div>
+  );
+}
+
+export function PluginMarketplaceDetails({
+  entry,
+}: {
+  entry: PluginCatalogSearchEntry;
+}) {
+  const updatedAt = entry.updatedAt;
+  const updatedTimestamp =
+    updatedAt === undefined ? null : Date.parse(updatedAt);
+  const updatedRelativeTime =
+    updatedTimestamp === null
+      ? null
+      : formatRelativeTime({ timestamp: updatedTimestamp, now: Date.now() });
+  const updatedAbsoluteTime =
+    updatedTimestamp === null ? null : formatAbsoluteDate(updatedTimestamp);
+  return (
+    <ResourceDefinitionSection label="Details">
+      <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        {updatedAt === undefined ||
+        updatedRelativeTime === null ||
+        updatedAbsoluteTime === null ? null : (
+          <PluginMarketplaceDetail label="Last updated">
+            <TooltipProvider delayDuration={250}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <time
+                    dateTime={updatedAt}
+                    tabIndex={0}
+                    aria-label={`Updated ${updatedAbsoluteTime}`}
+                    className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {updatedRelativeTime}
+                  </time>
+                </TooltipTrigger>
+                <TooltipContent>{updatedAbsoluteTime}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </PluginMarketplaceDetail>
+        )}
+        <PluginMarketplaceDetail label="Marketplace">
+          {entry.publisherLabel}
+        </PluginMarketplaceDetail>
+      </dl>
+    </ResourceDefinitionSection>
+  );
+}
+
+function PluginMarketplaceSource({
+  entry,
+}: {
+  entry: PluginCatalogSearchEntry;
+}) {
+  if (entry.repositoryUrl === null) return null;
+  const githubSource = isGitHubUrl(entry.repositoryUrl);
+  return (
+    <ResourceDefinitionSection label="Source">
+      <a
+        href={entry.repositoryUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex max-w-full items-center gap-1.5 rounded-sm text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        {githubSource ? (
+          <Icon
+            name="GithubFilled"
+            className="size-4 shrink-0 fill-current [&_*]:stroke-0"
+            aria-hidden
+          />
+        ) : null}
+        <span className="truncate">
+          {repositoryLinkLabel(entry.repositoryUrl)}
+        </span>
+        <Icon name="ExternalLink" className="size-3.5 shrink-0" aria-hidden />
+        <span className="sr-only">Opens in a new tab</span>
+      </a>
+    </ResourceDefinitionSection>
+  );
+}
+
+function isGitHubUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLocaleLowerCase();
+    return hostname === "github.com" || hostname === "www.github.com";
+  } catch {
+    return false;
+  }
 }
 
 const PLUGIN_SCREENSHOT_ROW_HEIGHT = 420;
@@ -112,9 +210,7 @@ function PluginScreenshotGallery({
 
   if (entry.screenshots.length === 0) return null;
   return (
-    <ResourceDefinitionSection label="Screenshots">
-      {
-}
+    <>
       <Carousel
         setApi={setApi}
         opts={{ align: "start", containScroll: "trimSnaps" }}
@@ -127,8 +223,6 @@ function PluginScreenshotGallery({
         >
           {entry.screenshots.map((screenshot, index) => (
             <CarouselItem key={screenshot} className="basis-auto pl-3">
-              {
-}
               <img
                 src={screenshot}
                 alt={`${entry.displayName} screenshot ${index + 1}`}
@@ -168,7 +262,34 @@ function PluginScreenshotGallery({
           ))}
         </div>
       ) : null}
-    </ResourceDefinitionSection>
+    </>
+  );
+}
+
+function PluginMarketplaceOverview({
+  entry,
+}: {
+  entry: PluginCatalogSearchEntry;
+}) {
+  if (entry.screenshots.length === 0 && entry.description.length === 0) {
+    return null;
+  }
+  return (
+    <section
+      className="space-y-6"
+      data-resource-detail-section="overview"
+      data-plugin-marketplace-overview
+    >
+      <PluginScreenshotGallery entry={entry} />
+      {entry.description.length === 0 ? null : (
+        <div className="space-y-3">
+          <h2 className="text-sm font-medium text-foreground">About</h2>
+          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+            {entry.description}
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -196,17 +317,19 @@ export function PluginMoreFromAuthorSection({
   if (entry.author === null || authorId === null || moreEntries.length === 0) {
     return null;
   }
-  const authorName = entry.author.name;
   return (
     <ResourceDefinitionSection
       label="More from this author"
       actions={
-        <Link
-          to={getPluginAuthorRoutePath({ authorId })}
-          className="rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        <ResourceShelfAction
+          asChild
+          className="group gap-1 font-medium text-subtle-foreground"
         >
-          View all
-        </Link>
+          <PluginAuthorLink authorId={authorId}>
+            View all
+            <Icon name="ChevronRight" className="size-3" aria-hidden />
+          </PluginAuthorLink>
+        </ResourceShelfAction>
       }
     >
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -218,12 +341,12 @@ export function PluginMoreFromAuthorSection({
             title={candidate.displayName}
             description={candidate.description || undefined}
             byline={
-              <Link
-                to={getPluginAuthorRoutePath({ authorId })}
-                className="pointer-events-auto relative rounded-sm hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                By: {authorName}
-              </Link>
+              candidate.category === undefined ? undefined : (
+                <PluginCategoryLabel
+                  categoryId={candidate.categoryId}
+                  label={candidate.category}
+                />
+              )
             }
             openLabel={`Open ${candidate.displayName} details`}
             onOpen={() => onOpenPlugin(candidate.pluginId)}
@@ -241,14 +364,9 @@ export function PluginMarketplaceListingSections({
 }) {
   return (
     <>
-      <PluginScreenshotGallery entry={entry} />
-      {entry.description.length === 0 ? null : (
-        <ResourceDetailOverviewSection label="About">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            {entry.description}
-          </p>
-        </ResourceDetailOverviewSection>
-      )}
+      <PluginMarketplaceOverview entry={entry} />
+      <PluginMarketplaceSource entry={entry} />
+      <PluginMarketplaceDetails entry={entry} />
     </>
   );
 }

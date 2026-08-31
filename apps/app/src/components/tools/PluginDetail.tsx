@@ -40,10 +40,12 @@ import {
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
 import {
+  PluginMarketplaceCategoryPill,
   PluginMarketplaceListingSections,
-  PluginMarketplaceMetadata,
+  PluginMarketplaceHeaderMetadata,
   PluginMoreFromAuthorSection,
 } from "@/components/plugin/management/PluginMarketplaceListing";
+import { pluginInstalls } from "@/components/plugin/management/plugin-browse-discovery";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
   PluginHealthBanner,
@@ -78,6 +80,7 @@ import {
   pluginListingActions,
   pluginListingCategoryLabel,
 } from "@/lib/plugin-listing-prompts";
+import { formatInstallCount } from "@/lib/skills-registry";
 
 export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
   const label = plugin.publisherLabel;
@@ -141,17 +144,28 @@ export function CatalogPluginDetail({
   catalogEntries?: readonly PluginCatalogSearchEntry[];
   onOpenPlugin?: (pluginId: string) => void;
 }) {
+  const installs = pluginInstalls(entry);
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
       leading={<CatalogEntryIcon entry={entry} className="size-full" />}
       title={entry.displayName}
-      titleMeta={<ProvenancePill label={entry.publisherLabel} />}
-      metadata={<PluginMarketplaceMetadata entry={entry} />}
+      titleClassName="focus-visible:outline-none"
+      titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
+      metadata={<PluginMarketplaceHeaderMetadata entry={entry} />}
       actions={
         <ResourceInstallControl
           accessibleLabel={`Install ${entry.displayName}`}
+          className="border-border/50"
           disabled={!entry.compatible}
+          count={
+            installs === undefined
+              ? undefined
+              : {
+                  display: formatInstallCount(installs),
+                  accessibleLabel: `${installs.toLocaleString()} installs`,
+                }
+          }
           onAction={() => onInstall(entry)}
         />
       }
@@ -301,6 +315,7 @@ export function PluginDetail({
   const hasConfiguration =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
+  const showPluginPath = !plugin.source.startsWith("builtin:");
 
   const pluginName = plugin.name ?? plugin.id;
   const repositoryUrl = installedPluginRepositoryUrl({
@@ -365,25 +380,32 @@ export function PluginDetail({
       maxWidthClassName="max-w-5xl"
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
+      titleClassName="focus-visible:outline-none"
       titleMeta={
-        <span className="inline-flex items-center gap-1.5">
+        catalogEntry !== null || listingLifecycle !== null ? (
+          <span className="inline-flex items-center gap-1.5">
+            {catalogEntry === null ? (
+              <PluginProvenancePill plugin={plugin} />
+            ) : (
+              <PluginMarketplaceCategoryPill entry={catalogEntry} />
+            )}
+            {listingLifecycle === null ? null : (
+              <PluginListingStatusPill
+                lifecycle={listingLifecycle}
+                includePublished
+              />
+            )}
+          </span>
+        ) : (
           <PluginProvenancePill plugin={plugin} />
-          {listingLifecycle === null ? null : (
-            <PluginListingStatusPill
-              lifecycle={listingLifecycle}
-              includePublished
-            />
-          )}
-        </span>
+        )
       }
       metadata={
         <span className="block space-y-1">
-          <PluginPath path={plugin.rootDir} />
           {catalogEntry === null ? null : (
-            <span className="block">
-              <PluginMarketplaceMetadata entry={catalogEntry} />
-            </span>
+            <PluginMarketplaceHeaderMetadata entry={catalogEntry} />
           )}
+          {showPluginPath ? <PluginPath path={plugin.rootDir} /> : null}
         </span>
       }
       actions={

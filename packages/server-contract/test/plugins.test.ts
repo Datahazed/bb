@@ -71,13 +71,18 @@ describe("plugin catalog contracts", () => {
       publisherKey: "builtin",
       publisherLabel: "BB Official",
       official: true,
-      author: null,
+      author: { name: "Legacy Author", url: null },
       installed: false,
       compatible: true,
       incompatibleReason: null,
     });
 
     expect(parsed).toMatchObject({ screenshots: [], newAndNotableRank: null });
+    expect(parsed.author).toEqual({
+      name: "Legacy Author",
+      github: null,
+      url: null,
+    });
     expect(parsed).not.toHaveProperty("categoryId");
     expect(parsed).not.toHaveProperty("category");
     expect(parsed).toMatchObject({ installs: null });

@@ -30,7 +30,11 @@ function installPlanFor(url: string): unknown {
     marketplaceDisplayName: official ? "BB Official" : "Acme Plugins",
     publisherLabel: official ? "BB Official" : "Acme Plugins",
     official,
-    author: { name: "Acme", url: "https://github.com/acme" },
+    author: {
+      name: "Acme",
+      github: "acme",
+      url: "https://acme.example",
+    },
     source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
     resolvedSource: {
       kind: "git",
@@ -210,7 +214,7 @@ describe("AddPluginDialog", () => {
     });
   });
 
-  it("describes each catalog source kind truthfully", () => {
+  it("keeps catalog confirmation compact while showing the exact source", () => {
     stubFetch();
     const { unmount } = renderDialog({
       entryId: "linear",
@@ -222,9 +226,9 @@ describe("AddPluginDialog", () => {
       iconTinted: false,
       source: "builtin:linear",
     });
-    expect(
-      screen.getByText("Install this plugin, bundled with BB."),
-    ).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Install" })).not.toBeNull();
+    expect(screen.getByText("builtin:linear")).not.toBeNull();
+    expect(screen.queryByText(/bundled with BB/u)).toBeNull();
     unmount();
 
     const git = renderDialog({
@@ -239,10 +243,10 @@ describe("AddPluginDialog", () => {
     });
     expect(
       screen.getByText(
-        "Install this BB Community plugin from its listed source repository.",
+        "git:https://github.com/brsbl/bb-plugins@b173b67",
       ),
     ).not.toBeNull();
-    expect(screen.queryByText(/bundled with BB/)).toBeNull();
+    expect(screen.queryByText(/listed source repository/u)).toBeNull();
     git.unmount();
 
     renderDialog({
@@ -255,11 +259,8 @@ describe("AddPluginDialog", () => {
       iconTinted: false,
       source: "npm:bb-plugin-widgets@^1.0.0",
     });
-    expect(
-      screen.getByText(
-        "Install this BB Community plugin from its listed npm package.",
-      ),
-    ).not.toBeNull();
+    expect(screen.getByText("npm:bb-plugin-widgets@^1.0.0")).not.toBeNull();
+    expect(screen.queryByText(/listed npm package/u)).toBeNull();
   });
 
   it("shows the exact source, including a pinned npm registry", () => {
@@ -424,6 +425,10 @@ describe("AddPluginDialog", () => {
     expect(screen.getByText("^1.0.0")).toBeTruthy();
     expect(screen.getByText(/third-party marketplace/)).toBeTruthy();
     expect(screen.getByText("Acme Plugins")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Acme" }).getAttribute("href"),
+    ).toBe("https://github.com/acme");
+    expect(document.body.textContent).not.toContain("acme.example");
     expect(
       requests.some((request) =>
         request.url.startsWith("/api/v1/plugin-catalog/install-plan"),

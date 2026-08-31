@@ -504,6 +504,11 @@ describe("plugin catalog service", () => {
     );
     expect(bundledEntries).toHaveLength(registrations.length);
     for (const entry of bundledEntries) {
+      expect(entry.author).toEqual({
+        name: "BB Team",
+        github: "get-bb",
+        url: "https://getbb.app",
+      });
       expect(entry.repositoryUrl).toBe(
         `https://github.com/get-bb/bb/tree/main/plugins/${encodeURIComponent(entry.entryId)}`,
       );
@@ -663,6 +668,7 @@ describe("plugin catalog service", () => {
           source: "npm:bb-plugin-live-advisor@next",
           author: {
             name: "Live Author",
+            github: "live-author",
             url: "https://github.com/live-author",
           },
         },

@@ -274,6 +274,10 @@ export function ThreadSecondaryPanel({
           isConversationCollapsed,
           onToggleConversationCollapse,
         });
+  const minimumPanelWidthPercent =
+    widthPolicy?.minPercent ?? THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT;
+  const maximumPanelWidthPercent =
+    widthPolicy?.maxPercent ?? THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT;
   const {
     gitDiffDisplayMode,
     handleGitDiffDisplayModeChange,
@@ -290,6 +294,8 @@ export function ThreadSecondaryPanel({
   } = useSecondaryPanelResize({
     ...(widthPolicy === undefined ? {} : { widthAtom: widthPolicy.widthAtom }),
     isSecondaryPanelOpen: isOpen,
+    maxWidthPercent: maximumPanelWidthPercent,
+    minWidthPercent: minimumPanelWidthPercent,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
   });
   const handleSecondaryPanelDragging: SecondaryPanelDraggingHandler =
@@ -1053,14 +1059,11 @@ export function ThreadSecondaryPanel({
               : persistedWidthPercent
             : 0
         }
-        minSize={
-          widthPolicy?.minPercent ?? THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT
-        }
+        minSize={minimumPanelWidthPercent}
         maxSize={
           isConversationCollapsed
             ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
-            : (widthPolicy?.maxPercent ??
-              THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT)
+            : maximumPanelWidthPercent
         }
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}

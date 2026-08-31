@@ -8,18 +8,11 @@ import {
 import {
   ResourceCollectionPage,
   ResourceCollectionViewport,
+  ResourceFilterMenu,
   ResourceListState,
   ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
-import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
@@ -32,6 +25,7 @@ import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTa
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { MyPluginsTab } from "@/components/plugin/management/MyPluginsTab";
+import { OpenPluginGuideButton } from "@/components/plugin/management/OpenPluginGuideButton";
 import {
   PLUGIN_SOURCE_FILTER_OPTIONS,
   pluginSourceFilterId,
@@ -46,16 +40,23 @@ import {
 } from "@/lib/route-paths";
 
 type PluginsCollectionMode = "installed" | "browse" | "my";
-type InstalledStateFilter = "all" | "enabled" | "disabled";
+type InstalledStateFilter = "enabled" | "disabled";
+type InstalledSourceFilter = Exclude<PluginSourceFilter, "all">;
 
-const INSTALLED_STATE_FILTER_OPTIONS: readonly InstalledPluginFilterOption<InstalledStateFilter>[] =
-  [
-    { id: "all", label: "All states" },
-    { id: "enabled", label: "Enabled" },
-    { id: "disabled", label: "Disabled" },
-  ];
+const INSTALLED_STATE_FILTER_OPTIONS = [
+  { id: "enabled", label: "Enabled" },
+  { id: "disabled", label: "Disabled" },
+] satisfies readonly { id: InstalledStateFilter; label: string }[];
 
-const ALL_CATEGORY_FILTER = "__all_categories__";
+const INSTALLED_SOURCE_FILTER_OPTIONS = PLUGIN_SOURCE_FILTER_OPTIONS.filter(
+  (
+    option,
+  ): option is {
+    id: InstalledSourceFilter;
+    label: string;
+  } => option.id !== "all",
+);
+
 const UNCATEGORIZED_CATEGORY_FILTER = "__uncategorized__";
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
@@ -76,6 +77,7 @@ export function PluginsOverview({
     () => listQuery.data?.plugins ?? [],
     [listQuery.data?.plugins],
   );
+  const pluginGuide = plugins.find((plugin) => plugin.id === "plugin-api-docs");
   const activeMode = modeFromSearchParams(searchParams.get("view"));
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =
@@ -83,10 +85,12 @@ export function PluginsOverview({
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
-  const [stateFilter, setStateFilter] = useState<InstalledStateFilter>("all");
-  const [sourceFilter, setSourceFilter] = useState<PluginSourceFilter>("all");
-  const [categoryFilter, setCategoryFilter] =
-    useState<string>(ALL_CATEGORY_FILTER);
+  const [installedSort, setInstalledSort] = useState<"alpha" | null>(null);
+  const [stateFilters, setStateFilters] = useState<InstalledStateFilter[]>([]);
+  const [sourceFilters, setSourceFilters] = useState<InstalledSourceFilter[]>(
+    [],
+  );
+  const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
   const categoryOptions = useMemo(() => {
     const byId = new Map<string, string>();
     let hasUncategorized = false;
@@ -101,7 +105,6 @@ export function PluginsOverview({
       .map(([id, label]) => ({ id, label }))
       .sort((left, right) => left.label.localeCompare(right.label));
     return [
-      { id: ALL_CATEGORY_FILTER, label: "All categories" },
       ...declaredCategories,
       ...(hasUncategorized
         ? [
@@ -113,18 +116,25 @@ export function PluginsOverview({
         : []),
     ];
   }, [plugins]);
-  const activeCategoryFilter = categoryOptions.some(
-    (option) => option.id === categoryFilter,
-  )
-    ? categoryFilter
-    : ALL_CATEGORY_FILTER;
+  const activeCategoryFilters = useMemo(
+    () =>
+      categoryFilters.filter((categoryId) =>
+        categoryOptions.some((option) => option.id === categoryId),
+      ),
+    [categoryFilters, categoryOptions],
+  );
+  const filtersAreDefault =
+    stateFilters.length === 0 &&
+    sourceFilters.length === 0 &&
+    activeCategoryFilters.length === 0;
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const installedResetKey = [
     normalizedInstalledQuery,
+    installedSort ?? "default",
     installedSortDirection,
-    stateFilter,
-    sourceFilter,
-    activeCategoryFilter,
+    stateFilters.join(","),
+    sourceFilters.join(","),
+    activeCategoryFilters.join(","),
   ].join("\u0000");
   const installedPageSize = useResourceViewportPageSize(installedViewport, {
     resetKey: installedResetKey,
@@ -150,24 +160,24 @@ export function PluginsOverview({
       plugins
         .filter((plugin) => {
           if (
-            stateFilter !== "all" &&
-            plugin.enabled !== (stateFilter === "enabled")
+            stateFilters.length > 0 &&
+            !stateFilters.includes(plugin.enabled ? "enabled" : "disabled")
           ) {
             return false;
           }
           if (
-            sourceFilter !== "all" &&
-            pluginSourceFilterId(plugin) !== sourceFilter
+            sourceFilters.length > 0 &&
+            !sourceFilters.includes(pluginSourceFilterId(plugin))
           ) {
             return false;
           }
-          if (activeCategoryFilter === UNCATEGORIZED_CATEGORY_FILTER) {
-            if (plugin.categoryId != null && plugin.category != null) {
-              return false;
-            }
-          } else if (
-            activeCategoryFilter !== ALL_CATEGORY_FILTER &&
-            plugin.categoryId !== activeCategoryFilter
+          const categoryId =
+            plugin.categoryId != null && plugin.category != null
+              ? plugin.categoryId
+              : UNCATEGORIZED_CATEGORY_FILTER;
+          if (
+            activeCategoryFilters.length > 0 &&
+            !activeCategoryFilters.includes(categoryId)
           ) {
             return false;
           }
@@ -202,12 +212,12 @@ export function PluginsOverview({
           return left.id.localeCompare(right.id);
         }),
     [
-      activeCategoryFilter,
+      activeCategoryFilters,
       installedSortDirection,
       normalizedInstalledQuery,
       plugins,
-      sourceFilter,
-      stateFilter,
+      sourceFilters,
+      stateFilters,
     ],
   );
   const installedList = useResourceInfiniteItems(visiblePlugins, {
@@ -250,7 +260,7 @@ export function PluginsOverview({
       {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
       <CreateWithTemplatesButton
         kind="plugin"
-        label="New plugin"
+        label="Create a plugin"
         menuActions={[
           {
             label: "Install from source",
@@ -288,34 +298,67 @@ export function PluginsOverview({
               action={installedActions}
               controls={
                 <>
-                  <InstalledPluginFilter
-                    label="State"
-                    value={stateFilter}
-                    options={INSTALLED_STATE_FILTER_OPTIONS}
-                    onChange={setStateFilter}
-                  />
-                  <InstalledPluginFilter
-                    label="Source"
-                    value={sourceFilter}
-                    options={PLUGIN_SOURCE_FILTER_OPTIONS}
-                    onChange={setSourceFilter}
-                  />
-                  <InstalledPluginFilter
-                    label="Category"
-                    value={activeCategoryFilter}
-                    options={categoryOptions}
-                    onChange={setCategoryFilter}
+                  <ResourceFilterMenu
+                    compact
+                    engaged={!filtersAreDefault}
+                    groups={[
+                      {
+                        id: "state",
+                        label: "State",
+                        options: INSTALLED_STATE_FILTER_OPTIONS,
+                        selectedValues: stateFilters,
+                        onChange: (values) =>
+                          setStateFilters(
+                            values.filter(
+                              (value): value is InstalledStateFilter =>
+                                value === "enabled" || value === "disabled",
+                            ),
+                          ),
+                      },
+                      {
+                        id: "source",
+                        label: "Source",
+                        options: INSTALLED_SOURCE_FILTER_OPTIONS,
+                        selectedValues: sourceFilters,
+                        onChange: (values) =>
+                          setSourceFilters(
+                            values.filter(
+                              (value): value is InstalledSourceFilter =>
+                                value === "builtin" ||
+                                value === "catalog" ||
+                                value === "direct",
+                            ),
+                          ),
+                      },
+                      {
+                        id: "category",
+                        label: "Category",
+                        options: categoryOptions,
+                        selectedValues: activeCategoryFilters,
+                        onChange: setCategoryFilters,
+                      },
+                    ]}
                   />
                   <ResourceSortMenu
-                    value="alpha"
+                    value={installedSort}
                     direction={installedSortDirection}
                     compact
                     options={[{ id: "alpha", label: "Plugin name" }]}
-                    onChange={() =>
-                      setInstalledSortDirection((current) =>
-                        current === "asc" ? "desc" : "asc",
-                      )
-                    }
+                    placeholderLabel="Sort plugins"
+                    onClear={() => {
+                      setInstalledSort(null);
+                      setInstalledSortDirection("asc");
+                    }}
+                    onChange={() => {
+                      if (installedSort === "alpha") {
+                        setInstalledSortDirection((current) =>
+                          current === "asc" ? "desc" : "asc",
+                        );
+                        return;
+                      }
+                      setInstalledSort("alpha");
+                      setInstalledSortDirection("asc");
+                    }}
                   />
                 </>
               }
@@ -339,9 +382,7 @@ export function PluginsOverview({
               message={
                 normalizedInstalledQuery === ""
                   ? "No plugins match these filters."
-                  : stateFilter !== "all" ||
-                      sourceFilter !== "all" ||
-                      activeCategoryFilter !== ALL_CATEGORY_FILTER
+                  : !filtersAreDefault
                     ? `No plugins match "${installedQuery}" with these filters.`
                     : `No plugins match "${installedQuery}"`
               }
@@ -366,11 +407,22 @@ export function PluginsOverview({
       <ResourceCollectionViewport
         scrollId="my-plugins-results"
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
+        toolbar={
+          <div className="flex justify-end">
+            <OpenPluginGuideButton
+              plugin={pluginGuide}
+              pluginListLoading={
+                listQuery.data === undefined && listQuery.isFetching
+              }
+            />
+          </div>
+        }
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
           <MyPluginsTab
             plugins={plugins}
             onOpenPlugin={(pluginId) => openPlugin(pluginId, "my")}
+            onCreatePlugin={startCreatePlugin}
           />
         </div>
       </ResourceCollectionViewport>
@@ -399,59 +451,5 @@ export function PluginsOverview({
         onInstalled={(plugin) => openPlugin(plugin.id, "installed")}
       />
     </>
-  );
-}
-
-interface InstalledPluginFilterOption<Value extends string> {
-  id: Value;
-  label: string;
-}
-
-function InstalledPluginFilter<Value extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: Value;
-  options: readonly InstalledPluginFilterOption<Value>[];
-  onChange: (value: Value) => void;
-}) {
-  const selectedLabel =
-    options.find((option) => option.id === value)?.label ?? "All";
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-8 w-36 max-w-full justify-between gap-2 px-3 text-xs font-normal"
-          aria-label={`${label}: ${selectedLabel}`}
-        >
-          <span className="truncate">{selectedLabel}</span>
-          <Icon name="ChevronDown" className="size-3.5 shrink-0" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        {options.map((option) => (
-          <DropdownMenuItem
-            key={option.id}
-            onSelect={() => onChange(option.id)}
-            className="flex items-center justify-between gap-3"
-          >
-            <span className="min-w-0 flex-1 truncate">{option.label}</span>
-            <Icon
-              name="Check"
-              className={cn(
-                "size-3.5",
-                option.id === value ? "opacity-100" : "opacity-0",
-              )}
-              aria-hidden
-            />
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

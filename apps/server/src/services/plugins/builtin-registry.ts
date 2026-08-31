@@ -158,24 +158,40 @@ const OFFICIAL_PLUGIN_DEFINITIONS = [
     pluginId: "github",
     defaultEnabled: true,
     category: "code-and-reviews",
+    screenshots: [
+      "screenshots/github-issues.png",
+      "screenshots/github-pull-requests.png",
+    ],
   },
   {
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,
     category: "files-and-viewers",
+    screenshots: [
+      "screenshots/docs-note.png",
+      "screenshots/docs-product-brief.png",
+    ],
   },
   {
     name: "memory",
     pluginId: "memory",
     defaultEnabled: true,
     category: "memory-and-context",
+    screenshots: [
+      "screenshots/memory-catalog.png",
+      "screenshots/memory-edit.png",
+    ],
   },
   {
     name: "tasks",
     pluginId: "tasks",
     defaultEnabled: true,
     category: "tasks-workflows",
+    screenshots: [
+      "screenshots/tasks-list.png",
+      "screenshots/tasks-detail.png",
+    ],
   },
 ] satisfies Omit<BundledPluginDefinition, "autoInstall">[];
 

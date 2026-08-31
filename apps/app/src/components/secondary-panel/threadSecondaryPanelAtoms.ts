@@ -2,7 +2,10 @@ import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
-import { MARKETPLACE_DETAIL_WIDTH_PERCENT } from "@/components/tools/marketplacePaneSizing";
+import {
+  clampMarketplaceDetailPercent,
+  MARKETPLACE_DETAIL_WIDTH_PERCENT,
+} from "@/components/tools/marketplacePaneSizing";
 
 export const threadSecondaryPanelResizingAtom = atom(false);
 
@@ -30,13 +33,38 @@ export const secondaryPanelWidthPercentAtom = atomWithStorage<number>(
   { getOnInit: true },
 );
 
-export const marketplaceSecondaryPanelWidthPercentAtom =
+const marketplaceSecondaryPanelWidthStorage =
+  createLocalStorageSyncStorage<number>({
+    parse: (storedValue, initialValue) => {
+      if (storedValue === null) return initialValue;
+      const parsed = Number.parseFloat(storedValue);
+      return Number.isFinite(parsed)
+        ? clampMarketplaceDetailPercent(parsed)
+        : initialValue;
+    },
+    serialize: (value) => String(clampMarketplaceDetailPercent(value)),
+  });
+
+const storedMarketplaceSecondaryPanelWidthPercentAtom =
   atomWithStorage<number>(
     "bb.extensions.secondaryPanel.widthPercent",
     MARKETPLACE_DETAIL_WIDTH_PERCENT,
-    secondaryPanelWidthStorage,
+    marketplaceSecondaryPanelWidthStorage,
     { getOnInit: true },
   );
+
+export const marketplaceSecondaryPanelWidthPercentAtom = atom(
+  (get) =>
+    clampMarketplaceDetailPercent(
+      get(storedMarketplaceSecondaryPanelWidthPercentAtom),
+    ),
+  (_get, set, width: number) => {
+    set(
+      storedMarketplaceSecondaryPanelWidthPercentAtom,
+      clampMarketplaceDetailPercent(width),
+    );
+  },
+);
 
 const threadSecondaryPanelBooleanStorage =
   createLocalStorageSyncStorage<boolean>({

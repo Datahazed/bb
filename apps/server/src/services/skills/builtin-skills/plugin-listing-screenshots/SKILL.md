@@ -42,6 +42,32 @@ The first screenshot must show the plugin doing its job with realistic data.
 Capture the empty state only as a later image, and only when the empty state
 itself teaches something (a setup step, a connect button).
 
+## Plan one carousel
+
+A screenshot set is one visual explanation, not an inventory of every surface
+the capture command happens to find. Plan **two to four images** for most
+plugins, up to the six-image marketplace limit. Every image must advance the
+same user job with the same fictional people, project, repository, documents,
+or tasks.
+
+Use this sequence when the plugin supports it:
+
+1. **Overview:** the strongest, immediately understandable proof of the job.
+2. **Interaction:** the primary selection, edit, command, or state change.
+3. **Outcome or detail:** what the user gets after that interaction.
+4. **Setup or empty state:** only when it teaches a necessary next step.
+
+The first image must stand on its own, and every later image must add information
+instead of repeating the same surface. A registered surface is a capture
+candidate, not an obligation. Do not combine unrelated surfaces merely because
+one plugin registered all of them.
+
+Fixture content must look like ordinary, publishable use of the plugin. Keep a
+single believable scenario across the carousel. Do not photograph work about
+building the plugin, taking marketplace screenshots, testing the listing,
+seeding demo data, or reviewing bb itself. Those fixtures make the screenshot
+self-referential instead of explaining the plugin.
+
 Reject a shot that shows any of these, and fix the cause rather than shipping it:
 
 | Reject                                              | Because                                                 |
@@ -53,6 +79,9 @@ Reject a shot that shows any of these, and fix the cause rather than shipping it
 | Anything from your own machine — your notes, repos, threads | You will not notice it is yours until someone else does |
 | A development-only panel or placeholder             | It is scaffolding, not the product                      |
 | `lorem ipsum`, `test test`, `asdf`                  | Plausible data reads as a real product                  |
+| Unrelated surfaces with no shared user job           | A carousel should tell one coherent story               |
+| Capture, QA, listing, or plugin-development fixtures | The evidence describes itself instead of the product    |
+| A loose desktop crop with the plugin lost inside it  | The carousel will shrink the useful content further     |
 
 ## Size and shape
 
@@ -77,8 +106,16 @@ Shoot the surface your plugin actually occupies:
 | Stay between 3:4 and 2:1 | Anything wider than 2:1 is scaled down to fit and ends up shorter than the row |
 | Crop to your surface | A full-desktop shot shrinks the plugin to an illegible strip. Cut bb's sidebar and chrome unless the point *is* where the surface sits |
 | Never pad to a ratio | The row handles shape. Padding just adds dead space nobody asked for |
-| Text legible at row height | Scale the shot so it is 420px tall and read it. If you cannot, crop tighter |
+| Text legible at its rendered size | A 420px source-height preview is only a preliminary check. Read it again inside both required detail layouts |
 | PNG | UI is flat colour and text; JPEG smears both |
+
+The carousel's maximum row height is 420px, not a promise that every image will
+render 420px tall. A wide image in a narrow detail panel is width-constrained
+and can become much shorter. Inspect the actual rendered image height in the
+browser with `getBoundingClientRect()`. If it falls below 420px, judge every
+label and value at that smaller size. Crop tighter, reframe the surface, or
+capture at higher density until the content remains readable; do not approve it
+from source dimensions alone.
 
 ## What to capture, by what the plugin does
 
@@ -132,17 +169,55 @@ surfaces have something to render.
 a public repo you own. Never photograph a private repo, a customer, or a real
 token — a listing image is public and permanent.
 
+## Multiple states from one registered surface
+
+One registered panel or page may provide the whole carousel. Do not add duplicate
+plugin registrations or substitute unrelated surfaces just to obtain more
+files.
+
+1. Run `bb plugin screenshot [path] --capture <dir> --json` once to discover the
+   registered surface and its canonical URL. Keep that surface and one scratch
+   fixture host for the entire set.
+2. Seed the overview state through the plugin's supported CLI or fixture flow,
+   open the canonical URL, wait for the stable painted state, and capture it.
+3. For a persisted second state, change the data through the supported CLI,
+   reload the same surface, and capture again.
+4. For a transient state such as a selected row, tab, expanded detail, menu, or
+   modal, keep the same scratch app and browser session. Use the prescribed UI
+   driver to interact with the canonical surface, wait for a stable paint, and
+   capture that state before navigating away.
+5. Crop every state to the same surface boundary and name the files in story
+   order, for example `01-overview.png`, `02-selected-detail.png`, and
+   `03-complete.png`.
+
+The capture command supplies the canonical first capture. Additional states may
+be captured from that same registered surface after interaction; they must not
+pretend an unregistered demo page is a product surface.
+
 ## After capturing
 
 1. **Open every image.** The command reports files written, not whether they are
    any good.
 2. **Check the first one hard.** It is the card image, and most people will see
    only that.
-3. **Re-run after seeding more** if a surface looks thin. Capture is cheap.
-4. **Crop to the surface, not the desktop.** Keep enough bb chrome to place the
+3. **Review the sequence together.** Make a contact sheet or step through the
+   carousel in order. Confirm one scenario, no redundant slides, and a clear
+   overview → interaction → outcome progression.
+4. **Re-run after seeding more** if a surface looks thin. Capture is cheap.
+5. **Crop to the surface, not the desktop.** Keep enough bb chrome to place the
    plugin — the panel it lives in, the rail it hangs off — and cut the rest. A
    full-window shot renders at 420px tall in the listing, where the plugin
    itself becomes an illegible strip.
+6. **Review in the real marketplace detail view.** Open every slide in both:
+   - the actual narrow split-panel layout, with Browse still visible; and
+   - the full-page detail layout entered through the existing Full Screen action.
+7. **Exercise responsive sizing.** At the narrow supported split, record each
+   image's rendered width and height. Treat a height below 420px as an expected
+   stress case, not a layout failure, and confirm that text, controls, pagination,
+   crops, and the subject remain legible without opening the source file.
+8. **Report evidence.** Give the ordered screenshot paths, the fixture scenario,
+   the two layouts reviewed, observed rendered sizes, and a pass/fail finding for
+   coherence, crop, realism, legibility, responsiveness, and sensitive data.
 
 ## Known rough edges
 

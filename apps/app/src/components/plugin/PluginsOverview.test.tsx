@@ -234,6 +234,7 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByTestId("inline-composer")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Plugin Guide" })).toBeTruthy();
     expect(screen.getByText("Start from an example")).toBeTruthy();
     expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
     expect(
@@ -365,7 +366,7 @@ describe("PluginsOverview", () => {
     expect(screen.queryByText("GitHub")).toBeNull();
   });
 
-  it("sends Installed's New plugin to the new-thread page with the seed", async () => {
+  it("sends Installed's Create a plugin action to the new-thread page", async () => {
     installFetch([AUTOMATIONS_PLUGIN]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -378,12 +379,12 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("Automations")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create a plugin" }));
 
     expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
-  it("shows separate Installed State, Source, and Category filters", async () => {
+  it("consolidates Installed State, Source, and Category into one filter menu", async () => {
     installFetch([AUTOMATIONS_PLUGIN]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -397,17 +398,15 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Source: All sources" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "State: All states" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Category: All categories" }),
-    ).toBeTruthy();
+    const filterTrigger = screen.getByRole("button", { name: "Filters" });
+    fireEvent.pointerDown(filterTrigger);
+    expect(screen.getByRole("group", { name: "State" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Source" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Category" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
-    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Create a plugin" }),
+    ).toBeTruthy();
   });
 
   it("keeps Browse filters in the toolbar rather than a separate pill band", async () => {
@@ -494,10 +493,7 @@ describe("PluginsOverview", () => {
     expect(
       await screen.findByRole("heading", { name: "Install GitHub?" }),
     ).toBeTruthy();
-    const installButtons = screen.getAllByRole("button", {
-      name: "Install GitHub",
-    });
-    fireEvent.click(installButtons[installButtons.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
 
     expect((await screen.findByTestId("location-path")).textContent).toBe(
       "/extensions/plugins/github",
@@ -708,10 +704,16 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-official",
     ]);
     const sortTrigger = screen.getByRole("button", {
-      name: "Sort: Plugin name, ascending",
+      name: "Sort plugins",
     });
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
+    expect(
+      screen.getByRole("button", {
+        name: "Sort: Plugin name, ascending",
+      }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
     expect(
       [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
@@ -784,46 +786,26 @@ describe("PluginsOverview", () => {
         (row) => row.getAttribute("data-testid"),
       );
 
-    let sourceTrigger = screen.getByRole("button", {
-      name: "Source: All sources",
-    });
+    const filterTrigger = screen.getByRole("button", { name: "Filters" });
     expect(rowIds()).toEqual([
       "plugin-row-builtin-one",
       "plugin-row-catalog-one",
       "plugin-row-direct-one",
     ]);
-    fireEvent.pointerDown(sourceTrigger);
-    for (const label of [
-      "All sources",
-      "BB Official",
-      "BB Community",
-      "Local",
-    ]) {
-      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    fireEvent.pointerDown(filterTrigger);
+    for (const label of ["BB Official", "BB Community", "Local"]) {
+      expect(
+        screen.getByRole("menuitemcheckbox", { name: label }),
+      ).toBeTruthy();
     }
-    expect(
-      screen
-        .getByRole("menuitem", { name: "All sources" })
-        .querySelector('[data-icon="Check"]')
-        ?.classList.contains("opacity-100"),
-    ).toBe(true);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Local" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Local" }));
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-direct-one"]);
     });
-    sourceTrigger = screen.getByRole("button", {
-      name: "Source: Local",
-    });
-    expect(sourceTrigger.textContent).toContain("Local");
-
-    fireEvent.pointerDown(sourceTrigger);
     expect(
-      screen
-        .getByRole("menuitem", { name: "Local" })
-        .querySelector('[data-icon="Check"]')
-        ?.classList.contains("opacity-100"),
-    ).toBe(true);
-    fireEvent.click(screen.getByRole("menuitem", { name: "All sources" }));
+      screen.getByRole("button", { name: "Filters: Source: Local" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Local" }));
     await waitFor(() => {
       expect(rowIds()).toEqual([
         "plugin-row-builtin-one",
@@ -831,6 +813,7 @@ describe("PluginsOverview", () => {
         "plugin-row-direct-one",
       ]);
     });
+    expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
     expect(screen.queryByText("No plugins match these filters.")).toBeNull();
   });
 
@@ -884,21 +867,15 @@ describe("PluginsOverview", () => {
       "plugin-row-catalog-one",
       "plugin-row-direct-one",
     ]);
-    let categoryTrigger = screen.getByRole("button", {
-      name: "Category: All categories",
-    });
-    fireEvent.pointerDown(categoryTrigger);
-    for (const label of [
-      "All categories",
-      "Security",
-      "Tasks & Workflows",
-      "Uncategorized",
-    ]) {
-      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Filters" }));
+    for (const label of ["Security", "Tasks & Workflows", "Uncategorized"]) {
+      expect(
+        screen.getByRole("menuitemcheckbox", { name: label }),
+      ).toBeTruthy();
     }
 
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Tasks & Workflows" }),
+      screen.getByRole("menuitemcheckbox", { name: "Tasks & Workflows" }),
     );
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
@@ -908,20 +885,19 @@ describe("PluginsOverview", () => {
       screen.getByTestId("plugin-row-builtin-one").textContent,
     ).not.toContain("Tasks & Workflows");
 
-    categoryTrigger = screen.getByRole("button", {
-      name: "Category: Tasks & Workflows",
-    });
-    fireEvent.pointerDown(categoryTrigger);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Uncategorized" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Tasks & Workflows" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Uncategorized" }),
+    );
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-direct-one"]);
     });
 
-    categoryTrigger = screen.getByRole("button", {
-      name: "Category: Uncategorized",
-    });
-    fireEvent.pointerDown(categoryTrigger);
-    fireEvent.click(screen.getByRole("menuitem", { name: "All categories" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Uncategorized" }),
+    );
     await waitFor(() => {
       expect(rowIds()).toEqual([
         "plugin-row-builtin-one",
@@ -997,10 +973,8 @@ describe("PluginsOverview", () => {
         (row) => row.getAttribute("data-testid"),
       );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "State: All states" }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Disabled" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Disabled" }));
     await waitFor(() =>
       expect(rowIds()).toEqual([
         "plugin-row-catalog-disabled",
@@ -1009,10 +983,7 @@ describe("PluginsOverview", () => {
       ]),
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Source: All sources" }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Local" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Local" }));
     await waitFor(() =>
       expect(rowIds()).toEqual([
         "plugin-row-local-security",
@@ -1020,40 +991,28 @@ describe("PluginsOverview", () => {
       ]),
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Category: All categories" }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Security" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Security" }));
     await waitFor(() =>
       expect(rowIds()).toEqual(["plugin-row-local-security"]),
     );
+    fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.change(
       screen.getByRole("textbox", { name: "Search installed plugins" }),
       { target: { value: "Builtin" } },
     );
     expect(
-      await screen.findByText(
-        'No plugins match "Builtin" with these filters.',
-      ),
+      await screen.findByText('No plugins match "Builtin" with these filters.'),
     ).toBeTruthy();
     fireEvent.change(
       screen.getByRole("textbox", { name: "Search installed plugins" }),
       { target: { value: "" } },
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Category: Security" }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "All categories" }));
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Source: Local" }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "All sources" }));
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "State: Disabled" }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "All states" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters:/u }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Security" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Local" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Disabled" }));
 
     await waitFor(() =>
       expect(rowIds()).toEqual([

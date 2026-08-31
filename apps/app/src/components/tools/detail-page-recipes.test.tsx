@@ -85,6 +85,7 @@ import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   resetPluginSlotStoreForTest,
@@ -144,7 +145,11 @@ const PLUGIN: PluginListItem = {
 
 function renderPlugin(
   plugin: PluginListItem,
-  options?: { skills?: SkillSummary[]; seedSkillsCache?: boolean },
+  options?: {
+    skills?: SkillSummary[];
+    seedSkillsCache?: boolean;
+    catalogEntry?: PluginCatalogSearchEntry;
+  },
 ) {
   const { wrapper: QueryClientWrapper, queryClient } =
     createQueryClientTestHarness();
@@ -165,6 +170,7 @@ function renderPlugin(
           onEdit={() => {}}
           onOpenSource={() => {}}
           onDelete={() => {}}
+          catalogEntry={options?.catalogEntry}
         />
       </QueryClientWrapper>
     </MemoryRouter>,
@@ -172,6 +178,143 @@ function renderPlugin(
 }
 
 describe("Plugin detail recipe", () => {
+  it("gives an installed marketplace plugin the author and Details hierarchy", () => {
+    const catalogEntry: PluginCatalogSearchEntry = {
+      entryId: "github",
+      pluginId: "github",
+      displayName: "GitHub",
+      description: "Browse GitHub issues and pull requests in BB.",
+      icon: "Github",
+      iconUrl: null,
+      iconTinted: false,
+      categoryId: "code-and-reviews",
+      category: "Code & Reviews",
+      screenshots: [],
+      newAndNotableRank: null,
+      source: "builtin:github",
+      repositoryUrl: "https://github.com/get-bb/bb",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "bb-community",
+      publisherLabel: "BB Community",
+      official: true,
+      author: {
+        name: "BB",
+        github: "get-bb",
+        url: "https://github.com/get-bb",
+      },
+      installed: true,
+      installs: 120,
+      compatible: true,
+      incompatibleReason: null,
+      updatedAt: "2026-08-24T12:00:00.000Z",
+    };
+    const { container } = renderPlugin(PLUGIN, { catalogEntry });
+
+    const title = screen.getByRole("heading", { name: "GitHub" });
+    expect(title.classList.contains("focus-visible:outline-none")).toBe(true);
+    expect(title.parentElement?.textContent).toContain("Code & Reviews");
+    expect(title.parentElement?.nextElementSibling?.textContent).not.toContain(
+      "Code & Reviews",
+    );
+    expect(renderedRecipe(container).slice(0, 4)).toEqual([
+      ["overview", "About"],
+      ["definition", "Source"],
+      ["definition", "Details"],
+      ["release", "Release"],
+    ]);
+    expect(screen.getByRole("link", { name: "BB" })).toBeTruthy();
+    const authorAvatar = screen.getByRole("img", {
+      name: "BB's GitHub avatar",
+    });
+    expect(authorAvatar.classList.contains("size-5")).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: /Copy plugin path/u }),
+    ).toBeNull();
+    expect(screen.getByText("Code & Reviews")).toBeTruthy();
+    expect(
+      screen
+        .getByText("Code & Reviews")
+        .closest("[data-resource-detail-section]"),
+    ).toBeNull();
+    expect(screen.queryByText("Category")).toBeNull();
+    expect(screen.getByText("BB Community")).toBeTruthy();
+    const sourceLink = screen.getByRole("link", {
+      name: /github.com\/get-bb\/bb/u,
+    });
+    const sourceIcon = sourceLink.querySelector('[data-icon="GithubFilled"]');
+    expect(sourceIcon).not.toBeNull();
+    expect(sourceIcon?.classList.contains("fill-current")).toBe(true);
+    expect(sourceIcon?.getAttribute("class")).toContain("[&_*]:stroke-0");
+  });
+
+  it("hides paths for BB-bundled plugins without a catalog entry", () => {
+    renderPlugin({
+      ...PLUGIN,
+      provenance: "builtin",
+      source: "builtin:usage",
+    });
+
+    expect(
+      screen.queryByRole("button", { name: /Copy plugin path/u }),
+    ).toBeNull();
+  });
+
+  it("keeps paths for community and local plugins", () => {
+    const communityEntry: PluginCatalogSearchEntry = {
+      entryId: "github",
+      pluginId: "github",
+      displayName: "GitHub",
+      description: "Browse GitHub issues and pull requests in BB.",
+      icon: "Github",
+      iconUrl: null,
+      iconTinted: false,
+      categoryId: "code-and-reviews",
+      category: "Code & Reviews",
+      screenshots: [],
+      newAndNotableRank: null,
+      source: "npm:github",
+      repositoryUrl: "https://github.com/community/github",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "bb-community",
+      publisherLabel: "BB Community",
+      official: true,
+      author: {
+        name: "Community",
+        github: "community",
+        url: "https://github.com/community",
+      },
+      installed: true,
+      installs: 12,
+      compatible: true,
+      incompatibleReason: null,
+    };
+    const { unmount } = renderPlugin(
+      { ...PLUGIN, source: "npm:github" },
+      { catalogEntry: communityEntry },
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Copy plugin path/u }),
+    ).toBeTruthy();
+
+    unmount();
+    renderPlugin(
+      {
+        ...PLUGIN,
+        provenance: "direct",
+        source: "path:/Users/test/dev/plugin",
+        rootDir: "/Users/test/dev/plugin",
+      },
+      { catalogEntry: { ...communityEntry, official: true } },
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Copy plugin path/u }),
+    ).toBeTruthy();
+  });
+
   it("omits Capabilities when the plugin has no capability rows", () => {
     const { container } = renderPlugin(PLUGIN);
 
@@ -604,7 +747,9 @@ describe("Detail page header slots", () => {
     );
 
     const header = container.querySelector("h1")?.closest("div")?.parentElement;
+    const title = screen.getByRole("heading", { name: "writing-voice" });
     expect(header).not.toBeNull();
+    expect(title.classList.contains("focus-visible:outline-none")).toBe(false);
     expect(screen.getByRole("button", { name: "Fork" })).toBeTruthy();
     expect(screen.getByText("Imported")).toBeTruthy();
     expect(screen.getByRole("button", { name: "More" })).toBeTruthy();

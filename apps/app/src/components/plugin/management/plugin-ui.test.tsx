@@ -47,7 +47,7 @@ it("embeds a marketplace listing's logo as an image", () => {
   );
 });
 
-it("uses semantic category ink without changing the stronger pill fill", () => {
+it("uses a tokenized category treatment without making the label interactive", () => {
   const view = render(
     <PluginCategoryLabel
       categoryId="memory-and-context"
@@ -57,17 +57,23 @@ it("uses semantic category ink without changing the stronger pill fill", () => {
 
   const pill = view.getByText("Memory & Context");
   expect(pill.style.background).toBe(
-    "color-mix(in oklab, var(--success) 16%, var(--canvas))",
+    "color-mix(in oklab, var(--plugin-category-family-agent-work) 16%, var(--canvas))",
+  );
+  expect(pill.style.borderColor).toBe(
+    "color-mix(in oklab, var(--plugin-category-family-agent-work) 24%, var(--canvas))",
   );
   expect(pill.style.color).toBe(
-    "color-mix(in oklab, var(--success) 52%, var(--ink))",
+    "color-mix(in oklab, var(--plugin-category-family-agent-work) 52%, var(--ink))",
   );
+  expect(pill.classList.contains("border")).toBe(true);
+  expect(pill.closest("a, button")).toBeNull();
 });
 
 it("derives every category treatment from the canonical category token", () => {
   for (const category of PLUGIN_CATALOG_CATEGORIES) {
     expect(pluginCatalogCategoryPillStyle(category.id)).toEqual({
       background: `color-mix(in oklab, var(${category.accentToken}) 16%, var(--canvas))`,
+      borderColor: `color-mix(in oklab, var(${category.accentToken}) 24%, var(--canvas))`,
       color: `color-mix(in oklab, var(${category.accentToken}) 52%, var(--ink))`,
     });
     expect(pluginCatalogCategoryMutedAccentStyle(category.id)).toEqual({

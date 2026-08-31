@@ -15,7 +15,7 @@ import {
   usePluginListings,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { PluginCreationEmptyState } from "./PluginCreationEmptyState";
+import { PluginCreationOnboarding } from "./PluginCreationOnboarding";
 
 export function PluginListingStatusPill({
   lifecycle,
@@ -81,12 +81,14 @@ function listingLifecycleGroup(
 export function MyPluginsTab({
   plugins,
   onOpenPlugin,
+  onCreatePlugin,
 }: {
   plugins: readonly PluginListItem[];
   onOpenPlugin: (pluginId: string) => void;
+  onCreatePlugin: (prompt: string) => void;
 }) {
   const listings = usePluginListings({ enabled: true });
-  const groups = useMemo(() => {
+  const authored = useMemo(() => {
     const pluginById = new Map(plugins.map((plugin) => [plugin.id, plugin]));
     const rows = (listings.data?.records ?? []).flatMap<AuthoredPluginRow>(
       (record) => {
@@ -108,7 +110,7 @@ export function MyPluginsTab({
       group.push(row);
       grouped.set(groupId, group);
     }
-    return LISTING_LIFECYCLE_GROUPS.flatMap(({ id, label }) => {
+    const groups = LISTING_LIFECYCLE_GROUPS.flatMap(({ id, label }) => {
       const entries = grouped.get(id);
       return entries === undefined
         ? []
@@ -124,6 +126,7 @@ export function MyPluginsTab({
             },
           ];
     });
+    return { groups, count: rows.length };
   }, [listings.data?.records, plugins]);
 
   if (listings.isError) {
@@ -138,34 +141,42 @@ export function MyPluginsTab({
   if (listings.isFetching && listings.data === undefined) {
     return <ResourceListState state="loading" message="Loading your plugins" />;
   }
-  if (groups.length === 0) {
-    return <PluginCreationEmptyState />;
+  if (authored.count === 0) {
+    return (
+      <PluginCreationOnboarding mode="prominent" onCreate={onCreatePlugin} />
+    );
   }
 
   return (
-    <div className="space-y-5" data-testid="my-plugins-list">
-      {groups.map((group) => (
-        <section key={group.id} className="space-y-2">
-          <h2 className="text-xs font-medium text-muted-foreground">
-            {group.label} · {group.entries.length}
-          </h2>
-          <ResourceListPanel>
-            <div className="divide-y divide-border">
-              {group.entries.map(({ plugin }) => (
-                <ResourceRow
-                  key={plugin.id}
-                  leading={<PluginLogo plugin={plugin} className="size-6" />}
-                  title={plugin.name ?? plugin.id}
-                  description={plugin.description}
-                  openLabel={`${plugin.name ?? plugin.id} listing details`}
-                  onOpen={() => onOpenPlugin(plugin.id)}
-                  trailingVisual={<ResourceRowDetailChevron />}
-                />
-              ))}
-            </div>
-          </ResourceListPanel>
-        </section>
-      ))}
+    <div className="space-y-7" data-testid="my-plugins-list">
+      <div className="space-y-5">
+        {authored.groups.map((group) => (
+          <section key={group.id} className="space-y-2">
+            <h2 className="text-xs font-medium text-muted-foreground">
+              {group.label} · {group.entries.length}
+            </h2>
+            <ResourceListPanel>
+              <div className="divide-y divide-border">
+                {group.entries.map(({ plugin }) => (
+                  <ResourceRow
+                    key={plugin.id}
+                    leading={<PluginLogo plugin={plugin} className="size-6" />}
+                    title={plugin.name ?? plugin.id}
+                    description={plugin.description}
+                    openLabel={`${plugin.name ?? plugin.id} listing details`}
+                    onOpen={() => onOpenPlugin(plugin.id)}
+                    trailingVisual={<ResourceRowDetailChevron />}
+                  />
+                ))}
+              </div>
+            </ResourceListPanel>
+          </section>
+        ))}
+      </div>
+      <PluginCreationOnboarding
+        mode={authored.count < 5 ? "supporting" : "compact"}
+        onCreate={onCreatePlugin}
+      />
     </div>
   );
 }

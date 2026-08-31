@@ -1,16 +1,72 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
+import type {
+  PluginBrowseSort,
+  PluginBrowseSortDirection,
+} from "./plugin-browse-discovery";
+
+const PLUGIN_BROWSE_SORTS = [
+  "recently-added",
+  "most-installed",
+  "name",
+] as const satisfies readonly PluginBrowseSort[];
+
+const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
+  "recently-added": "Recently added",
+  "most-installed": "Most installed",
+  name: "Name",
+};
+
+const PLUGIN_BROWSE_SORT_ICONS: Record<PluginBrowseSort, IconName> = {
+  "recently-added": "Clock",
+  "most-installed": "Download",
+  name: "Sort",
+};
+
+export function pluginBrowseSort(
+  value: string | null,
+): PluginBrowseSort | null {
+  return PLUGIN_BROWSE_SORTS.find((sort) => sort === value) ?? null;
+}
+
+export function pluginBrowseSortDirection(
+  value: string | null,
+): PluginBrowseSortDirection | null {
+  return value === "asc" || value === "desc" ? value : null;
+}
+
+export function pluginBrowseSortOptions(hasInstallCounts: boolean) {
+  return PLUGIN_BROWSE_SORTS.filter(
+    (sort) => sort !== "most-installed" || hasInstallCounts,
+  ).map((sort) => ({
+    id: sort,
+    label: PLUGIN_BROWSE_SORT_LABELS[sort],
+    leading: <Icon name={PLUGIN_BROWSE_SORT_ICONS[sort]} className="size-4" />,
+  }));
+}
 
 export interface PluginBrowseCategoryOption {
   id: string;
   label: string;
   count: number;
 }
+
+type PluginBrowseCategoryFilterSelection =
+  | {
+      selectionMode: "single";
+      value: string | null;
+      onChange: (value: string | null) => void;
+    }
+  | {
+      selectionMode: "multiple";
+      value: readonly string[];
+      onChange: (value: string[]) => void;
+    };
 
 const ENGAGED_CONTROL_CLASS =
   "bg-state-active text-foreground hover:bg-state-active";
@@ -35,32 +91,44 @@ function CategoryOptionCheckbox({ enabled }: { enabled: boolean }) {
   );
 }
 
-export function PluginBrowseCategoryFilter({
-  options,
-  value,
-  totalCount,
-  onChange,
-}: {
-  options: readonly PluginBrowseCategoryOption[];
-  value: string | null;
-  totalCount: number;
-  onChange: (value: string | null) => void;
-}) {
+export function PluginBrowseCategoryFilter(
+  props: {
+    options: readonly PluginBrowseCategoryOption[];
+  } & PluginBrowseCategoryFilterSelection,
+) {
+  const { options } = props;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showKeyboardFocus, setShowKeyboardFocus] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const keyboardFocusRef = useRef(false);
-  const selectedOption = options.find((option) => option.id === value);
-  const selectionLabel = selectedOption?.label ?? "All categories";
+  const selectedValues =
+    props.selectionMode === "multiple"
+      ? props.value
+      : props.value === null
+        ? []
+        : [props.value];
+  const selected = new Set(selectedValues);
+  const selectedOptions = selectedValues.flatMap((value) => {
+    const option = options.find((candidate) => candidate.id === value);
+    return option === undefined ? [] : [option];
+  });
+  const selectionLabel =
+    selectedOptions.length === 0
+      ? "All categories"
+      : selectedOptions.length === 1
+        ? (selectedOptions[0]?.label ?? "Category")
+        : `${selectedOptions.length} categories`;
+  const accessibleSelectionLabel =
+    selectedOptions.length === 0
+      ? "All categories"
+      : selectedOptions.map((option) => option.label).join(", ");
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const filteredOptions = options.filter((option) =>
     `${option.label} ${option.id}`
       .toLocaleLowerCase()
       .includes(normalizedSearch),
   );
-  const showAllOption =
-    normalizedSearch === "" || "all categories".includes(normalizedSearch);
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
   const {
     scrollRef: listRef,
@@ -113,14 +181,30 @@ export function PluginBrowseCategoryFilter({
     }, SCROLLBAR_IDLE_DELAY_MS);
   };
 
-  const select = (nextValue: string | null) => {
-    onChange(nextValue);
+  const closeAfterSelection = () => {
     setOpen(false);
     setSearch("");
   };
 
+  const clearSelection = () => {
+    if (props.selectionMode === "multiple") {
+      props.onChange([]);
+      return;
+    }
+    props.onChange(null);
+    closeAfterSelection();
+  };
+
   const toggle = (optionId: string) => {
-    select(optionId === value ? null : optionId);
+    if (props.selectionMode === "multiple") {
+      const next = new Set(props.value);
+      if (next.has(optionId)) next.delete(optionId);
+      else next.add(optionId);
+      props.onChange([...next]);
+      return;
+    }
+    props.onChange(optionId === props.value ? null : optionId);
+    closeAfterSelection();
   };
 
   return (
@@ -137,9 +221,9 @@ export function PluginBrowseCategoryFilter({
           variant="outline"
           className={cn(
             "h-8 max-w-52 gap-2 px-2.5 text-xs font-normal",
-            (open || value !== null) && ENGAGED_CONTROL_CLASS,
+            (open || selectedValues.length > 0) && ENGAGED_CONTROL_CLASS,
           )}
-          aria-label={`Filter plugins by category: ${selectionLabel}`}
+          aria-label={`Filter plugins by category: ${accessibleSelectionLabel}`}
           aria-expanded={open}
           onPointerDown={() => {
             keyboardFocusRef.current = false;
@@ -172,7 +256,7 @@ export function PluginBrowseCategoryFilter({
         mobileTitle="Filter plugins by category"
         className="w-72 p-1.5 md:p-0.5"
       >
-        <div className="relative mx-1.5 mt-1.5">
+        <div className="relative mx-2.5 mt-1.5">
           <Icon
             name="Search"
             className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
@@ -219,11 +303,14 @@ export function PluginBrowseCategoryFilter({
             ref={attachList}
             role="listbox"
             aria-label="Plugin categories"
+            aria-multiselectable={
+              props.selectionMode === "multiple" ? true : undefined
+            }
             className="transient-scrollbar max-h-64 overflow-y-auto"
             onScroll={revealScrollbarWhileScrolling}
           >
             <div ref={topSentinelRef} aria-hidden className="h-px w-full" />
-            {!showAllOption && filteredOptions.length === 0 ? (
+            {filteredOptions.length === 0 ? (
               <p
                 className="px-2 py-6 text-center text-xs text-muted-foreground"
                 role="status"
@@ -233,57 +320,34 @@ export function PluginBrowseCategoryFilter({
                   : "No categories match your search."}
               </p>
             ) : (
-              <>
-                {showAllOption ? (
+              filteredOptions.map((option) => {
+                return (
                   <button
+                    key={option.id}
                     type="button"
                     role="option"
-                    aria-selected={value === null}
-                    onClick={() => select(null)}
+                    aria-selected={selected.has(option.id)}
+                    onClick={() => toggle(option.id)}
                     className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground md:gap-1.5"
                     onKeyDown={focusCategoryOption}
                   >
                     <span className="flex w-8 shrink-0 justify-center">
                       <span
                         data-category-option-count
-                        className="rounded-full bg-muted p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
+                        className="rounded-full bg-surface-recessed p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
                       >
-                        {totalCount.toLocaleString()}
+                        {option.count.toLocaleString()}
                       </span>
                     </span>
                     <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                      All categories
+                      {option.label}
                     </span>
-                    <CategoryOptionCheckbox enabled={value === null} />
+                    <CategoryOptionCheckbox
+                      enabled={selected.has(option.id)}
+                    />
                   </button>
-                ) : null}
-                {filteredOptions.map((option) => {
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      role="option"
-                      aria-selected={option.id === value}
-                      onClick={() => toggle(option.id)}
-                      className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground md:gap-1.5"
-                      onKeyDown={focusCategoryOption}
-                    >
-                      <span className="flex w-8 shrink-0 justify-center">
-                        <span
-                          data-category-option-count
-                          className="rounded-full bg-muted p-1.5 text-center text-2xs font-medium leading-none tabular-nums text-subtle-foreground"
-                        >
-                          {option.count.toLocaleString()}
-                        </span>
-                      </span>
-                      <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                        {option.label}
-                      </span>
-                      <CategoryOptionCheckbox enabled={option.id === value} />
-                    </button>
-                  );
-                })}
-              </>
+                );
+              })
             )}
             <div ref={bottomSentinelRef} aria-hidden className="h-px w-full" />
           </div>
@@ -295,6 +359,17 @@ export function PluginBrowseCategoryFilter({
             />
           ) : null}
         </div>
+        {selectedValues.length > 0 ? (
+          <div className="mt-0.5 border-t border-border-seam pt-0.5">
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="flex w-full items-center rounded-sm px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground"
+            >
+              Clear filter
+            </button>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

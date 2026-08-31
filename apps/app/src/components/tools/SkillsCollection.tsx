@@ -348,6 +348,10 @@ export function SkillsOverview({
   const [sourceFilters, setSourceFilters] = useState<
     ResourceSkillSourceFilter[]
   >([]);
+  const filtersAreDefault =
+    sourceFilters.length === 0 &&
+    providerFilters.length === 1 &&
+    providerFilters[0] === "bb";
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
@@ -553,6 +557,7 @@ export function SkillsOverview({
                 <>
                   <ResourceFilterMenu
                     compact
+                    engaged={!filtersAreDefault}
                     groups={[
                       {
                         id: "type",

@@ -10,10 +10,15 @@ import {
 export function BrowseArchetypeCards({
   onCreate,
   className,
+  compact = false,
 }: {
   onCreate: (prompt: string) => void;
   className?: string;
+  compact?: boolean;
 }) {
+  const archetypes = compact
+    ? BROWSE_ARCHETYPES.slice(0, 3)
+    : BROWSE_ARCHETYPES;
   return (
     <TooltipProvider delayDuration={250}>
       <section className={className}>
@@ -21,7 +26,7 @@ export function BrowseArchetypeCards({
           Start from an example
         </h3>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {BROWSE_ARCHETYPES.map((archetype) => (
+          {archetypes.map((archetype) => (
             <ShowcaseExampleCard
               key={archetype.id}
               icon={archetype.icon}
@@ -32,21 +37,25 @@ export function BrowseArchetypeCards({
             />
           ))}
         </div>
-        <h4 className="mt-5 text-xs font-medium text-subtle-foreground">
-          Explore plugin capabilities
-        </h4>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {UTILITY_EXAMPLES.map((example) => (
-            <ShowcaseExampleCard
-              key={example.id}
-              icon={example.icon}
-              title={example.label}
-              description={example.brief}
-              tooltip={utilityPrompt(example)}
-              onClick={() => onCreate(utilityPrompt(example))}
-            />
-          ))}
-        </div>
+        {compact ? null : (
+          <>
+            <h4 className="mt-5 text-xs font-medium text-subtle-foreground">
+              Explore plugin capabilities
+            </h4>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {UTILITY_EXAMPLES.map((example) => (
+                <ShowcaseExampleCard
+                  key={example.id}
+                  icon={example.icon}
+                  title={example.label}
+                  description={example.brief}
+                  tooltip={utilityPrompt(example)}
+                  onClick={() => onCreate(utilityPrompt(example))}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </section>
     </TooltipProvider>
   );

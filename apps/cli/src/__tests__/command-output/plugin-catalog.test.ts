@@ -54,7 +54,11 @@ const thirdPartyPlan = {
   publisherKey: "acme-plugins",
   publisherLabel: "Acme Plugins",
   official: false,
-  author: { name: "Acme", url: "https://github.com/acme" },
+  author: {
+    name: "Acme",
+    github: "acme",
+    url: "https://acme.example",
+  },
   source: "git:https://github.com/acme/plugins.git@semver:notes/:^1.0.0",
   resolvedSource: {
     kind: "git",
@@ -140,7 +144,7 @@ describe("bb plugin catalog", () => {
             publisherKey: "acme-plugins",
             publisherLabel: "Acme Plugins",
             official: false,
-            author: { name: "Acme", url: null },
+            author: { name: "Acme", github: null, url: null },
           },
         ],
       }),

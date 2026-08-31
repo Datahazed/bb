@@ -144,26 +144,20 @@ export function ResourceInstallControl({
           {presentation === "label" ? label : null}
         </span>
       )}
+      {count === undefined ? null : (
+        <span
+          id={countId}
+          aria-label={count.accessibleLabel}
+          className="shrink-0 whitespace-nowrap text-2xs text-subtle-foreground"
+        >
+          {count.display}
+        </span>
+      )}
     </Button>
   );
-  const tipped = withTooltip(
+  return withTooltip(
     control,
     presentation === "icon" ? tooltip : undefined,
-  );
-  if (count === undefined) return tipped;
-  return (
-    <span className="flex shrink-0 items-center gap-1.5">
-      {
-}
-      <span
-        id={countId}
-        aria-label={count.accessibleLabel}
-        className="shrink-0 whitespace-nowrap text-2xs text-subtle-foreground"
-      >
-        {count.display}
-      </span>
-      {tipped}
-    </span>
   );
 }
 

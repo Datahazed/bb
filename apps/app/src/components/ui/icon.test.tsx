@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { Github01Icon } from "@hugeicons/core-free-icons";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -85,6 +86,7 @@ describe("Icon core/extended split", () => {
     for (const name of registry.EXTENDED_ICON_NAMES) {
       expect(extended.EXTENDED_ICON_MAP[name].length).toBeGreaterThan(0);
     }
+    expect(extended.EXTENDED_ICON_MAP.GithubFilled).toBe(Github01Icon);
   });
 
   it("keeps the extended artwork off the static import graph of the boot modules", () => {

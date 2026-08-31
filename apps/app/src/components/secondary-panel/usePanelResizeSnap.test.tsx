@@ -18,9 +18,16 @@ function rect(left: number, width: number): DOMRect {
   };
 }
 
-function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
+function SnapHarness({
+  leadingFractionBounds,
+  onResize,
+}: {
+  leadingFractionBounds?: { min: number; max: number };
+  onResize: (fraction: number) => void;
+}) {
   const { onPointerDownCapture } = usePanelResizeSnap({
     axis: "x",
+    leadingFractionBounds,
     onResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });
@@ -79,6 +86,36 @@ describe("usePanelResizeSnap", () => {
       fireEvent.pointerUp(window, { clientX: 450, pointerId: 40 });
       document.body.removeEventListener("pointermove", rawPanelMove, true);
     }
+  });
+
+  it("keeps the drag preview and commit within the panel width policy", () => {
+    const onResize = vi.fn();
+    render(
+      <SnapHarness
+        leadingFractionBounds={{ min: 0.56, max: 0.7 }}
+        onResize={onResize}
+      />,
+    );
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const hitTarget = screen.getByTestId("hit-target");
+    const next = screen.getByTestId("next");
+    previous.getBoundingClientRect = () => rect(100, 370);
+    divider.getBoundingClientRect = () => rect(470, 1);
+    next.getBoundingClientRect = () => rect(471, 429);
+
+    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 45 });
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: 140,
+      pointerId: 45,
+    });
+
+    expect(previous.style.flex).toBe("0.56 1 0px");
+    expect(Number.parseFloat(next.style.flex)).toBeCloseTo(0.44);
+
+    fireEvent.pointerUp(window, { clientX: 140, pointerId: 45 });
+    expect(onResize).toHaveBeenLastCalledWith(0.56);
   });
 
   it("disables panel-size transitions only for the active pointer drag", () => {

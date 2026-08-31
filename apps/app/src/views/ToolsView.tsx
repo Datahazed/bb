@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -281,11 +282,18 @@ function decodedRouteParam(value: string | undefined): string | undefined {
 function PluginDetailToolView({
   pluginId,
   onOpenPlugin,
+  seedCatalogEntry,
+  seedPlugin,
+  focusHeading = false,
 }: {
   pluginId: string;
   onOpenPlugin: (pluginId: string) => void;
+  seedCatalogEntry?: PluginCatalogSearchEntry | undefined;
+  seedPlugin?: PluginListItem | undefined;
+  focusHeading?: boolean;
 }) {
   const navigate = useNavigate();
+  const detailRootRef = useRef<HTMLDivElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
@@ -343,15 +351,39 @@ function PluginDetailToolView({
   });
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
-    plugins.find((plugin) => plugin.id === pluginId) ?? null;
+    plugins.find((plugin) => plugin.id === pluginId) ?? seedPlugin ?? null;
   const selectedCatalogEntry =
     catalogQuery.data?.find((entry) => entry.pluginId === pluginId) ??
     allCatalogQuery.data?.find((entry) => entry.pluginId === pluginId) ??
+    seedCatalogEntry ??
     null;
   const selectedListingLifecycle =
     listingsQuery.data?.records.find((record) => record.pluginId === pluginId)
       ?.lifecycle ?? null;
-  const catalogEntries = allCatalogQuery.data ?? catalogQuery.data ?? [];
+  const catalogEntries = useMemo(() => {
+    const entries = allCatalogQuery.data ?? catalogQuery.data ?? [];
+    if (
+      seedCatalogEntry === undefined ||
+      entries.some((entry) => entry.pluginId === seedCatalogEntry.pluginId)
+    ) {
+      return entries;
+    }
+    return [seedCatalogEntry, ...entries];
+  }, [allCatalogQuery.data, catalogQuery.data, seedCatalogEntry]);
+  const identityReady =
+    selectedPlugin !== null || selectedCatalogEntry !== null;
+  useEffect(() => {
+    if (!focusHeading || !identityReady) return;
+    const frame = window.requestAnimationFrame(() => {
+      const heading = detailRootRef.current?.querySelector<HTMLHeadingElement>(
+        "h1",
+      );
+      if (heading === undefined || heading === null) return;
+      if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusHeading, identityReady, pluginId]);
   useResourceRouteLabel(
     selectedPlugin?.name ??
       selectedPlugin?.id ??
@@ -391,7 +423,33 @@ function PluginDetailToolView({
   );
 
   let detailContent: ReactNode;
-  if (listQuery.isError) {
+  if (selectedPlugin !== null) {
+    detailContent = (
+      <PluginDetail
+        isLoading={false}
+        plugin={selectedPlugin}
+        pending={pendingPluginId === selectedPlugin.id}
+        openSourceDisabled={!canOpenPreferredDirectoryTarget}
+        onToggle={(target) => pluginToggle.mutate(target)}
+        onEdit={handleEditPlugin}
+        onOpenSource={handleOpenPluginSource}
+        onDelete={setDeleteTarget}
+        catalogEntry={selectedCatalogEntry}
+        catalogEntries={catalogEntries}
+        onOpenPlugin={onOpenPlugin}
+        listingLifecycle={selectedListingLifecycle}
+      />
+    );
+  } else if (selectedCatalogEntry !== null && !selectedCatalogEntry.installed) {
+    detailContent = (
+      <CatalogPluginDetail
+        entry={selectedCatalogEntry}
+        onInstall={setInstallTarget}
+        catalogEntries={catalogEntries}
+        onOpenPlugin={onOpenPlugin}
+      />
+    );
+  } else if (listQuery.isError) {
     detailContent = (
       <ResourceListState
         state="error"
@@ -410,21 +468,16 @@ function PluginDetailToolView({
         maxWidthClassName="max-w-5xl"
       />
     );
-  } else if (selectedPlugin !== null) {
+  } else if (
+    (catalogQuery.isFetching && catalogQuery.data === undefined) ||
+    (allCatalogQuery.isFetching && allCatalogQuery.data === undefined)
+  ) {
     detailContent = (
-      <PluginDetail
-        isLoading={false}
-        plugin={selectedPlugin}
-        pending={pendingPluginId === selectedPlugin.id}
-        openSourceDisabled={!canOpenPreferredDirectoryTarget}
-        onToggle={(target) => pluginToggle.mutate(target)}
-        onEdit={handleEditPlugin}
-        onOpenSource={handleOpenPluginSource}
-        onDelete={setDeleteTarget}
-        catalogEntry={selectedCatalogEntry}
-        catalogEntries={catalogEntries}
-        onOpenPlugin={onOpenPlugin}
-        listingLifecycle={selectedListingLifecycle}
+      <ResourceListState
+        state="loading"
+        message="Loading plugin"
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
       />
     );
   } else if (catalogQuery.isError) {
@@ -434,25 +487,10 @@ function PluginDetailToolView({
         message="Couldn't load plugin."
         layout="detail"
         maxWidthClassName="max-w-5xl"
-        onRetry={() => void catalogQuery.refetch()}
-      />
-    );
-  } else if (catalogQuery.isFetching && catalogQuery.data === undefined) {
-    detailContent = (
-      <ResourceListState
-        state="loading"
-        message="Loading plugin"
-        layout="detail"
-        maxWidthClassName="max-w-5xl"
-      />
-    );
-  } else if (selectedCatalogEntry !== null && !selectedCatalogEntry.installed) {
-    detailContent = (
-      <CatalogPluginDetail
-        entry={selectedCatalogEntry}
-        onInstall={setInstallTarget}
-        catalogEntries={catalogEntries}
-        onOpenPlugin={onOpenPlugin}
+        onRetry={() => {
+          void catalogQuery.refetch();
+          void allCatalogQuery.refetch();
+        }}
       />
     );
   } else if (selectedCatalogEntry?.installed) {
@@ -477,7 +515,7 @@ function PluginDetailToolView({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={detailRootRef} className="flex h-full min-h-0 flex-col">
       {selectedPlugin !== null ? (
         <PluginDetailBanners plugin={selectedPlugin} />
       ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
@@ -542,6 +580,7 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
         <Suspense fallback={<ToolsBodyFallback />}>
           <PluginDetailToolView
             pluginId={pluginId}
+            focusHeading
             onOpenPlugin={(nextPluginId) =>
               navigate(getPluginDetailRoutePath({ pluginId: nextPluginId }))
             }
@@ -575,6 +614,7 @@ export function ToolsView({
     routeAuthorId ??
     (pluginId === undefined ? null : searchParams.get("author"));
   const [openedPluginIds, setOpenedPluginIds] = useState<string[]>([]);
+  const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
   const catalogQuery = usePluginCatalogSearch("", {
     enabled: activeSection === "plugins",
   });
@@ -614,6 +654,7 @@ export function ToolsView({
   );
 
   const closePanel = useCallback(() => {
+    setIsPluginDetailFullPage(false);
     if (pluginId !== undefined) retainedPluginDetailId = pluginId;
     const nextSearch = new URLSearchParams(searchParams);
     nextSearch.delete("author");
@@ -709,6 +750,9 @@ export function ToolsView({
           renderContent: () => (
             <PluginDetailToolView
               pluginId={tabPluginId}
+              seedCatalogEntry={catalogEntry}
+              seedPlugin={installedPlugin}
+              focusHeading={tabPluginId === pluginId}
               onOpenPlugin={navigateToPlugin}
             />
           ),
@@ -724,6 +768,7 @@ export function ToolsView({
       closePluginTab,
       listQuery.data?.plugins,
       navigateToPlugin,
+      pluginId,
       visiblePluginIds,
     ],
   );
@@ -759,10 +804,12 @@ export function ToolsView({
   const renderPanel = useCallback(
     ({
       presentation,
+      isMainCollapsed,
       onToggleMainCollapse,
       resizablePanelId,
     }: {
       presentation: "inline" | "drawer";
+      isMainCollapsed: boolean;
       onToggleMainCollapse: () => void;
       resizablePanelId?: string;
     }) => (
@@ -774,7 +821,7 @@ export function ToolsView({
         fixedTabs={[]}
         onTabReorder={reorderPluginTabs}
         isOpen={pluginId !== undefined}
-        showConversationCollapseControl={false}
+        showConversationCollapseControl
         showNewTabButton={false}
         onPanelFocus={() => {}}
         onCollapse={closePanel}
@@ -782,7 +829,7 @@ export function ToolsView({
         hidePanelIcon="X"
         hidePanelLabel="Close plugin details"
         onOpenNewTab={() => {}}
-        isConversationCollapsed={false}
+        isConversationCollapsed={isMainCollapsed}
         onToggleConversationCollapse={onToggleMainCollapse}
         renderAsDrawer={presentation === "drawer"}
         resizablePanelId={resizablePanelId}
@@ -806,7 +853,7 @@ export function ToolsView({
         onToggle={pluginId === undefined ? () => {} : closePanel}
         onClose={closePanel}
         panelGroupKey="extensions-plugin-details"
-        resetKey={pluginId ?? panelAuthorId ?? "extensions-plugins"}
+        resetKey="extensions-plugin-details"
         contentKey={pluginId ?? panelAuthorId ?? "extensions-plugins"}
         drawerLabel="Plugin details"
         drawerFallback={
@@ -817,6 +864,10 @@ export function ToolsView({
           </div>
         }
         secondaryWidthAtom={marketplaceSecondaryPanelWidthPercentAtom}
+        collapse={{
+          active: isPluginDetailFullPage,
+          onToggle: () => setIsPluginDetailFullPage((current) => !current),
+        }}
         mainPanelId="extensions-main-panel"
         main={mainContent}
         renderPanel={renderPanel}

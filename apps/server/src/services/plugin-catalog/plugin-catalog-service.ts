@@ -523,7 +523,11 @@ export function createPluginCatalogService(deps: {
       publisherKey: BUILTIN_PUBLISHER_KEY,
       publisherLabel: BUILTIN_PUBLISHER_LABEL,
       official: true,
-      author: { name: "BB Team", url: "https://getbb.app" },
+      author: {
+        name: "BB Team",
+        github: "get-bb",
+        url: "https://getbb.app",
+      },
       installed: getInstalledPlugin(deps.db, entry.pluginId) !== undefined,
       installs,
       compatible: problem === null,
@@ -1550,10 +1554,9 @@ function catalogEntryKey(marketplace: string, entryId: string): string {
 }
 
 function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
+  const github = entry.author.github ?? null;
   const url =
     entry.author.url ??
-    (entry.author.github === undefined
-      ? null
-      : `https://github.com/${entry.author.github}`);
-  return { name: entry.author.name, url };
+    (github === null ? null : `https://github.com/${github}`);
+  return { name: entry.author.name, github, url };
 }

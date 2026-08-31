@@ -25,6 +25,9 @@ export const SUCCESS_TEXT_STYLE = {
 } as const;
 
 const PLUGIN_CATEGORY_PILL_FILL_PERCENT = 16;
+const PLUGIN_CATEGORY_PILL_TINT_STEP_PERCENT = 8;
+const PLUGIN_CATEGORY_PILL_BORDER_PERCENT =
+  PLUGIN_CATEGORY_PILL_FILL_PERCENT + PLUGIN_CATEGORY_PILL_TINT_STEP_PERCENT;
 const PLUGIN_CATEGORY_PILL_INK_PERCENT = 52;
 const PLUGIN_CATEGORY_MUTED_ACCENT_PERCENT = 55;
 
@@ -33,11 +36,19 @@ export function pluginCatalogCategoryPillStyle(
 ): CSSProperties {
   const accentToken = pluginCatalogCategoryAccentToken(categoryId);
   return accentToken === undefined
-    ? { background: neutral(8), color: neutral(55) }
+    ? {
+        background: neutral(8),
+        borderColor: neutral(16),
+        color: neutral(55),
+      }
     : {
         background: accentTint(
           accentToken,
           PLUGIN_CATEGORY_PILL_FILL_PERCENT,
+        ),
+        borderColor: accentTint(
+          accentToken,
+          PLUGIN_CATEGORY_PILL_BORDER_PERCENT,
         ),
         color: accentInk(accentToken, PLUGIN_CATEGORY_PILL_INK_PERCENT),
       };
@@ -150,7 +161,7 @@ export function PluginCategoryLabel({
 }) {
   return (
     <span
-      className="shrink-0 truncate rounded px-2 py-1 text-2xs leading-none"
+      className="shrink-0 truncate rounded border px-2 py-1 text-2xs leading-none"
       style={pluginCatalogCategoryPillStyle(categoryId)}
     >
       {label}
@@ -286,8 +297,8 @@ export function FullTrustWarning() {
     >
       <Icon name="Lock" className="mt-0.5 size-3 shrink-0" />
       <span>
-        Plugins run as full-trust code with access to your computer. Only
-        install from sources you trust.
+        Plugins have full access to your computer. Install only from sources
+        you trust.
       </span>
     </p>
   );

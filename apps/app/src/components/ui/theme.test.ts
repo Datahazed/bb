@@ -40,6 +40,14 @@ const REQUIRED_RAMP_TOKENS = [
 
 const MODES = ["light", "dark"] as const;
 
+const PLUGIN_CATEGORY_FAMILY_ALIASES = {
+  "plugin-category-family-experience": "file-accent",
+  "plugin-category-family-agent-work": "success",
+  "plugin-category-family-oversight": "warning",
+  "plugin-category-family-development": "pr-merged",
+  "plugin-category-family-environment": "attention",
+} as const;
+
 interface OklchColor {
   lightness: number;
   chroma: number;
@@ -115,6 +123,12 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
 }
 
 describe("theme.css neutral ramp", () => {
+  it("registers the plugin category families with Tailwind", () => {
+    for (const family of Object.keys(PLUGIN_CATEGORY_FAMILY_ALIASES)) {
+      expect(css).toContain(`--color-${family}: var(--${family});`);
+    }
+  });
+
   it("backs selected sticky sidebar rows with an opaque sidebar layer", () => {
     const rule = css.match(
       /\[data-sidebar-sticky-tier\]\.bb-sidebar-selected-row\s*\{([^}]*)\}/s,
@@ -212,6 +226,20 @@ describe("theme.css neutral ramp", () => {
     const dark = [...rampSteps(modeBlock("dark")).keys()].sort();
     expect(light).toEqual(dark);
   });
+
+  for (const mode of MODES) {
+    it(
+      `backs the ${mode} plugin category families with existing theme tokens`,
+      () => {
+        const block = modeBlock(mode);
+        for (const [family, source] of Object.entries(
+          PLUGIN_CATEGORY_FAMILY_ALIASES,
+        )) {
+          expect(variableValue(block, family)).toBe(`var(--${source})`);
+        }
+      },
+    );
+  }
 
   it("derives translucent (transparent-mixed) tokens in oklab, not oklch", () => {
     const offenders = [

@@ -638,7 +638,14 @@ describe("third-party marketplaces", () => {
           entry({ id: "official-notes", tags: ["interface"] }),
         ]),
         [ACME_URL]: manifest("acme-plugins", [
-          entry({ tags: ["git-tools"] }),
+          entry({
+            tags: ["git-tools"],
+            author: {
+              name: "Acme",
+              github: "acme",
+              url: "https://acme.example",
+            },
+          }),
           entry({ id: "zebra", displayName: "Zebra", tags: ["git-tools"] }),
         ]),
       }),
@@ -662,7 +669,11 @@ describe("third-party marketplaces", () => {
     expect(results[1]).toMatchObject({
       official: false,
       marketplaceDisplayName: "Acme Plugins",
-      author: { name: "Acme", url: "https://github.com/acme" },
+      author: {
+        name: "Acme",
+        github: "acme",
+        url: "https://acme.example",
+      },
     });
     expect(results[0]?.official).toBe(true);
   });
@@ -738,7 +749,11 @@ describe("third-party marketplaces", () => {
         entryId: "notes",
         marketplace: "acme-plugins",
         official: false,
-        author: { name: "Acme", url: "https://github.com/acme" },
+        author: {
+          name: "Acme",
+          github: "acme",
+          url: "https://github.com/acme",
+        },
         source: `git:${listedUrl}@semver:notes/:^1.0.0`,
         resolvedSource: {
           kind: "git",

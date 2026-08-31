@@ -327,11 +327,13 @@ export function ResourceFilterMenu({
   icon = "SlidersHorizontal",
   groups,
   compact = false,
+  engaged,
 }: {
   label?: string;
   icon?: IconName;
   groups: readonly ResourceFilterGroup[];
   compact?: boolean;
+  engaged?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const renderedGroups = groups
@@ -350,6 +352,7 @@ export function ResourceFilterMenu({
         `${group.label}: ${activeOptions.map((option) => option.label).join(", ")}`,
     );
   const hasActiveFilter = activeSummaries.length > 0;
+  const isEngaged = engaged ?? hasActiveFilter;
   const triggerLabel = hasActiveFilter
     ? `${label}: ${activeSummaries.join("; ")}`
     : label;
@@ -359,7 +362,7 @@ export function ResourceFilterMenu({
       <ResourceMenuTrigger
         label={triggerLabel}
         icon={icon}
-        active={hasActiveFilter}
+        active={isEngaged}
         open={open}
         tooltip={hasActiveFilter ? activeSummaries.join("; ") : `${label}: All`}
       />
@@ -444,6 +447,7 @@ export function ResourceSortMenu({
       <ResourceMenuTrigger
         label={sortStateLabel}
         icon="ArrowUpDown"
+        active={value !== null}
         open={open}
       />
       <DropdownMenuContent

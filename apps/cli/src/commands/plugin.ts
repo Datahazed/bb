@@ -652,9 +652,9 @@ function installPlanSummary(plan: PluginCatalogInstallPlan): string {
     return `Installing ${plan.displayName} from the ${plan.marketplaceDisplayName} marketplace, reviewed by BB (${plan.source})`;
   }
   const author =
-    plan.author.url === null
+    plan.author.github === null
       ? plan.author.name
-      : `${plan.author.name} (${plan.author.url})`;
+      : `${plan.author.name} (https://github.com/${plan.author.github})`;
   return [
     `Installing ${plan.displayName} (${plan.entryId}@${plan.marketplace})`,
     `  marketplace: ${plan.marketplaceDisplayName} — a third-party marketplace, not reviewed by BB`,

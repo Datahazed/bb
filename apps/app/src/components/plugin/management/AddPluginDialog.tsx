@@ -42,19 +42,6 @@ export type AddPluginInitial = {
   source: string;
 };
 
-function catalogInstallDescription(
-  source: string,
-  publisherLabel: string,
-): string {
-  if (source.startsWith("builtin:")) {
-    return "Install this plugin, bundled with BB.";
-  }
-  if (source.startsWith("npm:")) {
-    return `Install this ${publisherLabel} plugin from its listed npm package.`;
-  }
-  return `Install this ${publisherLabel} plugin from its listed source repository.`;
-}
-
 interface AddPluginDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -172,9 +159,9 @@ function ThirdPartySourceDisclosure({
     return null;
   }
   const author =
-    plan.author.url === null ? null : (
+    plan.author.github === null ? null : (
       <a
-        href={plan.author.url}
+        href={`https://github.com/${plan.author.github}`}
         target="_blank"
         rel="noreferrer"
         className="underline underline-offset-2"
@@ -277,15 +264,10 @@ function AddPluginDialogContent({
         <DialogTitle>
           {initial !== null ? `Install ${initial.displayName}?` : "Add plugin"}
         </DialogTitle>
-        <DialogDescription>
+        <DialogDescription className={initial === null ? undefined : "sr-only"}>
           {initial === null
             ? "Install from npm, a Git repository, or a local path."
-            : thirdParty
-              ? "Install this plugin from the source its marketplace lists."
-              : catalogInstallDescription(
-                  initial.source,
-                  initial.publisherLabel,
-                )}
+            : "Review the plugin source before installing."}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
@@ -296,11 +278,7 @@ function AddPluginDialogContent({
               <span className="text-sm font-medium text-foreground">
                 {initial.displayName}
               </span>
-              <span className="ml-auto font-mono text-xs text-subtle-foreground">
-                {initial.entryId}
-              </span>
             </div>
-            {}
             <p className="overflow-x-auto whitespace-nowrap font-mono text-2xs text-subtle-foreground">
               {initial.source}
             </p>
@@ -367,7 +345,9 @@ function AddPluginDialogContent({
           ) : null}
           {install.isPending
             ? "Installing"
-            : `Install ${initial?.displayName ?? "plugin"}`}
+            : initial === null
+              ? "Install plugin"
+              : "Install"}
         </Button>
       </DialogFooter>
     </>

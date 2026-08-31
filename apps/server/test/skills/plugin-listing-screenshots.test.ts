@@ -45,6 +45,14 @@ describe("plugin-listing-screenshots skill", () => {
     expect(skill).toContain("--fixture-thread <id>");
     expect(skill).toContain("Open every image.");
     expect(skill).toContain("Crop to the surface, not the desktop.");
+    expect(skill).toContain("## Plan one carousel");
+    expect(skill).toContain("Every image must advance the same user job");
+    expect(skill).toContain("Capture, QA, listing, or plugin-development fixtures");
+    expect(skill).toContain("## Multiple states from one registered surface");
+    expect(skill).toContain("the actual narrow split-panel layout");
+    expect(skill).toContain("the full-page detail layout");
+    expect(skill).toContain("getBoundingClientRect()");
+    expect(skill).toContain("Treat a height below 420px as an expected");
   });
 
   it("gates capture on host safety, seeded data, and being a product surface", async () => {

@@ -4,7 +4,6 @@ import {
   pluginDiscoveryNewAndNotableEntries,
   pluginDiscoveryShelves,
   sortPluginDiscoveryEntries,
-  visiblePluginCategoryChipCount,
   type PluginDiscoveryEntryAccessors,
   type PluginDiscoverySort,
   type PluginDiscoverySortDirection,
@@ -127,5 +126,3 @@ export function sortPluginEntries(
     direction,
   );
 }
-
-export const visibleCategoryChipCount = visiblePluginCategoryChipCount;

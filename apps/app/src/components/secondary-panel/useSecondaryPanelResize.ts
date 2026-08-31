@@ -17,12 +17,16 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
+  maxWidthPercent?: number;
+  minWidthPercent?: number;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
   widthAtom?: WritableAtom<number, [number], void>;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
+  maxWidthPercent = 100,
+  minWidthPercent = 0,
   onPanelWidthChange,
   widthAtom = secondaryPanelWidthPercentAtom,
 }: UseSecondaryPanelResizeArgs) {
@@ -46,6 +50,10 @@ export function useSecondaryPanelResize({
     onPointerDownCapture: handleSecondaryPanelResizePointerDownCapture,
   } = usePanelResizeSnap({
     axis: "x",
+    leadingFractionBounds: {
+      min: 1 - maxWidthPercent / 100,
+      max: 1 - minWidthPercent / 100,
+    },
     onResize: handleSecondaryPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });

@@ -315,6 +315,7 @@ describe("SkillsOverview", () => {
     expect(markup).not.toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
     expect(markup).toContain('aria-label="Filters: Provider: bb"');
+    expect(markup).not.toContain("bg-state-active");
     expect(markup).not.toContain("Provider: 1 selected");
     expect(markup).toContain("Sort");
     expect(markup).not.toContain('role="tab"');
@@ -325,6 +326,48 @@ describe("SkillsOverview", () => {
       markup.indexOf("aa-user-skill"),
     );
   });
+
+  it(
+    "fills the filter trigger only when the selection differs from its default",
+    async () => {
+      renderDom(
+        <SkillsOverview
+          providerRoster={NO_PROVIDER_ROSTER}
+          skills={[
+            makeSkill({
+              name: "bb-skill",
+              provider: null,
+              scope: "bb-user",
+            }),
+            makeSkill({ name: "claude-skill", provider: "claude-code" }),
+          ]}
+          isLoading={false}
+          hasError={false}
+          onCreateSkill={() => {}}
+          onSelectSkill={() => {}}
+        />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /^Filters/ });
+    expect(trigger.classList.contains("bg-state-active")).toBe(false);
+
+      fireEvent.pointerDown(trigger);
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+      fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(trigger.classList.contains("bg-state-active")).toBe(true);
+      });
+
+      fireEvent.pointerDown(trigger);
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+      fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(trigger.classList.contains("bg-state-active")).toBe(false);
+      });
+    },
+  );
 
   it("labels the Type filter and preserves independent source toggles", async () => {
     renderDom(

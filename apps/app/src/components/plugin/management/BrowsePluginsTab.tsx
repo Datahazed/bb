@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useDebounceValue } from "usehooks-ts";
 import {
   PLUGIN_CATALOG_CATEGORIES,
@@ -22,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
@@ -33,7 +33,6 @@ import {
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import { formatInstallCount } from "@/lib/skills-registry";
-import { getPluginAuthorRoutePath } from "@/lib/route-paths";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import {
   categoryShelves,
@@ -41,14 +40,15 @@ import {
   publisherGroups,
   sortPluginEntries,
   type PluginBrowseSort,
-  type PluginBrowseSortDirection,
   type PluginPublisherGroup,
 } from "./plugin-browse-discovery";
 import {
   PluginBrowseCategoryFilter,
+  pluginBrowseSort,
+  pluginBrowseSortDirection,
+  pluginBrowseSortOptions,
   type PluginBrowseCategoryOption,
 } from "./PluginBrowseControls";
-import { PluginCategoryChips } from "./PluginCategoryChips";
 import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import {
   CatalogEntryIconChip,
@@ -58,34 +58,7 @@ import {
   pluginCatalogCategoryPillStyle,
 } from "./plugin-ui";
 import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
-
-const PLUGIN_BROWSE_SORTS = [
-  "recently-added",
-  "most-installed",
-  "name",
-] as const satisfies readonly PluginBrowseSort[];
-
-const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
-  "recently-added": "Recently added",
-  "most-installed": "Most installed",
-  name: "Name",
-};
-
-const PLUGIN_BROWSE_SORT_ICONS: Record<PluginBrowseSort, IconName> = {
-  "recently-added": "Clock",
-  "most-installed": "Download",
-  name: "Sort",
-};
-
-function browseSort(value: string | null): PluginBrowseSort | null {
-  return PLUGIN_BROWSE_SORTS.find((sort) => sort === value) ?? null;
-}
-
-function browseSortDirection(
-  value: string | null,
-): PluginBrowseSortDirection | null {
-  return value === "asc" || value === "desc" ? value : null;
-}
+import { PluginAuthorLink } from "./PluginAuthorLink";
 
 const NEW_AND_NOTABLE_ICON_SPARKLES = [
   { left: 0, top: 0, size: 8 },
@@ -212,18 +185,27 @@ export function BrowsePluginsTab({
   const shelves = categoryShelves(entries);
   const catalogShelves = categoryShelves(catalogEntries);
   const hasCategoryDiscovery = catalogShelves.length > 0;
-  const selectedCategoryId = hasCategoryDiscovery
-    ? searchParams.get("category")
-    : null;
-  const selectedCategory = PLUGIN_CATALOG_CATEGORIES.find(
-    (category) => category.id === selectedCategoryId,
-  );
+  const selectedCategoryIds = hasCategoryDiscovery
+    ? [...new Set(searchParams.getAll("category").filter(Boolean))]
+    : [];
+  const selectedCategoryId =
+    selectedCategoryIds.length === 1 ? (selectedCategoryIds[0] ?? null) : null;
+  const selectedCategory =
+    selectedCategoryId === null
+      ? undefined
+      : PLUGIN_CATALOG_CATEGORIES.find(
+          (category) => category.id === selectedCategoryId,
+        );
   const selectedCategoryLabel =
-    selectedCategory?.displayName ?? selectedCategoryId ?? "All categories";
+    selectedCategoryIds.length === 0
+      ? "All categories"
+      : selectedCategoryIds.length === 1
+        ? (selectedCategory?.displayName ?? selectedCategoryId ?? "Category")
+        : `${selectedCategoryIds.length} categories`;
   const hasInstallCounts = catalogEntries.some(
     (entry) => entry.installs !== null,
   );
-  const requestedSort = browseSort(searchParams.get("sort"));
+  const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const usableRequestedSort =
     requestedSort === "most-installed" && !hasInstallCounts
       ? null
@@ -232,21 +214,11 @@ export function BrowsePluginsTab({
   const activeDirection =
     activeSort === null
       ? "desc"
-      : (browseSortDirection(searchParams.get("direction")) ??
+      : (pluginBrowseSortDirection(searchParams.get("direction")) ??
         defaultPluginDiscoverySortDirection(activeSort));
-  const sortOptions = PLUGIN_BROWSE_SORTS.filter(
-    (sort) => sort !== "most-installed" || hasInstallCounts,
-  ).map((sort) => ({
-    id: sort,
-    label: PLUGIN_BROWSE_SORT_LABELS[sort],
-    leading: <Icon name={PLUGIN_BROWSE_SORT_ICONS[sort]} className="size-4" />,
-  }));
+  const sortOptions = pluginBrowseSortOptions(hasInstallCounts);
   const catalogCategoryCounts = new Map(
     catalogShelves.map((shelf) => [shelf.id, shelf.entries.length]),
-  );
-  const catalogCategorizedEntryCount = catalogShelves.reduce(
-    (count, shelf) => count + shelf.entries.length,
-    0,
   );
   const categoryOptions: PluginBrowseCategoryOption[] =
     PLUGIN_CATALOG_CATEGORIES.map((category) => ({
@@ -254,20 +226,31 @@ export function BrowsePluginsTab({
       label: category.displayName,
       count: catalogCategoryCounts.get(category.id) ?? 0,
     }));
-  if (selectedCategoryId !== null && selectedCategory === undefined) {
-    categoryOptions.push({
-      id: selectedCategoryId,
-      label: selectedCategoryLabel,
-      count: 0,
-    });
+  for (const categoryId of selectedCategoryIds) {
+    if (
+      PLUGIN_CATALOG_CATEGORIES.some(
+        (category) => category.id === categoryId,
+      )
+    ) {
+      continue;
+    }
+    categoryOptions.push({ id: categoryId, label: categoryId, count: 0 });
   }
+  const dropdownCategoryOptions = [...categoryOptions].sort(
+    (left, right) =>
+      right.count - left.count || left.label.localeCompare(right.label),
+  );
   const categorizedEntries = shelves.flatMap((shelf) => shelf.entries);
+  const selectedCategorySet = new Set(selectedCategoryIds);
+  const selectedShelves = shelves.filter((shelf) =>
+    selectedCategorySet.has(shelf.id),
+  );
   const legacyEntries = entries.filter(
     (entry) => entry.categoryId === undefined || entry.category === undefined,
   );
   const scopedEntries = categorizedEntries.filter((entry) => {
-    if (selectedCategoryId !== null) {
-      return entry.categoryId === selectedCategoryId;
+    if (selectedCategorySet.size > 0) {
+      return selectedCategorySet.has(entry.categoryId);
     }
     return true;
   });
@@ -287,11 +270,13 @@ export function BrowsePluginsTab({
   const showLegacyPublisherHeadings =
     hasCategoryDiscovery || legacyGroups.length > 1;
 
-  function setCategory(categoryId: string | null) {
+  function setCategories(categoryIds: readonly string[]) {
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.delete("shelf");
-    if (categoryId === null) nextSearchParams.delete("category");
-    else nextSearchParams.set("category", categoryId);
+    nextSearchParams.delete("category");
+    for (const categoryId of categoryIds) {
+      nextSearchParams.append("category", categoryId);
+    }
     setSearchParams(nextSearchParams);
   }
 
@@ -378,7 +363,7 @@ export function BrowsePluginsTab({
               className={cn(
                 "w-full",
                 activeSort === null &&
-                  selectedCategoryId === null &&
+                  selectedCategoryIds.length !== 1 &&
                   "px-[var(--resource-source-shelf-inset)]",
               )}
             >
@@ -397,37 +382,23 @@ export function BrowsePluginsTab({
                         placeholderLabel="Sort plugins"
                         onClear={clearSort}
                         onChange={(value) => {
-                          const sort = browseSort(value);
+                          const sort = pluginBrowseSort(value);
                           if (sort !== null) setSort(sort);
                         }}
                       />
                     ) : null}
                     {hasCategoryDiscovery ? (
                       <PluginBrowseCategoryFilter
-                        value={selectedCategoryId}
-                        options={categoryOptions}
-                        totalCount={catalogCategorizedEntryCount}
-                        onChange={setCategory}
+                        selectionMode="multiple"
+                        value={selectedCategoryIds}
+                        options={dropdownCategoryOptions}
+                        onChange={setCategories}
                       />
                     ) : null}
                   </>
                 }
               />
             </div>
-
-            {activeSort === null ? null : (
-              <div className="mt-3 w-full">
-                {hasCategoryDiscovery ? (
-                  <PluginCategoryChips
-                    options={categoryOptions}
-                    value={selectedCategoryId}
-                    ariaLabel="Filter plugins by category"
-                    onChange={setCategory}
-                    centered
-                  />
-                ) : null}
-              </div>
-            )}
 
             <div className="mt-7 space-y-3">
               {searchQuery.isError && entries.length > 0 ? (
@@ -471,7 +442,8 @@ export function BrowsePluginsTab({
                 />
               ) : activeSort !== null ? (
                 flatEntries.length === 0 &&
-                (selectedCategoryId !== null || legacyEntries.length === 0) ? (
+                (selectedCategoryIds.length > 0 ||
+                  legacyEntries.length === 0) ? (
                   <ResourceListState
                     state="empty"
                     message="No plugins match these filters."
@@ -486,7 +458,7 @@ export function BrowsePluginsTab({
                         onOpenPlugin={onOpenPlugin}
                       />
                     )}
-                    {selectedCategoryId === null ? (
+                    {selectedCategoryIds.length === 0 ? (
                       <LegacyPublisherGroups
                         groups={legacyGroups}
                         showHeadings={showLegacyPublisherHeadings}
@@ -496,7 +468,7 @@ export function BrowsePluginsTab({
                     ) : null}
                   </div>
                 )
-              ) : selectedCategoryId === null ? (
+              ) : selectedCategoryIds.length === 0 ? (
                 <div
                   key={debouncedQuery}
                   data-plugin-shelf-list
@@ -519,7 +491,7 @@ export function BrowsePluginsTab({
                       label={shelf.label}
                       description={shelf.description}
                       entries={shelf.entries.slice(0, 6)}
-                      onViewAll={() => setCategory(shelf.id)}
+                      onViewAll={() => setCategories([shelf.id])}
                       onInstall={onInstall}
                       onOpenPlugin={onOpenPlugin}
                     />
@@ -531,9 +503,35 @@ export function BrowsePluginsTab({
                     onOpenPlugin={onOpenPlugin}
                   />
                 </div>
+              ) : selectedCategoryIds.length > 1 ? (
+                selectedShelves.length === 0 ? (
+                  <ResourceListState
+                    state="empty"
+                    message="No plugins match this browse selection and search."
+                  />
+                ) : (
+                  <div
+                    key={debouncedQuery}
+                    data-plugin-shelf-list
+                    className="space-y-9 [&>*+*]:border-t [&>*+*]:border-border-seam/60 [&>*+*]:pt-9"
+                  >
+                    {selectedShelves.map((shelf) => (
+                      <BrowseShelf
+                        key={shelf.id}
+                        categoryId={shelf.id}
+                        label={shelf.label}
+                        description={shelf.description}
+                        entries={shelf.entries.slice(0, 6)}
+                        onViewAll={() => setCategories([shelf.id])}
+                        onInstall={onInstall}
+                        onOpenPlugin={onOpenPlugin}
+                      />
+                    ))}
+                  </div>
+                )
               ) : (
                 <section className="space-y-3">
-                  <div>
+                  <div data-plugin-list-header>
                     <ResourceShelfAction
                       type="button"
                       className="-ml-2"
@@ -550,7 +548,8 @@ export function BrowsePluginsTab({
                           selectedCategoryId ?? undefined,
                         )}
                       >
-                        {scopedEntries.length} plugins
+                        {scopedEntries.length.toLocaleString()}{" "}
+                        {scopedEntries.length === 1 ? "plugin" : "plugins"}
                       </span>
                     </h2>
                     {selectedCategory?.description ? (
@@ -693,7 +692,7 @@ function BrowseShelf({
 }
             <Icon
               name="ChevronRight"
-              className="size-3 transition-transform duration-150 group-hover:translate-x-1"
+              className="size-3"
               aria-hidden
             />
           </ResourceShelfAction>
@@ -772,13 +771,13 @@ export function PluginCatalogCard({
   const authorId = pluginMarketplaceAuthorId(entry);
   const authorByline =
     entry.author === null || authorId === null ? undefined : (
-      <Link
-        to={getPluginAuthorRoutePath({ authorId })}
+      <PluginAuthorLink
+        authorId={authorId}
         className="pointer-events-auto relative rounded-sm underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <span className="text-2xs text-subtle-foreground">By:</span>{" "}
         <span className="text-xs text-foreground/80">{entry.author.name}</span>
-      </Link>
+      </PluginAuthorLink>
     );
   const categoryLabel =
     showCategory && entry.category !== undefined ? (
