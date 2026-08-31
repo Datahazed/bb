@@ -27,7 +27,6 @@ import {
   SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
   SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -50,6 +49,7 @@ import {
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePluginThreadRowStatusForThreads } from "@/lib/plugin-thread-row-status";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
@@ -169,28 +169,23 @@ function SidebarSectionRowComponent({
         <span className="min-w-0 truncate">{name}</span>
       </span>
       <span
-        data-sidebar-collapsible-trailing-controls=""
-        className={cn(
-          SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
-          "relative z-10 shrink-0",
-          hasActions
-            ? "inline-flex items-center"
-            : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-        )}
+        data-sidebar-group-status-slot=""
+        className="relative z-10 inline-flex shrink-0 items-center"
       >
-        {showRollupIndicator ? (
-          <span
-            data-sidebar-collapsed-activity-edge=""
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-            className={cn(
-              "pointer-events-none absolute inset-0 inline-flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
-              hasActions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-            )}
-          >
-            {renderRollupIndicator()}
-          </span>
-        ) : null}
-        {hasActions ? (
+        <SidebarItemStatusSlot
+          status={showRollupIndicator ? "collapsed-rollup" : "none"}
+        >
+          {showRollupIndicator ? renderRollupIndicator() : null}
+        </SidebarItemStatusSlot>
+      </span>
+      {hasActions ? (
+        <span
+          data-sidebar-collapsible-trailing-controls=""
+          className={cn(
+            SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
+            "relative z-10 inline-flex shrink-0 items-center",
+          )}
+        >
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             data-sidebar-hover-actions-mobile={
@@ -203,12 +198,6 @@ function SidebarSectionRowComponent({
             )}
             onClick={stopActionsClick}
           >
-            <span
-              data-sidebar-mobile-status-slot=""
-              className="hidden h-full w-5 shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex"
-            >
-              {showRollupIndicator ? renderRollupIndicator() : null}
-            </span>
             {onCreateThread ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -280,12 +269,8 @@ function SidebarSectionRowComponent({
               </DropdownMenu>
             ) : null}
           </span>
-        ) : showRollupIndicator ? (
-          <span className="hidden size-full items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-            {renderRollupIndicator()}
-          </span>
-        ) : null}
-      </span>
+        </span>
+      ) : null}
       <span
         data-sidebar-collapse-caret-slot=""
         className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}

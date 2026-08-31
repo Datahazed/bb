@@ -20,7 +20,6 @@ import {
   SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
   SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -42,6 +41,7 @@ import {
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePluginThreadRowStatusForThreads } from "@/lib/plugin-thread-row-status";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
@@ -195,64 +195,44 @@ export function TopLevelSidebarSection({
             {label}
           </span>
         </span>
-        {actions || showCollapsedIndicator ? (
+        {collapseControl ? (
+          <span
+            data-sidebar-group-status-slot=""
+            className="relative z-20 inline-flex shrink-0 items-center"
+          >
+            <SidebarItemStatusSlot
+              status={showCollapsedIndicator ? "collapsed-rollup" : "none"}
+            >
+              {showCollapsedIndicator ? renderCollapsedIndicator() : null}
+            </SidebarItemStatusSlot>
+          </span>
+        ) : null}
+        {actions ? (
           <span
             data-sidebar-collapsible-trailing-controls=""
             className={cn(
               SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
               "relative z-20 h-6",
-              !actions && "w-7",
             )}
             onClick={stopActionsClick}
           >
-            {showCollapsedIndicator ? (
-              <span
-                data-sidebar-collapsed-activity-edge=""
-                data-sidebar-hover-actions-open={
-                  actionsOpen ? "true" : undefined
-                }
-                className={cn(
-                  "pointer-events-none absolute inset-0 z-20 inline-flex items-center justify-end text-subtle-foreground",
-                  actions
-                    ? "max-md:pointer-coarse:hidden"
-                    : "max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:justify-center",
-                  actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-                )}
-              >
-                {renderCollapsedIndicator()}
-              </span>
-            ) : null}
-            {actions ? (
-              <>
-                {collapseControl ? (
-                  <span
-                    data-sidebar-mobile-status-slot=""
-                    className="hidden h-full w-5 shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex"
-                  >
-                    {showCollapsedIndicator
-                      ? renderCollapsedIndicator()
-                      : null}
-                  </span>
-                ) : null}
-                <span
-                  data-sidebar-hover-actions-open={
-                    actionsOpen ? "true" : undefined
-                  }
-                  data-sidebar-hover-actions-mobile={
-                    actionsMobileAlways
-                      ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-                      : undefined
-                  }
-                  className={cn(
-                    "inline-flex shrink-0 items-center",
-                    SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-                    !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
-                  )}
-                >
-                  {actions}
-                </span>
-              </>
-            ) : null}
+            <span
+              data-sidebar-hover-actions-open={
+                actionsOpen ? "true" : undefined
+              }
+              data-sidebar-hover-actions-mobile={
+                actionsMobileAlways
+                  ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                  : undefined
+              }
+              className={cn(
+                "inline-flex shrink-0 items-center",
+                SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+                !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
+              )}
+            >
+              {actions}
+            </span>
           </span>
         ) : null}
         {collapseControl ? (

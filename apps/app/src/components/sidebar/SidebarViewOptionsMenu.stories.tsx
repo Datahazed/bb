@@ -48,6 +48,7 @@ import {
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
+import { APP_COMMAND_ACCESSORY_PILL_CLASS } from "@/components/commands/AppCommandShortcutHint";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
@@ -60,9 +61,12 @@ import {
 } from "@/components/ui/sidebar-hover-actions";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
+  SIDEBAR_IDLE_STATUS_COLOR_CLASS,
   SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
 } from "./sidebarRowClasses";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { SidebarFilterSortMenu, SidebarOrganizeMenu } from "./ProjectList";
 import {
@@ -82,8 +86,13 @@ type ThreadStatus = "active" | "drafts" | "archived";
 const PROTOTYPE_ACTION_TONE_CLASS =
   "text-muted-foreground hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground";
 const PROTOTYPE_COMPACT_MENU_CONTENT_CLASS =
-  "p-1 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=menuitemradio]]:!py-1 [&_[role=separator]]:!my-0.5";
+  "p-2 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=menuitemradio]]:!py-1 [&_[role=separator]]:!my-0.5";
+const PROTOTYPE_DISPLAY_MENU_CONTENT_CLASS =
+  "p-2 [&_[role=menuitem]]:!py-1.5 [&_[role=menuitemcheckbox]]:!py-1.5 [&_[role=menuitemradio]]:!py-1.5 [&_[role=separator]]:!my-1";
 const PROTOTYPE_COMPACT_MENU_LABEL_CLASS = "!px-2 !py-1";
+const PROTOTYPE_DISPLAY_MENU_LABEL_CLASS = "!px-2 !py-1.5";
+const PROTOTYPE_MENU_LEADING_ICON_CLASS =
+  "size-4 shrink-0 text-muted-foreground";
 const PROTOTYPE_THREAD_LIST_HEADER_CLASS =
   "text-xs font-semibold text-muted-foreground";
 const PROTOTYPE_THREAD_GROUP_HEADER_CLASS =
@@ -92,10 +101,11 @@ const PROTOTYPE_THREAD_ROW_TEXT_CLASS =
   "text-sm font-normal text-sidebar-foreground/85 dark:text-sidebar-foreground";
 
 const GROUP_OPTIONS = [
-  { label: "By project", value: "project" },
-  { label: "By machine", value: "machine" },
-  { label: "Custom", value: "manual" },
+  { icon: "Folder", label: "By project", value: "project" },
+  { icon: "Laptop", label: "By machine", value: "machine" },
+  { icon: "Section", label: "Custom", value: "manual" },
 ] as const satisfies readonly {
+  icon: IconName;
   label: string;
   value: Grouping;
 }[];
@@ -107,20 +117,37 @@ const GROUPED_THREAD_LIST_LABELS: Record<Grouping, string> = {
 };
 
 const SORT_OPTIONS = [
-  { defaultDirection: "desc", label: "Updated at", value: "updated" },
-  { defaultDirection: "desc", label: "Created at", value: "created" },
-  { defaultDirection: "asc", label: "Alphabetical", value: "alpha" },
+  {
+    defaultDirection: "desc",
+    icon: "Clock",
+    label: "Updated at",
+    value: "updated",
+  },
+  {
+    defaultDirection: "desc",
+    icon: "Calendar",
+    label: "Created at",
+    value: "created",
+  },
+  {
+    defaultDirection: "asc",
+    icon: "Alphabetical",
+    label: "Alphabetical",
+    value: "alpha",
+  },
 ] as const satisfies readonly {
   defaultDirection: SortDirection;
+  icon: IconName;
   label: string;
   value: Sort;
 }[];
 
 const STATUS_OPTIONS = [
-  { label: "Active", value: "active" },
-  { label: "Archived", value: "archived" },
-  { label: "Drafts", value: "drafts" },
+  { icon: "Circle", label: "Active", value: "active" },
+  { icon: "Archive", label: "Archived", value: "archived" },
+  { icon: "Edit", label: "Drafts", value: "drafts" },
 ] as const satisfies readonly {
+  icon: IconName;
   label: string;
   value: ThreadStatus;
 }[];
@@ -199,6 +226,11 @@ function GroupItems({ state }: { state: PrototypeSelection }) {
       onCheckedChange={() => state.setGrouping(option.value)}
       className="gap-2"
     >
+      <Icon
+        name={option.icon}
+        className={PROTOTYPE_MENU_LEADING_ICON_CLASS}
+        aria-hidden="true"
+      />
       <span>{option.label}</span>
     </DropdownMenuCheckboxItem>
   ));
@@ -218,7 +250,14 @@ function SortItems({ state }: { state: PrototypeSelection }) {
         }}
         className="flex items-center justify-between gap-3"
       >
-        <span>{option.label}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <Icon
+            name={option.icon}
+            className={PROTOTYPE_MENU_LEADING_ICON_CLASS}
+            aria-hidden="true"
+          />
+          <span>{option.label}</span>
+        </span>
         <Icon
           name={state.sortDirection === "asc" ? "ArrowUp" : "ArrowDown"}
           aria-hidden="true"
@@ -236,8 +275,14 @@ function StatusItems({ state }: { state: PrototypeSelection }) {
       checked={state.statuses.has(option.value)}
       onSelect={(event) => event.preventDefault()}
       onCheckedChange={() => state.toggleStatus(option.value)}
+      className="gap-2"
     >
-      {option.label}
+      <Icon
+        name={option.icon}
+        className={PROTOTYPE_MENU_LEADING_ICON_CLASS}
+        aria-hidden="true"
+      />
+      <span>{option.label}</span>
     </DropdownMenuCheckboxItem>
   ));
 }
@@ -492,11 +537,12 @@ const LONG_SIDEBAR_PROJECT_FIXTURES: readonly ViewGroupFixture[] = [
   },
 ];
 
-type TopItemId = "new-thread" | "extensions" | "automations";
+type TopItemId = "new-thread" | "search" | "extensions" | "automations";
 type MainSectionId = "bb-controls" | "plugins" | "threads";
 
 const TOP_ITEMS = {
   "new-thread": { icon: "MessageSquarePlus", label: "New thread" },
+  search: { icon: "Search", label: "Search threads" },
   extensions: { icon: "Toolbox", label: "Extensions" },
   automations: { icon: "TimeSchedule", label: "Automations" },
 } as const satisfies Record<TopItemId, { icon: IconName; label: string }>;
@@ -751,6 +797,7 @@ function SidebarNavRow({
   label: string;
 }) {
   const hasSplitAction = id === "new-thread";
+  const hasSearchShortcut = id === "search";
   return (
     <div
       className={cn(
@@ -803,6 +850,14 @@ function SidebarNavRow({
         >
           {label}
         </span>
+        {hasSearchShortcut ? (
+          <span
+            aria-hidden="true"
+            className={cn(APP_COMMAND_ACCESSORY_PILL_CLASS, "px-1.5")}
+          >
+            ⌘ K
+          </span>
+        ) : null}
       </Button>
       {hasSplitAction ? (
         <span
@@ -818,12 +873,17 @@ function SidebarNavRow({
             aria-label="Split"
             title="Split"
             className={cn(
-              "rounded-md p-0",
+              "rounded-md p-0 hover:bg-transparent",
               PROTOTYPE_ACTION_TONE_CLASS,
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
             )}
           >
-            <Icon name="Columns2" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+            <span
+              aria-hidden="true"
+              className={cn(APP_COMMAND_ACCESSORY_PILL_CLASS, "px-1.5")}
+            >
+              <Icon name="Columns2" className="size-3" />
+            </span>
           </Button>
         </span>
       ) : null}
@@ -1173,22 +1233,57 @@ function PrototypeThreadRow({
       data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
       className={cn(
         SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-        "relative flex h-8 items-center rounded-sm px-2 pr-14 outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:pr-2",
+        "relative flex h-8 items-center rounded-sm px-2 pr-8 outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:pr-2",
         PROTOTYPE_THREAD_ROW_TEXT_CLASS,
         selected && "bg-sidebar-accent",
       )}
     >
+      <SidebarItemStatusSlot
+        status={
+          isArchived
+            ? "archived"
+            : isDraft
+              ? "draft"
+              : thread.isRead === false
+                ? "unread"
+                : "none"
+        }
+        tooltip={isArchived ? "Archived" : isDraft ? "Draft" : undefined}
+        hoverAction={
+          isDraft ? undefined : (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label={isArchived ? "Unarchive" : "Archive"}
+              title={isArchived ? "Unarchive" : "Archive"}
+              className="size-4 rounded-sm p-0 text-subtle-foreground hover:bg-transparent hover:text-sidebar-foreground [&_svg]:size-3.5"
+            >
+              <Icon
+                name={isArchived ? "ArchiveRestore" : "Archive"}
+                aria-hidden="true"
+              />
+            </Button>
+          )
+        }
+      >
+        {isArchived || isDraft ? (
+          <Icon
+            name={isArchived ? "Archive" : "Edit"}
+            className={cn(
+              COARSE_POINTER_ICON_SIZE_CLASS,
+              SIDEBAR_IDLE_STATUS_COLOR_CLASS,
+            )}
+            aria-hidden="true"
+          />
+        ) : thread.isRead === false ? (
+          <span
+            className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
+            aria-label="Unread"
+          />
+        ) : null}
+      </SidebarItemStatusSlot>
       <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-      {isDraft || isArchived ? (
-        <span
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-            "absolute right-2 text-2xs text-muted-foreground max-md:pointer-coarse:relative max-md:pointer-coarse:right-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:!opacity-100",
-          )}
-        >
-          {isArchived ? "Archived" : "Draft"}
-        </span>
-      ) : null}
       <span
         data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
         data-sidebar-hover-actions-mobile={
@@ -1200,13 +1295,6 @@ function PrototypeThreadRow({
           "absolute inset-y-0 right-1 flex items-center max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto max-md:pointer-coarse:right-auto",
         )}
       >
-        {isDraft ? null : (
-          <RowActionIcon
-            icon={isArchived ? "ArchiveRestore" : "Archive"}
-            label={isArchived ? "Unarchive" : "Archive"}
-            mobileHidden
-          />
-        )}
         <PrototypeThreadActionsMenu
           currentGroup={currentGroup}
           destinations={destinations}
@@ -1319,12 +1407,16 @@ function ThreadListSection({
         group.threads.filter((thread) => thread.status === "archived"),
       )
     : [];
-  const hasVisibleEntityGroups = activeGroups.some(
-    (group) => group.kind === "entity",
-  );
-  const threadListLabel = hasVisibleEntityGroups
-    ? GROUPED_THREAD_LIST_LABELS[state.grouping]
-    : "Threads";
+  const hasEntityGroups = groups.some((group) => group.kind === "entity");
+  const threadListLabel =
+    state.grouping === "machine" || hasEntityGroups
+      ? GROUPED_THREAD_LIST_LABELS[state.grouping]
+      : "Threads";
+  const filterOrSortIsModified =
+    state.statuses.size !== 1 ||
+    !state.statuses.has("active") ||
+    state.sort !== "updated" ||
+    state.sortDirection !== "desc";
   const moveThread = (title: string, destination: string) => {
     setManualDestinationByThread((current) => ({
       ...current,
@@ -1346,6 +1438,11 @@ function ThreadListSection({
 
   return (
     <div className="py-2">
+      <div
+        aria-hidden="true"
+        data-sidebar-thread-list-divider=""
+        className="h-px w-full bg-sidebar-border"
+      />
       <div
         data-prototype-sticky-threads-toolbar={stickyToolbar ? "" : undefined}
         className={cn(
@@ -1370,9 +1467,9 @@ function ThreadListSection({
             <DropdownMenuContent
               align="end"
               mobileTitle="Organize"
-              className={PROTOTYPE_COMPACT_MENU_CONTENT_CLASS}
+              className={PROTOTYPE_DISPLAY_MENU_CONTENT_CLASS}
             >
-              <DropdownMenuLabel className={PROTOTYPE_COMPACT_MENU_LABEL_CLASS}>
+              <DropdownMenuLabel className={PROTOTYPE_DISPLAY_MENU_LABEL_CLASS}>
                 Organize
               </DropdownMenuLabel>
               <DropdownMenuGroup aria-label="Organize">
@@ -1381,20 +1478,27 @@ function ThreadListSection({
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu open={filterSortOpen} onOpenChange={setFilterSortOpen}>
-            <IconTrigger icon="Filter" label="Filter and sort" />
+            <IconTrigger
+              icon={filterOrSortIsModified ? "FilterEdit" : "Filter"}
+              label={
+                filterOrSortIsModified
+                  ? "Filter and sort (filtered)"
+                  : "Filter and sort"
+              }
+            />
             <DropdownMenuContent
               align="end"
               mobileTitle="Filter and sort"
-              className={PROTOTYPE_COMPACT_MENU_CONTENT_CLASS}
+              className={PROTOTYPE_DISPLAY_MENU_CONTENT_CLASS}
             >
-              <DropdownMenuLabel className={PROTOTYPE_COMPACT_MENU_LABEL_CLASS}>
+              <DropdownMenuLabel className={PROTOTYPE_DISPLAY_MENU_LABEL_CLASS}>
                 Thread status
               </DropdownMenuLabel>
               <DropdownMenuGroup aria-label="Thread status">
                 <StatusItems state={state} />
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className={PROTOTYPE_COMPACT_MENU_LABEL_CLASS}>
+              <DropdownMenuLabel className={PROTOTYPE_DISPLAY_MENU_LABEL_CLASS}>
                 Sort by
               </DropdownMenuLabel>
               <DropdownMenuGroup aria-label="Sort by">
@@ -1512,7 +1616,7 @@ function ThreadListSection({
                   </span>
                 </span>
               </div>
-            ) : hasVisibleEntityGroups ? (
+            ) : hasEntityGroups ? (
               <>
                 <div
                   aria-hidden="true"
@@ -1595,6 +1699,7 @@ function FullSidebarPrototype({
   const scrollRegionRef = useRef<HTMLDivElement>(null);
   const [topItemOrder, setTopItemOrder] = useState<TopItemId[]>([
     "new-thread",
+    "search",
     "extensions",
     "automations",
   ]);

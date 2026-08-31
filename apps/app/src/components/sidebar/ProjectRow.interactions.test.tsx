@@ -159,15 +159,15 @@ function renderProjectRow(
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
 }
 
-function expectCollapsedActivityAtSidebarEdge(label: string) {
-  const edgeSlot = screen
+function expectCollapsedActivityInTrailingSlot(label: string) {
+  const trailingSlot = screen
     .getAllByLabelText(label)
     .map((indicator) =>
-      indicator.closest("[data-sidebar-collapsed-activity-edge]"),
+      indicator.closest("[data-sidebar-group-status-slot]"),
     )
     .find((slot) => slot !== null);
 
-  expect(edgeSlot).toBeInstanceOf(HTMLElement);
+  expect(trailingSlot).toBeInstanceOf(HTMLElement);
 }
 
 describe("ProjectRow interactions", () => {
@@ -219,6 +219,9 @@ describe("ProjectRow interactions", () => {
     expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
       true,
     );
+    expect(newThread).toHaveClass("h-6", "w-6");
+    expect(newThread).not.toHaveClass("h-7", "w-7");
+    expect(more).toHaveClass("m-0", "h-6", "w-6");
     expect(
       more
         .closest("[data-sidebar-hover-actions-mobile]")
@@ -289,6 +292,11 @@ describe("ProjectRow interactions", () => {
     expect(
       folderIconContainer?.nextElementSibling?.classList.contains(
         "text-subtle-foreground/80",
+      ),
+    ).toBe(true);
+    expect(
+      folderIconContainer?.nextElementSibling?.nextElementSibling?.hasAttribute(
+        "data-sidebar-group-status-slot",
       ),
     ).toBe(true);
   });
@@ -420,7 +428,7 @@ describe("ProjectRow interactions", () => {
 
     expect(screen.queryByText("Test thread")).toBeNull();
     expect(screen.getAllByLabelText("Plan mode active")).not.toHaveLength(0);
-    expectCollapsedActivityAtSidebarEdge("Plan mode active");
+    expectCollapsedActivityInTrailingSlot("Plan mode active");
     expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
   });
@@ -503,7 +511,7 @@ describe("ProjectRow interactions", () => {
 
     expect(screen.queryByText("Test thread")).toBeNull();
     expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
-    expectCollapsedActivityAtSidebarEdge("Goal active");
+    expectCollapsedActivityInTrailingSlot("Goal active");
   });
 
   it("shows an idle draft before unread success for a collapsed project", () => {

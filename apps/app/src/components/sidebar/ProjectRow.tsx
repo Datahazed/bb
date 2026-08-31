@@ -60,7 +60,6 @@ import {
   SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
   SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -111,6 +110,8 @@ import {
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_TERTIARY_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_TERTIARY_ROW_ACTION_SIZE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
@@ -124,6 +125,7 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import type { NeighborReorderRequest } from "@bb/client-core";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 import {
   collectSectionThreadDndLookup,
   PINNED_THREAD_PARENT_KEY,
@@ -980,6 +982,18 @@ function EnvironmentThreadGroupHeader({
         </span>
       </span>
       <span
+        data-sidebar-group-status-slot=""
+        className="relative z-10 inline-flex shrink-0 items-center"
+      >
+        <SidebarItemStatusSlot
+          status={showRollupGlyph ? "collapsed-rollup" : "none"}
+        >
+          {showRollupGlyph ? (
+            <CollapsedThreadStatusGlyph activity={childActivity} />
+          ) : null}
+        </SidebarItemStatusSlot>
+      </span>
+      <span
         data-sidebar-collapsible-trailing-controls=""
         className={cn(
           SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
@@ -987,18 +1001,6 @@ function EnvironmentThreadGroupHeader({
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
-        {showRollupGlyph ? (
-          <span
-            data-sidebar-mobile-status=""
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-            className={cn(
-              SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:!opacity-100",
-            )}
-          >
-            <CollapsedThreadStatusGlyph activity={childActivity} />
-          </span>
-        ) : null}
       </span>
       <div
         data-sidebar-mobile-row-actions=""
@@ -1474,7 +1476,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
             onClick={() => onCreateThreadInSection(section.id)}
             className={cn(
               "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              SIDEBAR_TERTIARY_ROW_ACTION_SIZE_CLASS,
             )}
           >
             <Icon
@@ -1494,6 +1496,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
                 className={cn(
                   "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                  SIDEBAR_TERTIARY_MORE_ACTION_TRIGGER_CLASS,
                 )}
               >
                 <Icon
@@ -2391,7 +2394,7 @@ function ProjectRowComponent({
             }}
             className={cn(
               "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              SIDEBAR_TERTIARY_ROW_ACTION_SIZE_CLASS,
             )}
           >
             <Icon
@@ -2408,6 +2411,7 @@ function ProjectRowComponent({
             triggerClassName={cn(
               "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
               SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+              SIDEBAR_TERTIARY_MORE_ACTION_TRIGGER_CLASS,
             )}
           />
         </span>

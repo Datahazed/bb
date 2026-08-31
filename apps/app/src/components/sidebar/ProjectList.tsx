@@ -51,7 +51,10 @@ import { BbHttpError } from "@bb/sdk/browser";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import {
+  APP_COMMAND_ACCESSORY_PILL_CLASS,
+  AppCommandShortcutPill,
+} from "@/components/commands/AppCommandShortcutHint";
 import {
   ThreadSectionCreateDialog,
   ThreadSectionRenameDialog,
@@ -185,7 +188,7 @@ interface ProjectListProps {
   isCreatingProject?: boolean;
 }
 
-interface ProjectListActionButtonsProps {
+interface ProjectListNewThreadActionProps {
   splitEnabled?: boolean;
   newThreadSplit?: {
     onPointerDown?: PointerEventHandler<HTMLElement>;
@@ -194,6 +197,14 @@ interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
   onSplit?: () => void;
 }
+
+interface ProjectListSearchThreadsActionProps {
+  onSearchThreads: (target: EventTarget | null) => void;
+}
+
+interface ProjectListActionButtonsProps
+  extends ProjectListNewThreadActionProps,
+    ProjectListSearchThreadsActionProps {}
 
 interface ProjectListShellProps {
   children: ReactNode;
@@ -599,45 +610,65 @@ function ProjectListThreadsSectionActions({
 }
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
-  { label: "By project", mode: "project" },
-  { label: "By machine", mode: "machine" },
-  { label: "Custom", mode: "manual" },
+  { icon: "Folder", label: "By project", mode: "project" },
+  { icon: "Laptop", label: "By machine", mode: "machine" },
+  { icon: "Section", label: "Custom", mode: "manual" },
 ] as const satisfies readonly {
+  icon: IconName;
   label: string;
   mode: SidebarOrganizationMode;
 }[];
 
 const SIDEBAR_SORT_OPTIONS = [
-  { defaultDirection: "desc", label: "Updated at", sort: "updated" },
-  { defaultDirection: "desc", label: "Created at", sort: "created" },
-  { defaultDirection: "asc", label: "Alphabetical", sort: "alpha" },
+  {
+    defaultDirection: "desc",
+    icon: "Clock",
+    label: "Updated at",
+    sort: "updated",
+  },
+  {
+    defaultDirection: "desc",
+    icon: "Calendar",
+    label: "Created at",
+    sort: "created",
+  },
+  {
+    defaultDirection: "asc",
+    icon: "Alphabetical",
+    label: "Alphabetical",
+    sort: "alpha",
+  },
 ] as const satisfies readonly {
   defaultDirection: SidebarSortDirection;
+  icon: IconName;
   label: string;
   sort: SidebarChronologicalSort;
 }[];
 
 const SIDEBAR_STATUS_OPTIONS = [
-  { label: "Active", state: "active" },
-  { label: "Archived", state: "archived" },
-  { label: "Drafts", state: "drafts" },
+  { icon: "Circle", label: "Active", state: "active" },
+  { icon: "Archive", label: "Archived", state: "archived" },
+  { icon: "Edit", label: "Drafts", state: "drafts" },
 ] as const satisfies readonly {
+  icon: IconName;
   label: string;
   state: SidebarThreadLifecycleState;
 }[];
 
 const SIDEBAR_COMPACT_MENU_CONTENT_CLASS =
   "p-1 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=menuitemradio]]:!py-1 [&_[role=separator]]:!my-0.5";
-const SIDEBAR_COMPACT_MENU_LABEL_CLASS = "!px-2 !py-1";
+const SIDEBAR_DISPLAY_MENU_CONTENT_CLASS =
+  "p-2 [&_[role=menuitem]]:!py-1.5 [&_[role=menuitemcheckbox]]:!py-1.5 [&_[role=menuitemradio]]:!py-1.5 [&_[role=separator]]:!my-1";
+const SIDEBAR_COMPACT_MENU_LABEL_CLASS = "!px-2 !py-1.5";
+const SIDEBAR_MENU_LEADING_ICON_CLASS =
+  "size-4 shrink-0 text-muted-foreground";
 
 function SidebarDisplayMenuTrigger({
   ariaLabel,
-  filtered = false,
   iconName,
   tooltip,
 }: {
   ariaLabel: string;
-  filtered?: boolean;
   iconName: IconName;
   tooltip: string;
 }) {
@@ -661,13 +692,6 @@ function SidebarDisplayMenuTrigger({
             )}
           >
             <Icon name={iconName} className={COARSE_POINTER_ICON_SIZE_CLASS} />
-            {filtered ? (
-              <span
-                aria-hidden="true"
-                data-sidebar-display-filter-dot=""
-                className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-muted-foreground"
-              />
-            ) : null}
           </Button>
         </DropdownMenuTrigger>
       </TooltipTrigger>
@@ -699,7 +723,7 @@ export function SidebarOrganizeMenu({
       <DropdownMenuContent
         align="end"
         mobileTitle="Organize"
-        className={SIDEBAR_COMPACT_MENU_CONTENT_CLASS}
+        className={SIDEBAR_DISPLAY_MENU_CONTENT_CLASS}
       >
         <DropdownMenuLabel
           className={cn(
@@ -716,8 +740,14 @@ export function SidebarOrganizeMenu({
               checked={organizationMode === option.mode}
               onSelect={(event) => event.preventDefault()}
               onCheckedChange={() => setOrganizationMode(option.mode)}
+              className="gap-2"
             >
-              {option.label}
+              <Icon
+                name={option.icon}
+                className={SIDEBAR_MENU_LEADING_ICON_CLASS}
+                aria-hidden="true"
+              />
+              <span>{option.label}</span>
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuGroup>
@@ -772,14 +802,13 @@ export function SidebarFilterSortMenu({
         ariaLabel={
           isFiltered ? "Filter and sort (filtered)" : "Filter and sort"
         }
-        filtered={isFiltered}
-        iconName="Filter"
+        iconName={isFiltered ? "FilterEdit" : "Filter"}
         tooltip="Filter and sort"
       />
       <DropdownMenuContent
         align="end"
         mobileTitle="Filter and sort"
-        className={SIDEBAR_COMPACT_MENU_CONTENT_CLASS}
+        className={SIDEBAR_DISPLAY_MENU_CONTENT_CLASS}
       >
         <DropdownMenuLabel
           className={cn(
@@ -800,8 +829,14 @@ export function SidebarFilterSortMenu({
                   toggleSidebarThreadLifecycleState(current, option.state),
                 )
               }
+              className="gap-2"
             >
-              {option.label}
+              <Icon
+                name={option.icon}
+                className={SIDEBAR_MENU_LEADING_ICON_CLASS}
+                aria-hidden="true"
+              />
+              <span>{option.label}</span>
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuGroup>
@@ -828,7 +863,14 @@ export function SidebarFilterSortMenu({
                   selectSort(option.sort);
                 }}
               >
-                <span>{option.label}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <Icon
+                    name={option.icon}
+                    className={SIDEBAR_MENU_LEADING_ICON_CLASS}
+                    aria-hidden="true"
+                  />
+                  <span>{option.label}</span>
+                </span>
                 <Icon
                   name={sortDirection === "asc" ? "ArrowUp" : "ArrowDown"}
                   className={cn("size-4", !selected && "opacity-0")}
@@ -852,6 +894,22 @@ interface SidebarThreadListToolbarProps {
   label: "Threads" | "Projects" | "Machines" | "Sections";
 }
 
+interface SidebarThreadListLabelOptions {
+  hasProjects: boolean;
+  hasSections: boolean;
+  mode: SidebarOrganizationMode;
+}
+
+export function getSidebarThreadListLabel({
+  hasProjects,
+  hasSections,
+  mode,
+}: SidebarThreadListLabelOptions): SidebarThreadListToolbarProps["label"] {
+  if (mode === "machine") return "Machines";
+  if (mode === "manual") return hasSections ? "Sections" : "Threads";
+  return hasProjects ? "Projects" : "Threads";
+}
+
 export function SidebarThreadListToolbar({
   isCreatingSection,
   onNewSection,
@@ -864,69 +922,78 @@ export function SidebarThreadListToolbar({
     onNewSection !== undefined || onNewProject !== undefined;
 
   return (
-    <SidebarStickyTier
-      tier="toolbar"
-      data-sidebar-thread-list-toolbar=""
-      className="flex items-center gap-0.5 rounded-md pl-1 pr-0"
-    >
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-muted-foreground">
-        {label}
-      </span>
-      <span className="inline-flex shrink-0 items-center gap-0.5">
-        <SidebarOrganizeMenu />
-        <SidebarFilterSortMenu />
-        <ProjectListThreadsSectionActions
-          isCreatingSection={false}
-          onNewThread={onNewThread}
-        />
-        {hasOverflowActions ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="More thread actions"
-                className={cn(
-                  "rounded-md p-0 text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground data-[state=open]:bg-state-active data-[state=open]:text-sidebar-foreground",
-                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                )}
+    <>
+      <span
+        aria-hidden="true"
+        data-sidebar-thread-list-divider=""
+        className="block h-px w-full bg-sidebar-border"
+      />
+      <SidebarStickyTier
+        tier="toolbar"
+        data-sidebar-thread-list-toolbar=""
+        className="flex items-center gap-0.5 rounded-md pl-1 pr-0"
+      >
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-muted-foreground">
+          {label}
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-0.5">
+          <SidebarOrganizeMenu />
+          <SidebarFilterSortMenu />
+          <ProjectListThreadsSectionActions
+            isCreatingSection={false}
+            onNewThread={onNewThread}
+          />
+          {hasOverflowActions ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="More thread actions"
+                  className={cn(
+                    "rounded-md p-0 text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground data-[state=open]:bg-state-active data-[state=open]:text-sidebar-foreground",
+                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                  )}
+                >
+                  <Icon
+                    name="MoreHorizontal"
+                    className={COARSE_POINTER_ICON_SIZE_CLASS}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className={SIDEBAR_COMPACT_MENU_CONTENT_CLASS}
               >
-                <Icon
-                  name="MoreHorizontal"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className={SIDEBAR_COMPACT_MENU_CONTENT_CLASS}
-            >
-              {onNewSection ? (
-                <DropdownMenuItem
-                  disabled={isCreatingSection}
-                  onSelect={onNewSection}
-                >
-                  <Icon name="SectionAdd" aria-hidden="true" />
-                  New section
-                </DropdownMenuItem>
-              ) : null}
-              {onNewSection && onNewProject ? <DropdownMenuSeparator /> : null}
-              {onNewProject ? (
-                <DropdownMenuItem
-                  disabled={isCreatingProject}
-                  onSelect={onNewProject}
-                >
-                  <Icon name="FolderPlus" aria-hidden="true" />
-                  New project
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-      </span>
-      <OverflowFade placement="below" tone="sidebar" size="sm" />
-    </SidebarStickyTier>
+                {onNewSection ? (
+                  <DropdownMenuItem
+                    disabled={isCreatingSection}
+                    onSelect={onNewSection}
+                  >
+                    <Icon name="SectionAdd" aria-hidden="true" />
+                    New section
+                  </DropdownMenuItem>
+                ) : null}
+                {onNewSection && onNewProject ? (
+                  <DropdownMenuSeparator />
+                ) : null}
+                {onNewProject ? (
+                  <DropdownMenuItem
+                    disabled={isCreatingProject}
+                    onSelect={onNewProject}
+                  >
+                    <Icon name="FolderPlus" aria-hidden="true" />
+                    New project
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </span>
+        <OverflowFade placement="below" tone="sidebar" size="sm" />
+      </SidebarStickyTier>
+    </>
   );
 }
 
@@ -979,87 +1046,142 @@ function ProjectListNavigationLoadingRow({
   );
 }
 
-export function ProjectListActionButtons({
+export function ProjectListNewThreadAction({
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
   onSplit,
-}: ProjectListActionButtonsProps) {
+}: ProjectListNewThreadActionProps) {
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
   const newThreadSplitIndicator = useNewThreadSplitIndicator(splitEnabled);
 
   return (
-    <div className="space-y-1">
-      <div className="flex min-w-0 items-center gap-0.5">
-        <div
-          className={cn(
-            "relative min-w-0 flex-1",
-            SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-          )}
-        >
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-            onPointerDown={newThreadSplit?.onPointerDown}
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey) {
-                newThreadSplit?.openInSplit();
-                return;
-              }
-              onNewChat?.();
-            }}
-            disabled={isNewChatDisabled}
-            aria-label={
-              newThreadShortcut
-                ? `New thread (${newThreadShortcut.label})`
-                : "New thread"
+    <div className="flex min-w-0 items-center gap-0.5">
+      <div
+        className={cn(
+          "relative min-w-0 flex-1",
+          SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+        )}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+          onPointerDown={newThreadSplit?.onPointerDown}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey) {
+              newThreadSplit?.openInSplit();
+              return;
             }
-            aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+            onNewChat?.();
+          }}
+          disabled={isNewChatDisabled}
+          aria-label={
+            newThreadShortcut
+              ? `New thread (${newThreadShortcut.label})`
+              : "New thread"
+          }
+          aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+        >
+          <Icon name="MessageSquarePlus" />
+          <span
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-1.5",
+              onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+            )}
           >
-            <Icon name="MessageSquarePlus" />
-            <span
+            <span className="min-w-0 truncate text-left">New thread</span>
+            {newThreadSplitIndicator.miniMap ? (
+              <SplitPaneMiniMap
+                slots={newThreadSplitIndicator.miniMap}
+                label="New thread — open in split"
+              />
+            ) : null}
+          </span>
+        </Button>
+        {onSplit ? (
+          <div
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "absolute inset-y-0 right-0 flex items-center",
+            )}
+          >
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="Split"
+              title="Split"
               className={cn(
-                "flex min-w-0 flex-1 items-center gap-1.5",
-                onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+                PROJECT_LIST_ACTION_ICON_BUTTON_CLASS,
+                "hover:bg-transparent",
               )}
+              onClick={onSplit}
             >
-              <span className="min-w-0 truncate text-left">New thread</span>
-              {newThreadSplitIndicator.miniMap ? (
-                <SplitPaneMiniMap
-                  slots={newThreadSplitIndicator.miniMap}
-                  label="New thread — open in split"
-                />
-              ) : null}
-              <AppCommandShortcutHint shortcut={newThreadShortcut} />
-            </span>
-          </Button>
-          {onSplit ? (
-            <div
-              className={cn(
-                SIDEBAR_HOVER_ACTIONS_CLASS,
-                "absolute inset-y-0 right-0 flex items-center",
-              )}
-            >
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                aria-label="Split"
-                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-                onClick={onSplit}
+              <span
+                aria-hidden="true"
+                className={cn(APP_COMMAND_ACCESSORY_PILL_CLASS, "px-1.5")}
               >
-                <Icon
-                  name="Columns2"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
-            </div>
-          ) : null}
-        </div>
+                <Icon name="Columns2" className="size-3" />
+              </span>
+            </Button>
+          </div>
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+export function ProjectListSearchThreadsAction({
+  onSearchThreads,
+}: ProjectListSearchThreadsActionProps) {
+  const searchThreadsShortcut = useAppCommandShortcut("thread.search");
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+      onClick={(event) => onSearchThreads(event.currentTarget)}
+      aria-label={
+        searchThreadsShortcut
+          ? `Search threads (${searchThreadsShortcut.label})`
+          : "Search threads"
+      }
+      aria-keyshortcuts={searchThreadsShortcut?.ariaKeyshortcuts}
+    >
+      <Icon name="Search" />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate text-left">
+          Search threads
+        </span>
+        {searchThreadsShortcut ? (
+          <AppCommandShortcutPill shortcut={searchThreadsShortcut} />
+        ) : null}
+      </span>
+    </Button>
+  );
+}
+
+export function ProjectListActionButtons({
+  splitEnabled = false,
+  newThreadSplit,
+  onNewChat,
+  onSearchThreads,
+  onSplit,
+}: ProjectListActionButtonsProps) {
+  return (
+    <div className="space-y-1">
+      <ProjectListNewThreadAction
+        splitEnabled={splitEnabled}
+        newThreadSplit={newThreadSplit}
+        onNewChat={onNewChat}
+        onSplit={onSplit}
+      />
+      <ProjectListSearchThreadsAction onSearchThreads={onSearchThreads} />
     </div>
   );
 }
@@ -1330,7 +1452,7 @@ function ProjectModeSections({
       ...threadsSection,
       label: "Threads",
       presentation: "loose",
-      showLooseHeading: projectRows.length > 0,
+      showLooseHeading: projects.length > 0,
       activity: getCollapsedChildActivity(personalThreads, draftThreadIds),
       collapsedThreads: personalThreads,
       content: (
@@ -1471,13 +1593,6 @@ function SectionModeSections({
       ),
     [nonPinnedThreads],
   );
-  const hasPopulatedSections = useMemo(
-    () =>
-      nonPinnedThreads.some(
-        (thread) => thread.sectionId !== null && isSidebarProjectThread(thread),
-      ),
-    [nonPinnedThreads],
-  );
   const { onOrderChange: onStoredOrderChange, order: storedOrder } =
     useSidebarModeSectionOrder({
       mode: "manual",
@@ -1543,7 +1658,7 @@ function SectionModeSections({
           threads: {
             ...threadsSection,
             presentation: "loose",
-            showLooseHeading: hasPopulatedSections,
+            showLooseHeading: sections.length > 0,
           },
           collapsedSectionIds,
           onToggleCollapsed,
@@ -2235,29 +2350,11 @@ function ProjectListComponent({
       selection: lifecycleSelection,
     });
   const showActiveContent = showActiveModeSections && threads.length > 0;
-  const unpinnedSidebarThreads = threads.filter(
-    (thread) =>
-      !pinnedSidebarState.effectivePinnedThreadIds.has(thread.id) &&
-      isSidebarProjectThread(thread),
-  );
-  const hasNamedEntityGroups = showActiveContent
-    ? organizationMode === "project"
-      ? unpinnedSidebarThreads.some(
-          (thread) =>
-            resolveSidebarProjectId(thread, threadById) !== PERSONAL_PROJECT_ID,
-        )
-      : organizationMode === "manual"
-        ? unpinnedSidebarThreads.some((thread) => thread.sectionId !== null)
-        : unpinnedSidebarThreads.length > 0
-    : false;
-  const threadToolbarLabel: SidebarThreadListToolbarProps["label"] =
-    !hasNamedEntityGroups
-      ? "Threads"
-      : organizationMode === "project"
-        ? "Projects"
-        : organizationMode === "machine"
-          ? "Machines"
-          : "Sections";
+  const threadToolbarLabel = getSidebarThreadListLabel({
+    hasProjects: (projects?.length ?? 0) > 0,
+    hasSections: sections.length > 0,
+    mode: organizationMode,
+  });
   const archivedContentPending =
     showArchivedThreads && archivedThreadsQuery.isPending;
   const hasVisibleLifecycleRows =

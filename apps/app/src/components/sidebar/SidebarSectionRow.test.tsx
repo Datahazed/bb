@@ -51,8 +51,8 @@ describe("SidebarSectionRow", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
-    const mobileStatusSlot = trailingControls?.querySelector(
-      "[data-sidebar-mobile-status-slot]",
+    const groupStatusSlot = row?.querySelector(
+      "[data-sidebar-group-status-slot]",
     );
     const mobileActions = more.closest(
       "[data-sidebar-hover-actions-mobile]",
@@ -67,9 +67,13 @@ describe("SidebarSectionRow", () => {
     expect(caretSlot?.classList.contains("w-6")).toBe(true);
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(mobileStatusSlot).not.toBeNull();
+    expect(groupStatusSlot).not.toBeNull();
     expect(
-      mobileStatusSlot!.compareDocumentPosition(mobileActions!) &
+      label.compareDocumentPosition(groupStatusSlot!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      groupStatusSlot!.compareDocumentPosition(mobileActions!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
@@ -178,6 +182,12 @@ describe("SidebarSectionRow", () => {
     }
     const slots = splitMap.querySelectorAll("rect");
 
+    expect(
+      splitMap.closest("[data-sidebar-item-status-slot]"),
+    ).not.toBeNull();
+    expect(
+      splitMap.closest("[data-sidebar-group-status-slot]"),
+    ).not.toBeNull();
     expect(slots).toHaveLength(3);
     expect(slots[0]?.getAttribute("class")).toContain("fill-muted-foreground");
     expect(slots[1]?.getAttribute("class")).toContain("fill-none");

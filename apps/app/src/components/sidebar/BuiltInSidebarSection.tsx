@@ -1,4 +1,6 @@
 import { memo, type ReactNode } from "react";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
   type CollapsibleSidebarSectionId,
@@ -95,15 +97,19 @@ function BuiltInSidebarSection({
 }: BuiltInSidebarSectionProps) {
   if (presentation === "loose") {
     return (
-      <div
-        data-sidebar-loose-thread-group=""
-        className={
-          showLooseHeading ? "mt-1 border-t border-border/70 pt-1" : "mt-1"
-        }
-      >
+      <div data-sidebar-loose-thread-group="" className="mt-1">
         {showLooseHeading ? (
-          <div className="flex h-8 items-center px-3 text-xs font-medium text-subtle-foreground">
-            {label}
+          <div
+            data-sidebar-loose-thread-divider=""
+            className="flex h-8 items-center gap-2 pl-2"
+          >
+            <span className={cn(CHROME_SECTION_LABEL_CLASS, "shrink-0")}>
+              {label}
+            </span>
+            <span
+              aria-hidden="true"
+              className="h-px min-w-0 flex-1 bg-border/70"
+            />
           </div>
         ) : null}
         {content}
