@@ -584,6 +584,9 @@ export function SkillsOverview({
                   <ResourceSortMenu
                     value={sortMode}
                     direction={sortDirection}
+                    engaged={
+                      sortMode !== "alpha" || sortDirection !== "asc"
+                    }
                     compact
                     options={[
                       {

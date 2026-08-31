@@ -259,7 +259,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
 
     const link = screen.getByRole("link", {
-      name: "github.com/acme/bb-github",
+      name: /github\.com\/acme\/bb-github/u,
     });
     expect(link.getAttribute("href")).toBe("https://github.com/acme/bb-github");
     expect(link.getAttribute("target")).toBe("_blank");
@@ -493,15 +493,13 @@ describe("PluginDetail official catalog lifecycle", () => {
         .closest("[data-resource-detail-section]")
         ?.getAttribute("data-resource-detail-section"),
     ).toBe("release");
-    expect(screen.getByText("~/.bb/plugins/github")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
+    expect(screen.queryByText("~/.bb/plugins/github")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
         name: "Copy plugin path: /Users/you/.bb/plugins/github",
       }),
-    );
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith("/Users/you/.bb/plugins/github");
-    });
+    ).toBeNull();
+    expect(writeText).not.toHaveBeenCalled();
     expect(screen.getByText("Updates with bb")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 

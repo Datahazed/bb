@@ -301,7 +301,7 @@ describe("AddPluginDialog", () => {
     expect(document.querySelector('[data-icon="Github"]')).not.toBeNull();
     expect(document.querySelector('[data-icon="Zap"]')).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
 
     await vi.waitFor(() => {
       const post = requests.find(
@@ -366,7 +366,7 @@ describe("AddPluginDialog", () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
 
     await vi.waitFor(() => {
       expect(onInstalled).toHaveBeenCalledWith(
@@ -438,7 +438,7 @@ describe("AddPluginDialog", () => {
     ).toBe(true);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /install acme notes/i }),
+      screen.getByRole("button", { name: "Install" }),
     );
     await vi.waitFor(() => {
       const post = requests.find(
@@ -471,7 +471,7 @@ describe("AddPluginDialog", () => {
       source: "builtin:linear",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
     await vi.waitFor(() => {
       expect(
         requests.some(

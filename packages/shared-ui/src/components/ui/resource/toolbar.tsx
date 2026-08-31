@@ -418,6 +418,7 @@ export function ResourceSortMenu({
   options,
   onChange,
   compact = false,
+  engaged,
   showDirectionForAllOptions = false,
   onClear,
   placeholderLabel = "Sort",
@@ -427,6 +428,7 @@ export function ResourceSortMenu({
   options: readonly ResourceOption[];
   onChange: (value: string) => void;
   compact?: boolean;
+  engaged?: boolean;
   showDirectionForAllOptions?: boolean;
   onClear?: () => void;
   placeholderLabel?: string;
@@ -447,7 +449,7 @@ export function ResourceSortMenu({
       <ResourceMenuTrigger
         label={sortStateLabel}
         icon="ArrowUpDown"
-        active={value !== null}
+        active={engaged ?? value !== null}
         open={open}
       />
       <DropdownMenuContent

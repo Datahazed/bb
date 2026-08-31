@@ -228,7 +228,14 @@ describe("plugin catalog service", () => {
       iconUrl: null,
       categoryId: "files-and-viewers",
       category: "File Viewers & Editors",
-      screenshots: [],
+      screenshots: [
+        expect.stringMatching(
+          /^\/api\/v1\/plugin-catalog\/screenshots\/bb-community\/docs\/0\?h=[0-9a-f]{16}$/u,
+        ),
+        expect.stringMatching(
+          /^\/api\/v1\/plugin-catalog\/screenshots\/bb-community\/docs\/1\?h=[0-9a-f]{16}$/u,
+        ),
+      ],
       newAndNotableRank: null,
       source: "builtin:docs",
       installed: false,

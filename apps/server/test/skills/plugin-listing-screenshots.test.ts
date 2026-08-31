@@ -46,7 +46,7 @@ describe("plugin-listing-screenshots skill", () => {
     expect(skill).toContain("Open every image.");
     expect(skill).toContain("Crop to the surface, not the desktop.");
     expect(skill).toContain("## Plan one carousel");
-    expect(skill).toContain("Every image must advance the same user job");
+    expect(skill).toMatch(/Every image must advance the\s+same user job/u);
     expect(skill).toContain("Capture, QA, listing, or plugin-development fixtures");
     expect(skill).toContain("## Multiple states from one registered surface");
     expect(skill).toContain("the actual narrow split-panel layout");

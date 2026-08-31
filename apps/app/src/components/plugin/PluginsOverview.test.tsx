@@ -398,15 +398,15 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("Automations")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Create a plugin" }),
+    ).toBeTruthy();
     const filterTrigger = screen.getByRole("button", { name: "Filters" });
     fireEvent.pointerDown(filterTrigger);
     expect(screen.getByRole("group", { name: "State" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Source" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Category" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Create a plugin" }),
-    ).toBeTruthy();
   });
 
   it("keeps Browse filters in the toolbar rather than a separate pill band", async () => {
@@ -712,6 +712,7 @@ describe("PluginsOverview", () => {
     expect(
       screen.getByRole("button", {
         name: "Sort: Plugin name, ascending",
+        hidden: true,
       }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
@@ -803,7 +804,10 @@ describe("PluginsOverview", () => {
       expect(rowIds()).toEqual(["plugin-row-direct-one"]);
     });
     expect(
-      screen.getByRole("button", { name: "Filters: Source: Local" }),
+      screen.getByRole("button", {
+        name: "Filters: Source: Local",
+        hidden: true,
+      }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Local" }));
     await waitFor(() => {

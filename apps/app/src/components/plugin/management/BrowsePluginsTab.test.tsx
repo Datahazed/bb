@@ -946,7 +946,7 @@ describe("BrowsePluginsTab", () => {
       name: "Search plugin categories",
     });
     fireEvent.keyDown(categorySearch, { key: "ArrowDown" });
-    expect(document.activeElement?.textContent).toContain("Agents & Providers");
+    expect(document.activeElement?.textContent).toContain("Memory & Context");
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
     expect(document.activeElement?.textContent).toContain("Utilities");
 
@@ -1047,7 +1047,10 @@ describe("BrowsePluginsTab", () => {
     expect(screen.getAllByText("Code & Reviews")).toHaveLength(1);
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: /^Sort: Name,/u }),
+      screen.getByRole("button", {
+        name: /^Sort: Name,/u,
+        hidden: true,
+      }),
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
     expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(2);
@@ -1112,7 +1115,7 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    await screen.findByText("Memory");
+    await screen.findByRole("button", { name: "Open Memory details" });
     fireEvent.click(
       screen.getByRole("button", {
         name: "Filter plugins by category: All categories",

@@ -5,6 +5,7 @@ import {
   type QueryClientConfig,
 } from "@tanstack/react-query";
 import type { JSX, ReactNode } from "react";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { createAppQueryClient } from "@/lib/query-client";
 
 interface QueryClientTestWrapperProps {
@@ -39,7 +40,9 @@ export function createQueryClientTestHarness(
 
   const wrapper: QueryClientTestWrapper = ({ children }) => (
     <JotaiProvider>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </QueryClientProvider>
     </JotaiProvider>
   );
 

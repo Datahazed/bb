@@ -683,6 +683,9 @@ export function AutomationOverviewView({
                   <ResourceSortMenu
                     value={sortMode}
                     direction={sortDirection}
+                    engaged={
+                      sortMode !== "alpha" || sortDirection !== "asc"
+                    }
                     compact
                     options={[
                       {

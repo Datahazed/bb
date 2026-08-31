@@ -218,6 +218,7 @@ describe("PluginAuthorPage", () => {
       "Open Council details",
       "Open Checklists details",
     ]);
+    fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open Council details" }),

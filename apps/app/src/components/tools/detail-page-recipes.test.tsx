@@ -747,9 +747,10 @@ describe("Detail page header slots", () => {
     );
 
     const header = container.querySelector("h1")?.closest("div")?.parentElement;
-    const title = screen.getByRole("heading", { name: "writing-voice" });
+    const title = container.querySelector("h1");
     expect(header).not.toBeNull();
-    expect(title.classList.contains("focus-visible:outline-none")).toBe(false);
+    expect(title?.textContent).toBe("writing-voice");
+    expect(title?.classList.contains("focus-visible:outline-none")).toBe(false);
     expect(screen.getByRole("button", { name: "Fork" })).toBeTruthy();
     expect(screen.getByText("Imported")).toBeTruthy();
     expect(screen.getByRole("button", { name: "More" })).toBeTruthy();
