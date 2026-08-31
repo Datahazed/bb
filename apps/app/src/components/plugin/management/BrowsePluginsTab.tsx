@@ -94,6 +94,7 @@ export function BrowsePluginsTab({
   const entries = (searchQuery.data ?? []).filter((entry) => entry.compatible);
   const availableCategories: string[] = [];
   for (const entry of entries) {
+    if (entry.category === undefined) continue;
     if (!availableCategories.includes(entry.category)) {
       availableCategories.push(entry.category);
     }
@@ -125,7 +126,11 @@ export function BrowsePluginsTab({
   const visibleEntries =
     categories.length === 0
       ? entries
-      : entries.filter((entry) => categories.includes(entry.category));
+      : entries.filter(
+          (entry) =>
+            entry.category !== undefined &&
+            categories.includes(entry.category),
+        );
   const groups = groupByPublisher(
     visibleEntries,
     effectiveSortMode,
