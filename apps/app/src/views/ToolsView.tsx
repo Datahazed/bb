@@ -28,12 +28,10 @@ import {
   CatalogPluginDetailBanner,
   PluginDetail,
   PluginDetailBanners,
-} from "@/components/tools/PluginDetail";
-import {
   pluginIsLocalSource,
   pluginRemovalDescription,
   pluginRemovalLabel,
-} from "@/lib/plugin-removal";
+} from "@/components/tools/PluginDetail";
 import {
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
