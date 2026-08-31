@@ -384,7 +384,10 @@ describe("PluginsOverview", () => {
     const sort = screen.getByRole("button", { name: "Sort plugins" });
     expect(toolbar.contains(category)).toBe(true);
     expect(toolbar.contains(sort)).toBe(true);
-    const heroHeading = screen.getByRole("heading", { level: 2 });
+    const heroHeading = screen.getByRole("heading", {
+      level: 2,
+      name: /^Turn bb into/u,
+    });
     expect(
       heroHeading.compareDocumentPosition(toolbar) &
         Node.DOCUMENT_POSITION_FOLLOWING,
