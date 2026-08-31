@@ -123,12 +123,22 @@ function makeStoryProvider(
   };
 }
 
+const storyCodexProvider = makeStoryProvider("codex", "Codex", "Code");
+const storyClaudeCodeProvider = makeStoryProvider(
+  "claude-code",
+  "Claude Code",
+  "Brain",
+);
+const storyCursorProvider = makeStoryProvider("acp-cursor", "Cursor", "Zap");
+
+export const STORY_CODEX_PROVIDER_ID = storyCodexProvider.id;
+export const STORY_CLAUDE_CODE_PROVIDER_ID = storyClaudeCodeProvider.id;
+export const STORY_CURSOR_PROVIDER_ID = storyCursorProvider.id;
+
 export const STORY_PROVIDERS_BY_ID: ReadonlyMap<string, ProviderInfo> = new Map(
-  [
-    makeStoryProvider("codex", "Codex", "Code"),
-    makeStoryProvider("claude-code", "Claude Code", "Brain"),
-    makeStoryProvider("acp-cursor", "Cursor", "Zap"),
-  ].map((provider) => [provider.id, provider]),
+  [storyCodexProvider, storyClaudeCodeProvider, storyCursorProvider].map(
+    (provider) => [provider.id, provider],
+  ),
 );
 
 export const STORY_PROVIDER_OPTIONS: readonly PickerOption<string>[] = [

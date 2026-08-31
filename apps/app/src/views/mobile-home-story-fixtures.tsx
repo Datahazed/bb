@@ -14,6 +14,8 @@ import {
   PROJECT_IDS,
   PROJECT_NAMES,
   STORY_BRANCH_OPTIONS,
+  STORY_CLAUDE_CODE_PROVIDER_ID,
+  STORY_CURSOR_PROVIDER_ID,
   STORY_PROVIDERS_BY_ID,
   STORY_PROJECTS,
   STORY_PROJECT_SOURCES,
@@ -42,7 +44,7 @@ export const HOME_THREADS: ThreadListEntry[] = [
   makeThreadListEntry({
     id: "thr_home_child_a",
     parentThreadId: "thr_home_parent",
-    providerId: "claude-code",
+    providerId: STORY_CLAUDE_CODE_PROVIDER_ID,
     title: "Audit folder query paths",
     titleFallback: "Audit folder query paths",
     latestAttentionAt: 880,
@@ -50,14 +52,14 @@ export const HOME_THREADS: ThreadListEntry[] = [
   makeThreadListEntry({
     id: "thr_home_child_b",
     parentThreadId: "thr_home_parent",
-    providerId: "acp-cursor",
+    providerId: STORY_CURSOR_PROVIDER_ID,
     title: "Migrate folder fixtures",
     titleFallback: "Migrate folder fixtures",
     latestAttentionAt: 870,
   }),
   makeThreadListEntry({
     id: "thr_home_style",
-    providerId: "claude-code",
+    providerId: STORY_CLAUDE_CODE_PROVIDER_ID,
     title: "Reduce style recalculation",
     titleFallback: "Reduce style recalculation",
     status: "starting",
@@ -73,7 +75,7 @@ export const HOME_THREADS: ThreadListEntry[] = [
   makeThreadListEntry({
     id: "thr_home_daemon",
     projectId: PROJECT_IDS.pierre,
-    providerId: "acp-cursor",
+    providerId: STORY_CURSOR_PROVIDER_ID,
     title: "Debug host daemon reconnect",
     titleFallback: "Debug host daemon reconnect",
     latestAttentionAt: 840,
@@ -86,7 +88,7 @@ export const HOME_THREADS: ThreadListEntry[] = [
   }),
   makeThreadListEntry({
     id: "thr_home_sidebar",
-    providerId: "claude-code",
+    providerId: STORY_CLAUDE_CODE_PROVIDER_ID,
     title: "Trim sidebar re-renders",
     titleFallback: "Trim sidebar re-renders",
     latestAttentionAt: 820,
