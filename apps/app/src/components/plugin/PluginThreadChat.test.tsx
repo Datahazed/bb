@@ -191,11 +191,18 @@ describe("PluginThreadChat", () => {
       expect(composer).toBeTruthy();
       if (typeof composer !== "object" || composer === null) return;
       const environmentSummary = Reflect.get(composer, "environmentSummary");
-      expect(isValidElement(environmentSummary)).toBe(true);
-      if (!isValidElement(environmentSummary)) return;
       expect(
-        Reflect.get(environmentSummary.props, "environmentCheckout"),
-      ).toEqual(
+        isValidElement<{
+          environmentCheckout?: { label: string; rowLabel: string };
+        }>(environmentSummary),
+      ).toBe(true);
+      if (
+        !isValidElement<{
+          environmentCheckout?: { label: string; rowLabel: string };
+        }>(environmentSummary)
+      )
+        return;
+      expect(environmentSummary.props.environmentCheckout).toEqual(
         expect.objectContaining({
           label: "bb/design-system-polish",
           rowLabel: "Branch",
