@@ -98,10 +98,14 @@ function MachineContext({
           <TooltipContent>Offline</TooltipContent>
         </Tooltip>
       )}
-      <Tooltip>
-        <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
-        {isNameTruncated ? <TooltipContent>{name}</TooltipContent> : null}
-      </Tooltip>
+      {isNameTruncated ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
+          <TooltipContent>{name}</TooltipContent>
+        </Tooltip>
+      ) : (
+        nameDisplay
+      )}
     </span>
   );
 }

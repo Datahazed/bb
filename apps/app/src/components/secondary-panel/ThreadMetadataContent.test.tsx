@@ -317,6 +317,7 @@ describe("EnvironmentRow", () => {
 
     const machineName = screen.getByLabelText("Machine: Build Mac mini");
     expect(machineName.getAttribute("tabindex")).toBeNull();
+    expect(machineName.getAttribute("data-state")).toBeNull();
     fireEvent.pointerEnter(machineName);
     expect(screen.queryByRole("tooltip")).toBeNull();
   });

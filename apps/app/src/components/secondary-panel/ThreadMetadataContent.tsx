@@ -457,10 +457,14 @@ export function MachineRow({ name, connected = true }: MachineRowProps) {
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      <Tooltip>
-        <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
-        {isNameTruncated ? <TooltipContent>{name}</TooltipContent> : null}
-      </Tooltip>
+      {isNameTruncated ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
+          <TooltipContent>{name}</TooltipContent>
+        </Tooltip>
+      ) : (
+        nameDisplay
+      )}
     </DetailRow>
   );
 }
