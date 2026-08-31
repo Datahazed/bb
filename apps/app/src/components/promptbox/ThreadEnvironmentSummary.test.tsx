@@ -135,7 +135,11 @@ describe("ThreadEnvironmentSummary", () => {
       </TooltipProvider>,
     );
 
-    expect(container.querySelector('[data-icon="LaptopIssue"]')).not.toBeNull();
+    const offlineGlyph = container.querySelector(
+      '[data-icon="AlertTriangle"]',
+    );
+    expect(offlineGlyph).not.toBeNull();
+    expect(offlineGlyph?.getAttribute("class")).toContain("text-warning-text");
     expect(screen.getAllByText("Build Mac mini")).toHaveLength(2);
     expect(screen.queryByText("Build Mac mini · Offline")).toBeNull();
 
@@ -295,7 +299,12 @@ describe("ThreadEnvironmentSummary", () => {
     );
 
     expect(container.querySelector('[data-icon="Laptop"]')).toBeNull();
-    expect(container.querySelector('[data-icon="LaptopIssue"]')).not.toBeNull();
+    const offlineGlyph = container.querySelector(
+      '[data-icon="AlertTriangle"]',
+    );
+    expect(offlineGlyph).not.toBeNull();
+    expect(offlineGlyph?.getAttribute("class")).toContain("size-4");
+    expect(offlineGlyph?.getAttribute("class")).toContain("text-warning-text");
     const machineDisplay = screen.getByLabelText(
       "Machine: Build Mac mini, offline",
     );
@@ -329,7 +338,7 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it("keeps unnamed worktree identity while using the machine name as its fallback", () => {
+  it("keeps worktree identity without a custom name while using the machine fallback", () => {
     const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
@@ -349,7 +358,7 @@ describe("ThreadEnvironmentSummary", () => {
     expect(screen.getByRole("img", { name: "Worktree" })).not.toBeNull();
   });
 
-  it("keeps unnamed worktree identity while exposing offline machine status", async () => {
+  it("keeps worktree identity without a custom name while exposing offline status", async () => {
     mockEnvironmentNameTruncation(false);
     const { container } = render(
       <TooltipProvider delayDuration={0}>
@@ -364,12 +373,21 @@ describe("ThreadEnvironmentSummary", () => {
     );
 
     expect(container.querySelector('[data-icon="FolderGit"]')).not.toBeNull();
-    expect(container.querySelector('[data-icon="LaptopIssue"]')).not.toBeNull();
+    const offlineGlyph = container.querySelector(
+      '[data-icon="AlertTriangle"]',
+    );
+    expect(offlineGlyph).not.toBeNull();
+    expect(offlineGlyph?.getAttribute("class")).toContain("size-3.5");
+    expect(offlineGlyph?.getAttribute("class")).toContain("text-warning-text");
     expect(
       screen.getByLabelText("Worktree: Bersabel's MacBook Pro, offline"),
     ).not.toBeNull();
+    const offlineIcon = screen.getByRole("img", { name: "Offline" });
+    expect(offlineIcon.nextElementSibling).toBe(
+      screen.getByLabelText("Worktree: Bersabel's MacBook Pro, offline"),
+    );
 
-    fireEvent.focus(screen.getByRole("img", { name: "Offline" }));
+    fireEvent.focus(offlineIcon);
     expect((await screen.findByRole("tooltip")).textContent).toBe("Offline");
   });
 

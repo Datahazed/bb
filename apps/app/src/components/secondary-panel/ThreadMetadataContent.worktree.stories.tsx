@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -42,6 +43,63 @@ const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   identity: null,
 };
 
+function StorySection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section>
+      <header className="mx-10 mt-6 max-w-3xl space-y-1">
+        <h2 className="text-sm font-medium text-foreground">{title}</h2>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </header>
+      <StoryCard className="!mt-2">{children}</StoryCard>
+    </section>
+  );
+}
+
+function ScenarioRow({
+  label,
+  howItHappens,
+  whatAppears,
+  children,
+}: {
+  label: string;
+  howItHappens: string;
+  whatAppears: string;
+  children: ReactNode;
+}) {
+  return (
+    <StoryRow
+      label={label}
+      className="max-sm:grid-cols-1 max-sm:gap-y-3"
+    >
+      <div className="w-full min-w-0 space-y-3">
+        <dl className="grid gap-1 text-xs text-muted-foreground">
+          <div>
+            <dt className="inline font-medium text-foreground">
+              How it happens:{" "}
+            </dt>
+            <dd className="inline">{howItHappens}</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-foreground">
+              What appears:{" "}
+            </dt>
+            <dd className="inline">{whatAppears}</dd>
+          </div>
+        </dl>
+        {children}
+      </div>
+    </StoryRow>
+  );
+}
+
 interface WorktreeMachineVisibilityFixtureProps {
   connected: boolean;
   locality: "local" | "remote";
@@ -55,7 +113,10 @@ function WorktreeMachineVisibilityFixture({
   machineCount,
   machineName,
 }: WorktreeMachineVisibilityFixtureProps) {
+  const environmentId =
+    `env_${locality}_${connected ? "connected" : "offline"}_${machineCount}`;
   const environment = makeEnvironment({
+    id: environmentId,
     name: STORY_WORKTREE_NAME,
     isWorktree: true,
     workspaceProvisionType: "managed-worktree",
@@ -79,34 +140,7 @@ function WorktreeMachineVisibilityFixture({
   });
 
   return (
-    <div
-      data-promptbox=""
-      className="w-full min-w-0 rounded-md border bg-background p-3"
-    >
-      <ThreadEnvironmentSummary
-        environmentLabel={summaryDisplay.label}
-        environmentCompactLabel={summaryDisplay.compactLabel}
-        environmentIcon={summaryDisplay.icon}
-        environmentTypeLabel={summaryDisplay.typeLabel}
-        environmentCheckout={STORY_CHECKOUT_DISPLAY}
-        machineName={showMachine ? machineName : undefined}
-        machineConnected={showMachine ? connected : undefined}
-      />
-    </div>
-  );
-}
-
-interface MachineNameOverflowFixtureProps {
-  connected: boolean;
-  machineName: string;
-}
-
-function MachineNameOverflowFixture({
-  connected,
-  machineName,
-}: MachineNameOverflowFixtureProps) {
-  return (
-    <div className="grid w-full min-w-0 gap-3 lg:grid-cols-2">
+    <div className="grid w-full min-w-0 gap-3 2xl:grid-cols-2">
       <section className="min-w-0 space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">Composer</p>
         <div
@@ -114,8 +148,13 @@ function MachineNameOverflowFixture({
           className="w-full min-w-0 rounded-md border bg-background p-3"
         >
           <ThreadEnvironmentSummary
-            machineName={machineName}
-            machineConnected={connected}
+            environmentLabel={summaryDisplay.label}
+            environmentCompactLabel={summaryDisplay.compactLabel}
+            environmentIcon={summaryDisplay.icon}
+            environmentTypeLabel={summaryDisplay.typeLabel}
+            environmentCheckout={STORY_CHECKOUT_DISPLAY}
+            machineName={showMachine ? machineName : undefined}
+            machineConnected={showMachine ? connected : undefined}
           />
         </div>
       </section>
@@ -123,6 +162,11 @@ function MachineNameOverflowFixture({
         <p className="text-xs font-medium text-muted-foreground">Info</p>
         <PanelStage>
           <ThreadMetadataCard>
+            <EnvironmentRow
+              thread={makeThread({ environmentId })}
+              environment={environment}
+              environmentDisplayHost={host}
+            />
             <MachineRow name={machineName} connected={connected} />
           </ThreadMetadataCard>
         </PanelStage>
@@ -159,7 +203,7 @@ function WorktreeNamingFixture({
   });
 
   return (
-    <div className="grid w-full min-w-0 gap-3 lg:grid-cols-2">
+    <div className="grid w-full min-w-0 gap-3 2xl:grid-cols-2">
       <section className="min-w-0 space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">Composer</p>
         <div
@@ -193,111 +237,97 @@ function WorktreeNamingFixture({
   );
 }
 
-export function Presentation() {
+export function Overview() {
   return (
-    <StoryCard>
-      <StoryRow
-        label="custom name"
-        hint="existing custom metadata is read-only in Composer and Info"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+    <>
+      <StorySection
+        title="Worktree name"
+        description="A worktree can have an optional name set from its sidebar row. When present, Composer and Info show it; editing stays in the sidebar."
       >
-        <WorktreeNamingFixture fixtureId="custom" name={STORY_WORKTREE_NAME} />
-      </StoryRow>
-      <StoryRow
-        label="maximum-length custom name"
-        hint="valid 79-character metadata truncates without edit controls"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeNamingFixture
-          fixtureId="long"
-          name={STORY_LONG_WORKTREE_NAME}
-        />
-      </StoryRow>
-      <StoryRow
-        label="no custom name"
-        hint="Composer uses the machine fallback; Info reports Unnamed"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeNamingFixture fixtureId="unnamed" name={null} />
-      </StoryRow>
-    </StoryCard>
-  );
-}
+        <ScenarioRow
+          label="Named"
+          howItHappens="The user names the worktree from its sidebar row."
+          whatAppears="Composer and Info show the custom display name; editing remains in the sidebar."
+        >
+          <WorktreeNamingFixture
+            fixtureId="custom"
+            name={STORY_WORKTREE_NAME}
+          />
+        </ScenarioRow>
+        <ScenarioRow
+          label="Long name"
+          howItHappens="The user enters a long valid name in the sidebar rename dialog."
+          whatAppears="Both surfaces truncate the display name without overlapping adjacent controls; the full value remains available in a tooltip."
+        >
+          <WorktreeNamingFixture
+            fixtureId="long"
+            name={STORY_LONG_WORKTREE_NAME}
+          />
+        </ScenarioRow>
+        <ScenarioRow
+          label="No custom name"
+          howItHappens="No sidebar display name has been set, or the existing name was cleared."
+          whatAppears="Composer uses the owning machine name as a fallback while the worktree icon preserves the resource type and keeps the create-thread action available. Info omits the optional Worktree row and lists the machine separately."
+        >
+          <WorktreeNamingFixture fixtureId="no-custom-name" name={null} />
+        </ScenarioRow>
+      </StorySection>
 
-export function MachineVisibility() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="single local machine"
-        hint="machine hidden because it adds no new context"
+      <StorySection
+        title="Machine context"
+        description="Info always identifies the owning machine. Composer shows it only when it clarifies where the worktree runs or signals that the machine is offline."
       >
-        <WorktreeMachineVisibilityFixture
-          connected
-          locality="local"
-          machineCount={1}
-          machineName={STORY_HOST_NAME}
-        />
-      </StoryRow>
-      <StoryRow
-        label="remote machine"
-        hint="machine shown because the worktree runs remotely"
-      >
-        <WorktreeMachineVisibilityFixture
-          connected
-          locality="remote"
-          machineCount={1}
-          machineName="Build Mac mini"
-        />
-      </StoryRow>
-      <StoryRow
-        label="offline machine"
-        hint="issue icon explains Offline; a clipped name reveals the full machine name"
-      >
-        <WorktreeMachineVisibilityFixture
-          connected={false}
-          locality="local"
-          machineCount={1}
-          machineName={STORY_HOST_NAME}
-        />
-      </StoryRow>
-      <StoryRow
-        label="multiple machines"
-        hint="machine shown to distinguish which machine owns the worktree"
-      >
-        <WorktreeMachineVisibilityFixture
-          connected
-          locality="local"
-          machineCount={2}
-          machineName={STORY_HOST_NAME}
-        />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function MachineNameOverflow() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="name fits"
-        hint="the complete name has no redundant tooltip or focus stop"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <MachineNameOverflowFixture
-          connected
-          machineName="Build Mac mini"
-        />
-      </StoryRow>
-      <StoryRow
-        label="name truncates"
-        hint="the clipped name reveals its full value; Offline remains separate"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <MachineNameOverflowFixture
-          connected={false}
-          machineName="Bersabel's remote build MacBook Pro for design-system verification"
-        />
-      </StoryRow>
-    </StoryCard>
+        <ScenarioRow
+          label="One local machine"
+          howItHappens="The worktree runs on the user's only connected local machine."
+          whatAppears="Composer omits the redundant machine name. Info still lists the owning machine."
+        >
+          <WorktreeMachineVisibilityFixture
+            connected
+            locality="local"
+            machineCount={1}
+            machineName={STORY_HOST_NAME}
+          />
+        </ScenarioRow>
+        <ScenarioRow
+          label="Remote machine"
+          howItHappens="The worktree runs on an enrolled remote machine."
+          whatAppears="Composer shows the remote machine beside the worktree; Info lists the same machine."
+        >
+          <WorktreeMachineVisibilityFixture
+            connected
+            locality="remote"
+            machineCount={1}
+            machineName="Build Mac mini"
+          />
+        </ScenarioRow>
+        <ScenarioRow
+          label="Offline machine"
+          howItHappens="The machine that owns the worktree disconnects while the worktree and thread remain."
+          whatAppears="Composer keeps the neutral worktree icon and places an amber alert beside the offline machine name. Info uses the same alert for machine status. The long fixture also verifies safe truncation."
+        >
+          <WorktreeMachineVisibilityFixture
+            connected={false}
+            locality="local"
+            machineCount={1}
+            machineName={
+              "Bersabel's remote build MacBook Pro for design-system verification"
+            }
+          />
+        </ScenarioRow>
+        <ScenarioRow
+          label="Multiple machines"
+          howItHappens="The user has more than one enrolled machine."
+          whatAppears="Composer names the machine that owns this worktree so it cannot be confused with another machine. Info lists the same owner."
+        >
+          <WorktreeMachineVisibilityFixture
+            connected
+            locality="local"
+            machineCount={2}
+            machineName={STORY_HOST_NAME}
+          />
+        </ScenarioRow>
+      </StorySection>
+    </>
   );
 }

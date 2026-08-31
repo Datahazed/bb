@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 import {
   ParentSelectorRow,
-  EnvironmentRow,
-  MachineRow,
   WorkspacePathRow,
   BranchRow,
   MergeBaseRow,
@@ -16,7 +14,6 @@ import {
 import {
   PanelStage,
   baseProps,
-  localEnvironmentDisplayHost,
   parentThreads,
   makeEnvironment,
   makePullRequest,
@@ -36,32 +33,6 @@ function RowStage({ children }: { children: ReactNode }) {
     <PanelStage>
       <ThreadMetadataCard>{children}</ThreadMetadataCard>
     </PanelStage>
-  );
-}
-
-interface WorktreeRowFixtureProps {
-  fixtureId: string;
-  initialName: string | null;
-}
-
-function WorktreeRowFixture({
-  fixtureId,
-  initialName,
-}: WorktreeRowFixtureProps) {
-  const environmentId = `env_${fixtureId}`;
-  const environment = makeEnvironment({
-    id: environmentId,
-    name: initialName,
-  });
-
-  return (
-    <RowStage>
-      <EnvironmentRow
-        thread={makeThread({ environmentId: environment.id })}
-        environment={environment}
-        environmentDisplayHost={localEnvironmentDisplayHost}
-      />
-    </RowStage>
   );
 }
 
@@ -143,76 +114,6 @@ export function ParentSelector() {
             onRetryParentThreads={noop}
             defaultOpen
           />
-        </RowStage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function Worktree() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="worktree"
-        hint="existing custom name"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeRowFixture
-          fixtureId="info-custom"
-          initialName="Design system polish"
-        />
-      </StoryRow>
-      <StoryRow
-        label="worktree"
-        hint="valid long custom name"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeRowFixture
-          fixtureId="info-long"
-          initialName="internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout-monitoring"
-        />
-      </StoryRow>
-      <StoryRow
-        label="worktree"
-        hint="no custom metadata; Info reports Unnamed without an edit action"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <WorktreeRowFixture fixtureId="info-unnamed" initialName={null} />
-      </StoryRow>
-      <StoryRow
-        label="worktree"
-        hint="provisioning lifecycle without custom metadata"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <RowStage>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({
-              name: null,
-              status: "provisioning",
-              path: null,
-              isWorktree: false,
-              workspaceProvisionType: "managed-worktree",
-            })}
-            environmentDisplayHost={localEnvironmentDisplayHost}
-          />
-        </RowStage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function Machine() {
-  return (
-    <StoryCard>
-      <StoryRow label="connected">
-        <RowStage>
-          <MachineRow name="Bersabel's MacBook Pro" />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="offline">
-        <RowStage>
-          <MachineRow name="Build Mac mini" connected={false} />
         </RowStage>
       </StoryRow>
     </StoryCard>

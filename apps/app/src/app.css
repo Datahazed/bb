@@ -368,7 +368,6 @@
     }
 
     [data-promptbox] [data-promptbox-worktree-context] {
-      flex: 1 1 8rem !important;
       min-inline-size: 5rem !important;
     }
   }
@@ -394,7 +393,6 @@
     }
 
     [data-promptbox-shell] [data-promptbox-worktree-context] {
-      flex: 1 1 8rem !important;
       min-inline-size: 5rem !important;
     }
   }

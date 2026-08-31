@@ -268,12 +268,13 @@ export function EnvironmentRow({
   if (!environment) return null;
   const isWorktree = isWorktreeEnvironment(environment);
   if (!isWorktree) return null;
+  const worktreeTitle = environment.name;
+  if (!worktreeTitle) return null;
   const display = formatEnvironmentDisplay({
     environment,
     host: environmentDisplayHost,
   });
   const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
-  const worktreeTitle = environment.name ?? "Unnamed";
   const lifecycleTitle =
     display.lifecycle === "provisioning"
       ? "Provisioning"
@@ -381,9 +382,13 @@ export function MachineRow({ name, connected = true }: MachineRowProps) {
                   role="img"
                   tabIndex={0}
                   aria-label="Offline"
-                  className="inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Icon name="LaptopIssue" className="size-3.5" aria-hidden />
+                  <Icon
+                    name="AlertTriangle"
+                    className="size-3.5 text-warning-text"
+                    aria-hidden
+                  />
                 </span>
               </TooltipTrigger>
               <TooltipContent>Offline</TooltipContent>

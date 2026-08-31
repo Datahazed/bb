@@ -271,7 +271,7 @@ const offlineDirectEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   hostName: "Build Mac mini",
 });
 
-const offlineUnnamedWorktreeEnvironmentSummary: ReactNode =
+const offlineWorktreeWithoutCustomNameSummary: ReactNode =
   makeEnvironmentSummary({
     environment: makeEnvironment({
       name: null,
@@ -1192,7 +1192,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="offline · direct"
-        hint="issue icon owns the Offline tooltip; fitting machine name does not"
+        hint="alert icon owns the Offline tooltip; fitting machine name does not"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1200,12 +1200,12 @@ export function EnvironmentMatrix() {
         />
       </StoryRow>
       <StoryRow
-        label="offline · unnamed worktree"
-        hint="worktree identity remains visible beside independent Offline status"
+        label="offline · no custom name"
+        hint="worktree icon preserves resource identity; amber alert marks the fallback machine Offline"
       >
         <Row
           submitMode={{ kind: "ready" }}
-          environmentSummary={offlineUnnamedWorktreeEnvironmentSummary}
+          environmentSummary={offlineWorktreeWithoutCustomNameSummary}
         />
       </StoryRow>
       <StoryRow

@@ -30,7 +30,7 @@ interface ThreadEnvironmentSummaryProps {
   onCreateNewThreadInWorktree?: () => void;
 }
 
-function OfflineMachineIcon() {
+function OfflineMachineIcon({ compact = false }: { compact?: boolean }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -40,7 +40,14 @@ function OfflineMachineIcon() {
           aria-label="Offline"
           className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          <Icon name="LaptopIssue" className="size-4" aria-hidden />
+          <Icon
+            name="AlertTriangle"
+            className={cn(
+              compact ? "size-3.5" : "size-4",
+              "text-warning-text",
+            )}
+            aria-hidden
+          />
         </span>
       </TooltipTrigger>
       <TooltipContent>Offline</TooltipContent>
@@ -260,13 +267,23 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               )}
             />
           ) : null}
-          <EnvironmentName
-            label={environmentTypeLabel ?? "Worktree"}
-            name={environmentLabel}
-            compactName={environmentCompactLabel}
-            connected={showPrimaryOffline ? false : undefined}
-          />
-          {showPrimaryOffline && isWorktree ? <OfflineMachineIcon /> : null}
+          {showPrimaryOffline && isWorktree ? (
+            <span className="inline-flex min-w-0 shrink items-center gap-1">
+              <OfflineMachineIcon compact />
+              <EnvironmentName
+                label="Worktree"
+                name={environmentLabel}
+                compactName={environmentCompactLabel}
+                connected={false}
+              />
+            </span>
+          ) : (
+            <EnvironmentName
+              label={environmentTypeLabel ?? "Worktree"}
+              name={environmentLabel}
+              compactName={environmentCompactLabel}
+            />
+          )}
         </div>
       ) : null}
       {machineName ? (

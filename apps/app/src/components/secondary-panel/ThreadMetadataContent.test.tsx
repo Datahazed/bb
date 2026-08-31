@@ -199,8 +199,8 @@ describe("EnvironmentRow", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(longName);
   });
 
-  it("reports an unnamed worktree without offering a naming action", () => {
-    render(
+  it("omits the worktree row when no custom name exists", () => {
+    const { container } = render(
       <TooltipProvider delayDuration={0}>
         <MemoryRouter>
           <EnvironmentRow
@@ -212,12 +212,11 @@ describe("EnvironmentRow", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Unnamed").closest("dd")).not.toBeNull();
-    expect(screen.getByText("Worktree").closest("dt")).not.toBeNull();
-    expect(screen.queryByText("Name")).toBeNull();
-    expect(screen.queryByText("Add name")).toBeNull();
+    expect(container.innerHTML).toBe("");
+    expect(screen.queryByText("Unnamed")).toBeNull();
+    expect(screen.queryByText("Worktree")).toBeNull();
     expect(
-      screen.queryByRole("button", { name: /name worktree/iu }),
+      screen.queryByRole("button", { name: "Create thread in worktree" }),
     ).toBeNull();
   });
 
@@ -297,11 +296,11 @@ describe("EnvironmentRow", () => {
     const machineName = screen.getByText("Bersabel's MacBook Pro");
     const machineValue = machineName.closest("dd");
     expect(machineValue).not.toBeNull();
-    expect(
-      machineValue?.previousElementSibling?.querySelector(
-        '[data-icon="LaptopIssue"]',
-      ),
-    ).not.toBeNull();
+    const offlineGlyph = machineValue?.previousElementSibling?.querySelector(
+      '[data-icon="AlertTriangle"]',
+    );
+    expect(offlineGlyph).not.toBeNull();
+    expect(offlineGlyph?.getAttribute("class")).toContain("text-warning-text");
     expect(screen.getByText("Machine").closest("dt")).not.toBeNull();
     expect(screen.getByText("· Offline").getAttribute("class")).toContain(
       "text-muted-foreground",
@@ -336,7 +335,11 @@ describe("EnvironmentRow", () => {
   });
 
   it("shows the create-thread action for a provisioned worktree", () => {
-    expect(renderEnvironmentRow(makeEnvironment())).toContain(
+    expect(
+      renderEnvironmentRow(
+        makeEnvironment({ name: "Design system polish" }),
+      ),
+    ).toContain(
       'aria-label="Create thread in worktree"',
     );
   });
@@ -347,7 +350,7 @@ describe("EnvironmentRow", () => {
         <MemoryRouter>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment()}
+            environment={makeEnvironment({ name: "Design system polish" })}
             environmentDisplayHost={localHost}
           />
         </MemoryRouter>
@@ -368,6 +371,7 @@ describe("EnvironmentRow", () => {
   it("hides the create-thread action while a managed worktree is provisioning", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({
+        name: "Design system polish",
         status: "provisioning",
         path: null,
         isWorktree: false,
@@ -380,6 +384,7 @@ describe("EnvironmentRow", () => {
   it("hides the create-thread action before a prepared worktree has a path", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({
+        name: "Design system polish",
         path: null,
         isWorktree: false,
       }),
