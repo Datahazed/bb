@@ -323,6 +323,39 @@ async function serverIsHealthy(serverUrl) {
   }
 }
 
+async function hostDaemonIsReady({ daemonPort, serverUrl }) {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${String(daemonPort)}/status`,
+      { signal: AbortSignal.timeout(2_000) },
+    );
+    if (!response.ok) {
+      return false;
+    }
+    const status = await response.json();
+    return (
+      typeof status === "object" &&
+      status !== null &&
+      status.connected === true &&
+      status.serverUrl === serverUrl
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function pluginStartupIsSettled(serverUrl) {
+  try {
+    const response = await fetch(
+      new URL("/api/v1/system/providers", serverUrl),
+      { signal: AbortSignal.timeout(2_000) },
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForChildExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null) {
     return true;
@@ -482,8 +515,34 @@ async function smokeLinuxAppImageLifecycle() {
       retryErrors: false,
     });
     await waitFor({
-      describe: `bb health at ${runtime.serverUrl}`,
-      predicate: async () => await serverIsHealthy(runtime.serverUrl),
+      describe: `bb startup and its host daemon at ${runtime.serverUrl} to settle`,
+      predicate: async () => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          await Promise.race([childClosed, sleep(outputFlushTimeoutMs)]);
+          throw new Error(
+            `AppImage exited before bb became ready: code=${String(
+              child.exitCode,
+            )} signal=${String(child.signalCode)}.\n${formatProcessOutput({
+              stdout,
+              stderr,
+            })}`,
+          );
+        }
+        if (!(await processIsLive(runtime.pid))) {
+          throw new Error(
+            `The owned runtime exited before bb became ready.\n${formatProcessOutput(
+              { stdout, stderr },
+            )}`,
+          );
+        }
+        return (
+          (await hostDaemonIsReady({
+            daemonPort,
+            serverUrl: runtime.serverUrl,
+          })) && (await pluginStartupIsSettled(runtime.serverUrl))
+        );
+      },
+      retryErrors: false,
     });
 
     const guiProcess = await readProcess(child.pid);
