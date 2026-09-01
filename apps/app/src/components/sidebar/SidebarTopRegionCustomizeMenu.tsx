@@ -211,9 +211,7 @@ export function SidebarTopRegionCustomizeMenu({
     sidebarTopRegionItemPreferencesAtom,
   );
   const [regionOrder, setRegionOrder] = useAtom(sidebarRegionOrderAtom);
-  const reorderableRegionOrder = normalizeSidebarRegionOrder(
-    regionOrder,
-  ).filter((id) => id !== "threads");
+  const reorderableRegionOrder = normalizeSidebarRegionOrder(regionOrder);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, {

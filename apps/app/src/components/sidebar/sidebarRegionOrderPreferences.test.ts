@@ -32,14 +32,14 @@ describe("sidebar region order preferences", () => {
         "threads",
         "bb-controls",
       ]),
-    ).toEqual(["bb-controls", "plugins", "threads"]);
+    ).toEqual(["threads", "bb-controls", "plugins"]);
     expect(
       normalizeSidebarRegionOrder([
         "thread-list",
         "new-thread-extensions",
         "plugin-pages",
       ]),
-    ).toEqual(["bb-controls", "plugins", "threads"]);
+    ).toEqual(["threads", "bb-controls", "plugins"]);
     expect(normalizeSidebarRegionOrder({ order: ["threads"] })).toEqual([
       "bb-controls",
       "plugins",
@@ -57,16 +57,16 @@ describe("sidebar region order preferences", () => {
     const store = createStore();
 
     expect(store.get(reloadedModule.sidebarRegionOrderAtom)).toEqual([
+      "threads",
       "bb-controls",
       "plugins",
-      "threads",
     ]);
     expect(window.localStorage.getItem(SIDEBAR_REGION_ORDER_STORAGE_KEY)).toBe(
-      JSON.stringify(["new-thread-extensions", "plugin-pages", "thread-list"]),
+      JSON.stringify(["thread-list", "new-thread-extensions", "plugin-pages"]),
     );
   });
 
-  it("moves reorderable regions but keeps Threads last", () => {
+  it("moves every sidebar region, including Threads", () => {
     expect(
       reorderSidebarRegions(
         ["bb-controls", "plugins", "threads"],
@@ -80,6 +80,6 @@ describe("sidebar region order preferences", () => {
         "threads",
         "bb-controls",
       ),
-    ).toEqual(["bb-controls", "plugins", "threads"]);
+    ).toEqual(["threads", "bb-controls", "plugins"]);
   });
 });

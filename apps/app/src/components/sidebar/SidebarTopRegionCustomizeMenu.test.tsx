@@ -127,10 +127,10 @@ describe("SidebarTopRegionCustomizeMenu", () => {
       Array.from(
         document.querySelectorAll("[data-sidebar-customize-region]"),
       ).map((item) => item.textContent),
-    ).toEqual(["BB controls", "Plugins"]);
+    ).toEqual(["Threads", "BB controls", "Plugins"]);
     expect(
       document.querySelectorAll("[data-sidebar-customize-region-drag-handle]"),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(screen.getByRole("group", { name: "BB controls" })).toBeDefined();
     expect(screen.queryByRole("menuitem", { name: "Add action" })).toBeNull();
     for (const label of [
@@ -140,6 +140,7 @@ describe("SidebarTopRegionCustomizeMenu", () => {
       "Automations",
       "BB controls",
       "Plugins",
+      "Threads",
     ]) {
       const handle = screen.getByLabelText(`Reorder ${label}`);
       expect(handle.getAttribute("tabindex")).toBe("0");
