@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AUTOMATIONS_PLUGIN_ID } from "@/lib/route-paths";
+import type { PluginNavPanelChromeEntry } from "@/lib/plugin-nav-panel-chrome";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
   resetPluginSlotStoreForTest,
@@ -124,6 +125,7 @@ function renderSidebarItems(
   options: {
     storedOrder?: string[];
     compactViewport?: boolean;
+    entries?: readonly PluginNavPanelChromeEntry[];
     initialEntry?: string;
     splitEnabled?: boolean;
   } = {},
@@ -145,6 +147,7 @@ function renderSidebarItems(
             <SidebarProvider>
               <PluginNavSidebarItems
                 splitEnabled={options.splitEnabled ?? false}
+                {...(options.entries ? { entries: options.entries } : {})}
               />
               <LocationPath />
             </SidebarProvider>
@@ -160,7 +163,7 @@ function panelRowNames(labels: readonly string[]): string[] {
   const rowLabels = new Set(labels);
   return screen
     .getAllByRole("button")
-    .map((button) => button.textContent?.trim() ?? "")
+    .map((button) => button.getAttribute("aria-label") ?? "")
     .filter((label) => rowLabels.has(label));
 }
 
@@ -182,20 +185,43 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
+  it("renders the same classified entry snapshot used by the sidebar region", () => {
+    renderSidebarItems({
+      entries: [
+        {
+          chrome: {
+            pluginId: "docs",
+            id: "main",
+            title: "Docs",
+            icon: "Puzzle",
+            path: "main",
+          },
+          panel: null,
+        },
+      ],
+    });
+
+    expect(screen.getByRole("button", { name: "Docs" })).toBeDefined();
+  });
+
   it("keeps an accessory-less plugin row unchanged", () => {
     registerPanel("docs", "Docs");
 
     const view = renderSidebarItems();
+    const rowButton = screen.getByRole("button", { name: "Docs" });
+    const row = rowButton.closest("[data-sidebar-row]");
 
-    expect(screen.getByRole("button", { name: "Docs" }).textContent).toBe(
-      "Docs",
-    );
+    expect(rowButton.getAttribute("aria-label")).toBe("Docs");
     expect(
-      screen.getByRole("button", { name: "Docs" }).classList.contains("pr-7"),
-    ).toBe(true);
+      row?.querySelector('[data-sidebar-row-slot="content"]')?.textContent,
+    ).toBe("Docs");
+    expect(row?.getAttribute("data-sidebar-row-anatomy")).toBe("navigation");
     expect(
-      screen.getByRole("button", { name: "Docs" }).classList.contains("pr-18"),
-    ).toBe(false);
+      row?.querySelector('[data-sidebar-row-slot="identity"]'),
+    ).not.toBeNull();
+    expect(
+      row?.querySelector('[data-sidebar-row-slot="actions"]'),
+    ).not.toBeNull();
     expect(
       screen.queryByRole("button", { name: "Docs panel options" }),
     ).not.toBeNull();
@@ -229,12 +255,12 @@ describe("PluginNavSidebarItems", () => {
 
     expect(accessory?.textContent).toBe("123456789012345678901234567890");
     expect(screen.getByRole("button", { name: "Tasks" })).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Tasks" }).classList.contains("pr-18"),
-    ).toBe(true);
+    expect(accessory?.getAttribute("data-sidebar-row-slot")).toBe(
+      "accessory",
+    );
+    expect((accessory as HTMLElement | null)?.style.gridArea).toBe("actions");
     for (const className of [
       "bb-sidebar-hover-actions-fade",
-      "right-1",
       "min-w-5",
       "max-h-5",
       "max-w-16",
@@ -300,7 +326,7 @@ describe("PluginNavSidebarItems", () => {
     const dropdownMenu = await screen.findByRole("menu");
     const expected = [
       ["Open in split", "Columns2"],
-      ["Detail page", "Info"],
+      ["View details", "Info"],
       ["Move to top", "ArrowUp"],
       ["Move to overflow", "ArrowDown"],
       ["Disable", "Unavailable"],
@@ -345,7 +371,7 @@ describe("PluginNavSidebarItems", () => {
       screen.queryByRole("menuitem", { name: "Open in split" }),
     ).toBeNull();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Detail page" }),
+      await screen.findByRole("menuitem", { name: "View details" }),
     );
     expect(screen.getByTestId("location-path").textContent).toBe(
       "/extensions/plugins/docs",
@@ -498,17 +524,14 @@ describe("PluginNavSidebarItems", () => {
     const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
     expect(toggle.textContent).toBe("More plugins");
     expect(toggle.textContent).not.toMatch(/\d/);
-    expect(toggle.lastElementChild?.getAttribute("data-icon")).toBe(
-      "ChevronRight",
-    );
-    expect(toggle.lastElementChild?.classList.contains("rotate-90")).toBe(
-      false,
-    );
+    const disclosure = toggle.querySelector('[data-icon="ChevronRight"]');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.classList.contains("rotate-90")).toBe(false);
 
     fireEvent.click(toggle);
     await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
     expect(toggle.textContent).toBe("Show fewer");
-    expect(toggle.lastElementChild?.classList.contains("rotate-90")).toBe(true);
+    expect(disclosure?.classList.contains("rotate-90")).toBe(true);
   });
 
   it("keeps every overflow row in the same order when a long list is toggled", async () => {

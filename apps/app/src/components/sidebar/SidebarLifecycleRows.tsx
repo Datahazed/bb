@@ -6,10 +6,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
-import {
-  COARSE_POINTER_ICON_SIZE_CLASS,
-  COARSE_POINTER_ROW_HEIGHT_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,14 +39,19 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import {
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-  SIDEBAR_ROW_BASE_CLASS,
+  SIDEBAR_IDLE_STATUS_COLOR_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
-  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
 } from "./sidebarRowClasses";
 import { SidebarWindowedItems } from "./SidebarWindowedItems";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
+import {
+  SidebarRow,
+  SidebarRowContent,
+  SidebarRowStatusRail,
+} from "./SidebarRow";
 
 export interface SidebarDraftRowItem {
   id: string;
@@ -213,6 +215,7 @@ function SidebarDraftRow({
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const rowTargetRef = useRef<HTMLButtonElement>(null);
   const actionsOpen = dropdownOpen || contextOpen;
   const draftSplit = usePaneContentSplitDrag({
     content: { kind: "new-thread", draftSlotId: draft.id },
@@ -221,55 +224,65 @@ function SidebarDraftRow({
   });
 
   const row = (
-    <div
-      data-sidebar-draft-id={draft.id}
-      className={cn(
-        SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-        SIDEBAR_ROW_BASE_CLASS,
-        SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-        SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-        COARSE_POINTER_ROW_HEIGHT_CLASS,
-        LIST_HOVER_TRANSITION,
-        "group/draft-row relative min-w-0",
-        "has-[[data-state=open]]:bg-sidebar-accent",
-      )}
-    >
-      <button
-        type="button"
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-        aria-label={`Open draft ${draft.title}`}
-        onClick={() => onOpenDraft(draft.id)}
-      />
-      <span
+    <SidebarRow asChild density="standard" variant="item">
+      <div
+        data-sidebar-draft-id={draft.id}
         className={cn(
-          SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-          "flex min-w-0 flex-1 items-center gap-2",
+          SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+          SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+          LIST_HOVER_TRANSITION,
+          "group/draft-row relative min-w-0",
+          "has-[[data-state=open]]:bg-sidebar-accent",
         )}
       >
-        <span className="min-w-0 truncate" title={draft.title}>
-          {draft.title}
-        </span>
-        <span
-          data-sidebar-draft-state=""
-          className="ml-auto shrink-0 text-xs text-muted-foreground transition-opacity group-hover/draft-row:opacity-0 group-focus-within/draft-row:opacity-0"
-        >
-          Draft
-        </span>
-      </span>
-      <span
-        data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
-        className={cn(
-          SIDEBAR_HOVER_ACTIONS_CLASS,
-          "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
-        )}
-      >
-        <DraftActionsMenu
-          onDelete={draft.delete}
-          onOpenInSplit={splitEnabled ? draftSplit.openInSplit : undefined}
-          onOpenChange={setDropdownOpen}
+        <button
+          ref={rowTargetRef}
+          type="button"
+          className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+          aria-label={`Open draft ${draft.title}`}
+          onClick={() => onOpenDraft(draft.id)}
         />
-      </span>
-    </div>
+        <SidebarRowStatusRail>
+          <SidebarItemStatusSlot
+            status="draft"
+            tooltip="Draft"
+            onActivate={() => rowTargetRef.current?.click()}
+          >
+            <Icon
+              name="Edit"
+              className={cn(
+                COARSE_POINTER_ICON_SIZE_CLASS,
+                SIDEBAR_IDLE_STATUS_COLOR_CLASS,
+              )}
+              aria-hidden="true"
+            />
+          </SidebarItemStatusSlot>
+        </SidebarRowStatusRail>
+        <SidebarRowContent
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+            "flex min-w-0 flex-1 items-center gap-2",
+          )}
+        >
+          <span className="min-w-0 truncate" title={draft.title}>
+            {draft.title}
+          </span>
+        </SidebarRowContent>
+        <span
+          data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_CLASS,
+            "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+          )}
+        >
+          <DraftActionsMenu
+            onDelete={draft.delete}
+            onOpenInSplit={splitEnabled ? draftSplit.openInSplit : undefined}
+            onOpenChange={setDropdownOpen}
+          />
+        </span>
+      </div>
+    </SidebarRow>
   );
 
   return (
@@ -333,77 +346,88 @@ function SidebarArchivedThreadRow({
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const rowTargetRef = useRef<HTMLAnchorElement>(null);
   const actionsOpen = dropdownOpen || contextOpen;
   const title = getThreadDisplayTitle(thread);
 
   const row = (
-    <div
-      data-sidebar-archived-thread-id={thread.id}
-      className={cn(
-        SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-        SIDEBAR_ROW_BASE_CLASS,
-        SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-        COARSE_POINTER_ROW_HEIGHT_CLASS,
-        LIST_HOVER_TRANSITION,
-        "group/archived-thread-row relative min-w-0",
-        isActive
-          ? SIDEBAR_ROW_SELECTED_STATE_CLASS
-          : [
-              SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-              "text-sidebar-foreground/60 dark:text-sidebar-foreground/60",
-            ],
-        !isActive && "has-[[data-state=open]]:bg-sidebar-accent",
-      )}
-    >
-      <NavLink
-        to={getThreadRoutePath({
-          projectId: thread.projectId,
-          threadId: thread.id,
-        })}
-        data-sidebar-thread-shortcut-target=""
-        data-sidebar-thread-id={thread.id}
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-        aria-label={`Open archived thread ${title}`}
-        onClick={onNavigate}
-      />
-      <span
+    <SidebarRow asChild density="standard" variant="item">
+      <div
+        data-sidebar-archived-thread-id={thread.id}
         className={cn(
-          SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-          "flex min-w-0 flex-1 items-center gap-2",
+          SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+          LIST_HOVER_TRANSITION,
+          "group/archived-thread-row relative min-w-0",
+          isActive
+            ? SIDEBAR_ROW_SELECTED_STATE_CLASS
+            : [
+                SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+                "text-sidebar-foreground/60 dark:text-sidebar-foreground/60",
+              ],
+          !isActive && "has-[[data-state=open]]:bg-sidebar-accent",
         )}
       >
-        <span className="min-w-0 truncate" title={title}>
-          {title}
-        </span>
-        <span
-          data-sidebar-archived-state=""
-          className="ml-auto shrink-0 text-xs text-muted-foreground transition-opacity group-hover/archived-thread-row:opacity-0 group-focus-within/archived-thread-row:opacity-0"
-        >
-          Archived
-        </span>
-      </span>
-      <span
-        data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
-        className={cn(
-          SIDEBAR_HOVER_ACTIONS_CLASS,
-          "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
-        )}
-      >
-        <ThreadArchiveQuickAction
-          thread={thread}
-          showLabel
-          className="h-6 px-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+        <NavLink
+          ref={rowTargetRef}
+          to={getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: thread.id,
+          })}
+          data-sidebar-thread-shortcut-target=""
+          data-sidebar-thread-id={thread.id}
+          className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+          aria-label={`Open archived thread ${title}`}
+          onClick={onNavigate}
         />
-        <ThreadActionsMenu
-          thread={thread}
-          triggerClassName={cn(
-            "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-            SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+        <SidebarRowStatusRail>
+          <SidebarItemStatusSlot
+            status="archived"
+            tooltip="Archived"
+            onActivate={() => rowTargetRef.current?.click()}
+          >
+            <Icon
+              name="Archive"
+              className={cn(
+                COARSE_POINTER_ICON_SIZE_CLASS,
+                SIDEBAR_IDLE_STATUS_COLOR_CLASS,
+              )}
+              aria-hidden="true"
+            />
+          </SidebarItemStatusSlot>
+        </SidebarRowStatusRail>
+        <SidebarRowContent
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+            "flex min-w-0 flex-1 items-center gap-2",
           )}
-          onOpenChange={setDropdownOpen}
-        />
-      </span>
-    </div>
+        >
+          <span className="min-w-0 truncate" title={title}>
+            {title}
+          </span>
+        </SidebarRowContent>
+        <span
+          data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_CLASS,
+            "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+          )}
+        >
+          <ThreadArchiveQuickAction
+            thread={thread}
+            showLabel
+            className="h-6 px-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+          />
+          <ThreadActionsMenu
+            thread={thread}
+            triggerClassName={cn(
+              "text-subtle-foreground hover:bg-transparent hover:text-foreground",
+              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+            )}
+            onOpenChange={setDropdownOpen}
+          />
+        </span>
+      </div>
+    </SidebarRow>
   );
 
   return (

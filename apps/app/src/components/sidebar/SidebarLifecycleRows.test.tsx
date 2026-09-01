@@ -142,9 +142,9 @@ describe("SidebarDraftRows", () => {
     expect(container.querySelector('[data-icon="EditFile"]')).toBeNull();
     expect(screen.getByText("Drafts")).not.toBeNull();
     expect(
-      container.querySelectorAll("[data-sidebar-draft-state]"),
+      container.querySelectorAll('[data-sidebar-item-status="draft"]'),
     ).toHaveLength(2);
-    expect(screen.getAllByText("Draft")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Draft")).toHaveLength(2);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open draft Older draft" }),
@@ -297,10 +297,12 @@ describe("SidebarArchivedThreadGroup", () => {
       "second",
       "third",
     ]);
-    expect(container.querySelector('[data-icon="Archive"]')).toBeNull();
     expect(
-      container.querySelectorAll("[data-sidebar-archived-state]"),
+      container.querySelectorAll('[data-sidebar-item-status="archived"]'),
     ).toHaveLength(3);
+    expect(container.querySelectorAll('[data-icon="Archive"]')).toHaveLength(
+      3,
+    );
     const secondLink = screen.getByRole("link", {
       name: "Open archived thread Second archived",
     });
@@ -311,7 +313,7 @@ describe("SidebarArchivedThreadGroup", () => {
     expect(onNavigate).toHaveBeenCalledOnce();
   });
 
-  it("replaces the right-edge state with quick Unarchive and keeps it in both menus", () => {
+  it("keeps the archived state in the fixed status rail and offers Unarchive from both menus", () => {
     const { container } = renderLifecycleRows(
       <SidebarArchivedThreadGroup
         threads={[archivedThreads[0]!]}
@@ -322,12 +324,12 @@ describe("SidebarArchivedThreadGroup", () => {
     );
 
     const archivedState = container.querySelector<HTMLElement>(
-      "[data-sidebar-archived-state]",
+      '[data-sidebar-item-status="archived"]',
     );
-    expect(archivedState?.textContent).toBe("Archived");
-    expect(archivedState?.className).toContain(
-      "group-focus-within/archived-thread-row:opacity-0",
-    );
+    expect(archivedState?.getAttribute("aria-label")).toBe("Archived");
+    expect(
+      archivedState?.closest('[data-sidebar-row-slot="status"]'),
+    ).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Unarchive thread" }));
     expect(threadActions.unarchiveThread).toHaveBeenCalledWith(
       archivedThreads[0],

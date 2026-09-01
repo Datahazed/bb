@@ -249,14 +249,18 @@ describe("sidebar organization mode sections", () => {
     ]);
   });
 
-  it("preserves each persisted order while switching modes", async () => {
+  it("keeps Pinned first while preserving each mode's remaining order", async () => {
     const store = createStore();
-    const projectOrder = ["threads", "project:a", "pinned"];
-    const sectionOrder = ["section:a", "pinned", "threads"];
-    const machineOrder = ["threads", "pinned"];
-    store.set(sidebarSectionOrderAtom, projectOrder);
-    store.set(sidebarManualSectionOrderAtom, sectionOrder);
-    store.set(sidebarMachineSectionOrderAtom, machineOrder);
+    const projectOrder = ["pinned", "threads", "project:a"];
+    const sectionOrder = ["pinned", "section:a", "threads"];
+    const machineOrder = ["pinned", "threads"];
+    store.set(sidebarSectionOrderAtom, ["threads", "project:a", "pinned"]);
+    store.set(sidebarManualSectionOrderAtom, [
+      "section:a",
+      "pinned",
+      "threads",
+    ]);
+    store.set(sidebarMachineSectionOrderAtom, ["threads", "pinned"]);
     store.set(sidebarOrganizationModeAtom, "project");
     render(
       <JotaiProvider store={store}>

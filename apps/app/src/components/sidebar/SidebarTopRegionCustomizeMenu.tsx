@@ -62,6 +62,8 @@ const REGION_LABELS: Record<SidebarRegionId, string> = {
 const COMPACT_MENU_CONTENT_CLASS =
   "w-44 min-w-44 p-1 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=separator]]:!my-0.5";
 const COMPACT_MENU_LABEL_CLASS = "!px-2 !py-1";
+const CUSTOMIZE_MENU_TITLE_CLASS =
+  "text-sm font-medium leading-5 text-popover-foreground";
 const SORTABLE_ITEM_CLASS = "gap-2 !px-2 !py-1";
 
 const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
@@ -274,7 +276,10 @@ export function SidebarTopRegionCustomizeMenu({
         mobileTitle="Customize"
       >
         <DropdownMenuLabel
-          className={cn(CHROME_SECTION_LABEL_CLASS, COMPACT_MENU_LABEL_CLASS)}
+          className={cn(
+            CUSTOMIZE_MENU_TITLE_CLASS,
+            COMPACT_MENU_LABEL_CLASS,
+          )}
         >
           Customize
         </DropdownMenuLabel>
@@ -297,10 +302,7 @@ export function SidebarTopRegionCustomizeMenu({
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuLabel
-          className={cn(
-            "text-xs font-medium text-muted-foreground",
-            COMPACT_MENU_LABEL_CLASS,
-          )}
+          className={cn(CHROME_SECTION_LABEL_CLASS, COMPACT_MENU_LABEL_CLASS)}
         >
           Sidebar order
         </DropdownMenuLabel>

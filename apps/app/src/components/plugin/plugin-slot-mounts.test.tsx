@@ -1328,7 +1328,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         </Routes>
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByText("Demo board"));
+    fireEvent.click(screen.getByRole("button", { name: "Demo board" }));
     expect(screen.getByText("board panel body")).toBeDefined();
   });
 

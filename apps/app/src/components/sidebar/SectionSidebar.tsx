@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/sidebar.js";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
+import {
+  SidebarRow,
+  SidebarRowContent,
+  SidebarRowIdentityRail,
+} from "@/components/sidebar/SidebarRow";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
@@ -42,25 +47,29 @@ export function SectionSidebarRow({
 }) {
   const closeOnMobile = useCloseMobileSidebar();
   return (
-    <Button
-      asChild
-      size="sm"
-      variant="ghost"
-      className={cn(
-        PROJECT_LIST_ACTION_BUTTON_CLASS,
-        "w-full",
-        active && "bg-sidebar-accent text-sidebar-foreground",
-      )}
-    >
-      <Link
-        to={to}
-        onClick={closeOnMobile}
-        aria-current={active ? "page" : undefined}
+    <SidebarRow asChild anatomy="navigation" variant="item">
+      <Button
+        asChild
+        size="sm"
+        variant="ghost"
+        className={cn(
+          PROJECT_LIST_ACTION_BUTTON_CLASS,
+          "w-full",
+          active && "bg-sidebar-accent text-sidebar-foreground",
+        )}
       >
-        {children}
-        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-      </Link>
-    </Button>
+        <Link
+          to={to}
+          onClick={closeOnMobile}
+          aria-current={active ? "page" : undefined}
+        >
+          <SidebarRowIdentityRail>{children}</SidebarRowIdentityRail>
+          <SidebarRowContent className="truncate text-left">
+            {label}
+          </SidebarRowContent>
+        </Link>
+      </Button>
+    </SidebarRow>
   );
 }
 
@@ -77,19 +86,23 @@ export function SectionSidebarActionRow({
 }) {
   const closeOnMobile = useCloseMobileSidebar();
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      data-testid={testId}
-      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-      onClick={() => {
-        closeOnMobile();
-        onClick();
-      }}
-    >
-      {children}
-      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-    </Button>
+    <SidebarRow asChild anatomy="navigation" variant="item">
+      <Button
+        size="sm"
+        variant="ghost"
+        data-testid={testId}
+        className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+        onClick={() => {
+          closeOnMobile();
+          onClick();
+        }}
+      >
+        <SidebarRowIdentityRail>{children}</SidebarRowIdentityRail>
+        <SidebarRowContent className="truncate text-left">
+          {label}
+        </SidebarRowContent>
+      </Button>
+    </SidebarRow>
   );
 }
 

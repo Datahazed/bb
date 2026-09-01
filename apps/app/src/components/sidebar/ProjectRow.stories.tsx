@@ -357,7 +357,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed project — child working"
-        hint="collapsed project header right-aligns the hidden child activity in the trailing slot"
+        hint="collapsed project header aligns hidden child activity in the leading status column"
       >
         {singleProject({
           initialCollapsed: true,
@@ -378,7 +378,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed project — child plan mode"
-        hint="collapsed project header right-aligns the hidden child plan-mode glyph"
+        hint="collapsed project header aligns the hidden child plan-mode glyph in the leading status column"
       >
         {singleProject({
           initialCollapsed: true,
@@ -484,7 +484,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed parent — child needs input"
-        hint="trailing grey question icon surfaces a hidden child blocked on the user"
+        hint="the leading grey question icon surfaces a hidden child blocked on the user"
       >
         {singleProject({
           initialCollapsedThreadIds: new Set([parentThread.id]),
@@ -500,7 +500,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed parent — needs input + working"
-        hint="one child blocked, another running: input needed wins, trailing slot shows the grey question icon"
+        hint="one child blocked, another running: input needed wins in the leading status column"
       >
         {singleProject({
           initialCollapsedThreadIds: new Set([parentThread.id]),
@@ -516,7 +516,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed worktree — child working"
-        hint="trailing slot shows the Loading03 working spinner when a hidden child is working"
+        hint="leading status column shows the Loading03 spinner when a hidden child is working"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_busy"]),
@@ -539,7 +539,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed worktree — child goal"
-        hint="trailing slot shows the target glyph when a hidden child has an active goal banner"
+        hint="leading status column shows the target glyph when a hidden child has an active goal banner"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_goal"]),
@@ -565,7 +565,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed worktree — unread child"
-        hint="surfaces like a regular unread thread — the trailing slot shows the done dot"
+        hint="surfaces like a regular unread thread in the aligned leading status column"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_unread"]),

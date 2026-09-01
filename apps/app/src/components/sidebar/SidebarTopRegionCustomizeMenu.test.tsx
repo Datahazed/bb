@@ -90,7 +90,12 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     )) {
       expect(dragIcon.classList.contains("size-4")).toBe(true);
     }
-    expect(screen.getByText("Sidebar order")).toBeDefined();
+    const sidebarOrderLabel = screen.getByText("Sidebar order");
+    expect(sidebarOrderLabel.classList.contains("text-xs")).toBe(true);
+    expect(sidebarOrderLabel.classList.contains("font-normal")).toBe(true);
+    expect(
+      sidebarOrderLabel.classList.contains("text-subtle-foreground/75"),
+    ).toBe(true);
     expect(
       Array.from(
         document.querySelectorAll("[data-sidebar-customize-region]"),

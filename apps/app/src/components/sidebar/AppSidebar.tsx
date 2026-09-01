@@ -28,6 +28,7 @@ import { useThreadListReplacement } from "./threadListProvider";
 import {
   AutomationsNavSidebarItem,
   ExtensionsNavSidebarItem,
+  getTraditionalPluginNavPanelEntries,
   PluginNavSidebarItems,
 } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
@@ -194,8 +195,8 @@ export function AppSidebar({
   const automationsNavPanel = pluginNavPanels.find(
     ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
   );
-  const hasTraditionalPluginPanels = pluginNavPanels.some(
-    ({ chrome }) => chrome.pluginId !== AUTOMATIONS_PLUGIN_ID,
+  const traditionalPluginNavPanels = getTraditionalPluginNavPanelEntries(
+    pluginNavPanels,
   );
 
   const handleNewChat = useCallback(() => {
@@ -377,8 +378,12 @@ export function AppSidebar({
                   {visibleTopRegionItems}
                 </div>
               ) : null,
-            "plugin-pages": hasTraditionalPluginPanels ? (
-              <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
+            "plugin-pages": traditionalPluginNavPanels.length > 0 ? (
+              <PluginNavSidebarItems
+                entries={traditionalPluginNavPanels}
+                onNavigate={closeOnMobile}
+                splitEnabled
+              />
             ) : null,
             "thread-list": (
               <PluginThreadList

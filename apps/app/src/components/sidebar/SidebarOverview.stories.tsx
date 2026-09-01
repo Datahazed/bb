@@ -82,7 +82,14 @@ const personalProject = makeProject({
 });
 
 const loadedSidebarNavigation = {
-  sections: [],
+  sections: [
+    {
+      id: "sec_story_review",
+      name: "Review queue",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ],
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,
@@ -212,6 +219,7 @@ const loadedSidebarNavigation = {
         makeThreadListEntry({
           id: "thr_story_docs",
           projectId: docsProject.id,
+          sectionId: "sec_story_review",
           title: "Refresh onboarding docs",
           titleFallback: "Refresh onboarding docs",
           latestAttentionAt: 120,
@@ -569,6 +577,53 @@ export function OrganizationModes() {
           hosts={machineStoryHosts}
           navigation={emptySidebarNavigation}
         />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function RowLayoutContract() {
+  return (
+    <StoryCard
+      labelWidth="120px"
+      columns={["Wide", "Compact width"]}
+      className="min-w-max items-start"
+    >
+      <StoryRow
+        label="Project tree"
+        hint="Production rows at the two representative sidebar widths"
+      >
+        <div className="w-[320px]">
+          <OrganizationSidebar
+            mode="project"
+            navigation={loadedSidebarNavigation}
+          />
+        </div>
+        <div className="w-[240px]">
+          <OrganizationSidebar
+            mode="project"
+            navigation={loadedSidebarNavigation}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="Machine tree"
+        hint="The same status, identity, content, action, and disclosure rails"
+      >
+        <div className="w-[320px]">
+          <OrganizationSidebar
+            mode="machine"
+            hosts={machineStoryHosts}
+            navigation={machineSidebarNavigation}
+          />
+        </div>
+        <div className="w-[240px]">
+          <OrganizationSidebar
+            mode="machine"
+            hosts={machineStoryHosts}
+            navigation={machineSidebarNavigation}
+          />
+        </div>
       </StoryRow>
     </StoryCard>
   );
