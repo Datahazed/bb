@@ -1,9 +1,11 @@
 import { emptyPromptDraftState } from "@bb/client-core";
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
-import { describe, expect, it, vi } from "vitest";
-import type { NewThreadDraftRow } from "@/hooks/useNewThreadDraftSlots";
-import { buildPaletteThreadSearchRows } from "./palette-thread-search";
+import { describe, expect, it } from "vitest";
+import {
+  buildPaletteThreadSearchRows,
+  type PaletteNewThreadDraft,
+} from "./palette-thread-search";
 
 const NOW = 1_000_000;
 
@@ -46,18 +48,18 @@ function makeThread(
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    queuedWork: "none",
     ...overrides,
   };
 }
 
-function makeDraft(id: string, title: string): NewThreadDraftRow {
+function makeDraft(id: string, title: string): PaletteNewThreadDraft {
   return {
     id,
     title,
     draft: { ...emptyPromptDraftState(), text: title },
     lastEditedAt: NOW,
     destination: { projectId: "project-1", sectionId: null },
-    delete: vi.fn(),
   };
 }
 

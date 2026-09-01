@@ -5,9 +5,20 @@ import type {
   ThreadSearchMatch,
   ThreadSearchResponse,
 } from "@bb/server-contract";
-import type { NewThreadDraftRow } from "@/hooks/useNewThreadDraftSlots";
+import type { PromptDraftState } from "@bb/client-core";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+
+export interface PaletteNewThreadDraft {
+  id: string;
+  draft: PromptDraftState;
+  title: string;
+  lastEditedAt: number | null;
+  destination: {
+    projectId: string;
+    sectionId: string | null;
+  };
+}
 
 export const PALETTE_THREAD_SEARCH_SCOPES = [
   { id: "all", label: "All" },
@@ -33,7 +44,7 @@ export interface PaletteThreadSearchRow {
 }
 
 interface BuildPaletteThreadSearchRowsArgs {
-  drafts: readonly NewThreadDraftRow[];
+  drafts: readonly PaletteNewThreadDraft[];
   now: number;
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
@@ -175,7 +186,9 @@ export function buildPaletteThreadSearchRows({
     highlightRanges: draftHighlightRanges(item.title, positions),
     metadataText: metadataText([
       projectMetadata(item.destination.projectId, projectNamesById),
-      formatRelativeTime({ timestamp: item.lastEditedAt, now }),
+      item.lastEditedAt === null
+        ? null
+        : formatRelativeTime({ timestamp: item.lastEditedAt, now }),
     ]),
     projectId: item.destination.projectId,
     threadId: null,
