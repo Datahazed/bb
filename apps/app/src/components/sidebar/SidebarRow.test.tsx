@@ -152,12 +152,14 @@ describe("SidebarRow", () => {
     expect(
       screen
         .getByText("Projects")
-        .parentElement?.getAttribute("data-sidebar-row-variant"),
+        .closest("[data-sidebar-row]")
+        ?.getAttribute("data-sidebar-row-variant"),
     ).toBe("viewHeader");
     expect(
       screen
         .getByText("Projects")
-        .parentElement?.getAttribute("data-sidebar-row-density"),
+        .closest("[data-sidebar-row]")
+        ?.getAttribute("data-sidebar-row-density"),
     ).toBe("label");
 
     rerender(
@@ -172,12 +174,14 @@ describe("SidebarRow", () => {
     expect(
       screen
         .getByText("Thread")
-        .parentElement?.getAttribute("data-sidebar-row-variant"),
+        .closest("[data-sidebar-row]")
+        ?.getAttribute("data-sidebar-row-variant"),
     ).toBe("item");
     expect(
       screen
         .getByText("Thread")
-        .parentElement?.getAttribute("data-sidebar-row-density"),
+        .closest("[data-sidebar-row]")
+        ?.getAttribute("data-sidebar-row-density"),
     ).toBe("standard");
   });
 });
