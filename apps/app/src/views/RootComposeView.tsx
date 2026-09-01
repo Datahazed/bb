@@ -40,13 +40,16 @@ import {
   type ProjectMachineSetupDialogTarget,
 } from "@/components/dialogs/ProjectMachineSetupDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { useRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
+import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { LazyBrowserTabDeck } from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import {
+  LazyBrowserTabDeck,
+  preloadThreadSecondaryPanel,
+} from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -269,7 +272,19 @@ export function RootComposeRightPanelToggle({
 }: RootComposeRightPanelToggleProps) {
   const shortcut = useAppCommandShortcut("panel.toggle");
   const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
-  const rightPanelIconName = useRightPanelToggleIconName();
+  const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
+
+  useEffect(() => {
+    if (typeof window.requestIdleCallback === "function") {
+      const idleCallback = window.requestIdleCallback(
+        preloadThreadSecondaryPanel,
+        { timeout: 1000 },
+      );
+      return () => window.cancelIdleCallback(idleCallback);
+    }
+    const timeout = window.setTimeout(preloadThreadSecondaryPanel, 1000);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   return (
     <Button
@@ -282,6 +297,8 @@ export function RootComposeRightPanelToggle({
       }
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       aria-expanded={isOpen}
+      onFocus={preloadThreadSecondaryPanel}
+      onPointerDown={preloadThreadSecondaryPanel}
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
@@ -1747,10 +1764,13 @@ function RootComposeSurface({
     [openWorkspaceFile],
   );
   const showPinnedToggle =
-    (paneContext?.secondaryPanelHost ?? null) === null && !isSecondaryPanelOpen;
+    (paneContext?.secondaryPanelHost ?? null) === null &&
+    (!isSecondaryPanelOpen || isCompactViewport);
   const rootPanelToggle = showPinnedToggle ? (
     <div
-      className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
+      className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS} ${
+        isSecondaryPanelOpen ? "pointer-events-none invisible" : ""
+      }`}
     >
       <RootComposeRightPanelToggle
         isOpen={isSecondaryPanelOpen}

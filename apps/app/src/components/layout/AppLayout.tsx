@@ -3,7 +3,14 @@ import {
   type Ref,
   type ReactNode,
 } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { flushSync } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -42,6 +49,11 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
+import {
+  isCompactSecondaryPanelShelfShowing,
+  subscribeCompactSecondaryPanelShelfShowing,
+} from "@/components/ui/secondary-panel-shelf-visibility";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
@@ -199,7 +211,16 @@ function SidebarTriggerOverlay({
   reserveMacosTrafficLights,
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
+  const isCompactViewport = useIsCompactViewport();
+  const compactSecondaryPanelShelfShowing = useSyncExternalStore(
+    subscribeCompactSecondaryPanelShelfShowing,
+    isCompactSecondaryPanelShelfShowing,
+    () => false,
+  );
   const shortcut = useAppCommandShortcut("sidebar.toggle");
+  if (isCompactViewport && compactSecondaryPanelShelfShowing) {
+    return null;
+  }
   const triggerProps = {
     "aria-label": shortcut
       ? `Toggle sidebar (${shortcut.label})`
@@ -210,8 +231,9 @@ function SidebarTriggerOverlay({
     return (
       <div
         data-testid="app-desktop-sidebar-trigger"
+        style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed top-0 z-50",
+          "fixed top-0",
           CHROME_ROW_CLASS,
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
@@ -238,8 +260,9 @@ function SidebarTriggerOverlay({
   return (
     <div
       data-testid="app-sidebar-trigger-overlay"
+      style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
       className={cn(
-        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] z-50",
+        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)]",
         CHROME_ROW_CLASS,
         BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
       )}

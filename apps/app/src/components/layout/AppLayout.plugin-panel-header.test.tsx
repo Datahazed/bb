@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
+import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
+import {
+  setCompactSecondaryPanelShelfShowing,
+} from "@/components/ui/secondary-panel-shelf-visibility";
 
 const viewportState = vi.hoisted(() => ({ compact: false }));
 
@@ -163,10 +167,12 @@ function renderPluginPanelRoute(): void {
 describe("AppLayout plugin panel header", () => {
   beforeEach(() => {
     viewportState.compact = false;
+    setCompactSecondaryPanelShelfShowing(false);
   });
 
   afterEach(() => {
     cleanup();
+    setCompactSecondaryPanelShelfShowing(false);
     vi.clearAllMocks();
   });
 
@@ -181,5 +187,21 @@ describe("AppLayout plugin panel header", () => {
     renderPluginPanelRoute();
 
     expect(screen.queryByTestId("app-page-header")).toBeNull();
+  });
+
+  it("shows the fixed left trigger only while the compact right panel is closed", () => {
+    viewportState.compact = true;
+    renderPluginPanelRoute();
+
+    const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
+    expect(trigger.style.zIndex).toBe(
+      String(APP_OVERLAY_LAYER.sidebarTrigger),
+    );
+
+    act(() => setCompactSecondaryPanelShelfShowing(true));
+    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+
+    act(() => setCompactSecondaryPanelShelfShowing(false));
+    expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();
   });
 });
