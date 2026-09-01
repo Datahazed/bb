@@ -83,7 +83,7 @@ function SplitViewSidebarStage({ children }: { children: ReactNode }) {
           {
             type: "pane",
             paneId: "pane-compose",
-            content: { kind: "new-thread", draftSlotId: "story-compose" },
+            content: { kind: "new-thread" },
           },
         ],
       },

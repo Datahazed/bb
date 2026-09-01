@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
@@ -20,8 +20,7 @@ afterEach(() => {
 });
 
 describe("SidebarSectionRow", () => {
-  it("keeps the disclosure in the fixed final slot after section actions", () => {
-    const onCreateThread = vi.fn();
+  it("renders the section name before the disclosure without a sidebar icon", () => {
     const result = render(
       <SidebarSectionRow
         name="Nested work"
@@ -30,8 +29,6 @@ describe("SidebarSectionRow", () => {
         activity={NO_COLLAPSED_CHILD_ACTIVITY}
         isCollapsed={false}
         onToggleCollapsed={vi.fn()}
-        onRename={vi.fn()}
-        onCreateThread={onCreateThread}
       />,
     );
 
@@ -41,22 +38,6 @@ describe("SidebarSectionRow", () => {
     const icon = result.container.querySelector('[data-icon="ListView"]');
     const label = screen.getByText("Nested work");
     const row = label.parentElement?.parentElement as HTMLElement | null;
-    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
-    const newThread = screen.getByRole("button", {
-      name: "New thread in Nested work",
-    });
-    const more = screen.getByRole("button", {
-      name: "Nested work section actions",
-    });
-    const trailingControls = row?.querySelector(
-      "[data-sidebar-collapsible-trailing-controls]",
-    );
-    const groupStatusSlot = row?.querySelector(
-      "[data-sidebar-group-status-slot]",
-    );
-    const mobileActions = more.closest(
-      "[data-sidebar-hover-actions-mobile]",
-    );
 
     expect(icon).toBeNull();
     expect(
@@ -64,57 +45,6 @@ describe("SidebarSectionRow", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(row?.style.paddingLeft).toBe("32px");
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
-    expect(row?.lastElementChild).toBe(caretSlot);
-    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(groupStatusSlot).not.toBeNull();
-    expect(
-      label.compareDocumentPosition(groupStatusSlot!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(
-      groupStatusSlot!.compareDocumentPosition(mobileActions!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
-      true,
-    );
-    expect(mobileActions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
-      "always",
-    );
-    expect(
-      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(
-      more.compareDocumentPosition(disclosure) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-  });
-
-  it("keeps New thread reachable from the section overflow on mobile", async () => {
-    const onCreateThread = vi.fn();
-    render(
-      <SidebarSectionRow
-        name="Nested work"
-        label="Nested work"
-        depth={1}
-        activity={NO_COLLAPSED_CHILD_ACTIVITY}
-        isCollapsed={false}
-        onToggleCollapsed={vi.fn()}
-        onRename={vi.fn()}
-        onCreateThread={onCreateThread}
-      />,
-    );
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Nested work section actions" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "New thread" }),
-    );
-
-    expect(onCreateThread).toHaveBeenCalledTimes(1);
   });
 
   it("rolls hidden split threads up to the collapsed section row", () => {
@@ -138,7 +68,7 @@ describe("SidebarSectionRow", () => {
           {
             type: "pane",
             paneId: "pane-compose",
-            content: { kind: "new-thread", draftSlotId: "draft-compose" },
+            content: { kind: "new-thread" },
           },
           {
             type: "pane",
@@ -182,12 +112,6 @@ describe("SidebarSectionRow", () => {
     }
     const slots = splitMap.querySelectorAll("rect");
 
-    expect(
-      splitMap.closest("[data-sidebar-item-status-slot]"),
-    ).not.toBeNull();
-    expect(
-      splitMap.closest("[data-sidebar-group-status-slot]"),
-    ).not.toBeNull();
     expect(slots).toHaveLength(3);
     expect(slots[0]?.getAttribute("class")).toContain("fill-muted-foreground");
     expect(slots[1]?.getAttribute("class")).toContain("fill-none");

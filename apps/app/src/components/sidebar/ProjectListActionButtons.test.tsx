@@ -13,7 +13,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 }));
 
 vi.mock("./paneContentSplitIndicator", () => ({
-  useNewThreadSplitIndicator: () => ({
+  usePaneContentSplitIndicator: () => ({
     isOpenInSplit: false,
     miniMap: null,
   }),

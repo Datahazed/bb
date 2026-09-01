@@ -82,14 +82,7 @@ const personalProject = makeProject({
 });
 
 const loadedSidebarNavigation = {
-  sections: [
-    {
-      id: "sec_story_review",
-      name: "Review queue",
-      createdAt: 1,
-      updatedAt: 1,
-    },
-  ],
+  sections: [{ id: "sec_story_review", name: "Review queue" }],
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,
@@ -99,11 +92,13 @@ const loadedSidebarNavigation = {
         projectId: PERSONAL_PROJECT_ID,
         title: "Sketch launch checklist",
         titleFallback: "Sketch launch checklist",
-        lastReadAt: 0,
         latestAttentionAt: 85,
         createdAt: 85,
         updatedAt: 85,
       }),
+      // A projectless parent + delegated child: exercises depth-0 alignment
+      // with the project headers and the indent guide under an expanded
+      // projectless thread.
       makeThreadListEntry({
         id: "thr_story_personal_parent",
         projectId: PERSONAL_PROJECT_ID,
@@ -165,6 +160,9 @@ const loadedSidebarNavigation = {
           createdAt: 180,
           updatedAt: 180,
         }),
+        // A delegated parent → child pair: renders at project depth 1/2 with
+        // the disclosure chevron after the parent title and the indent guide
+        // running under the expanded child.
         makeThreadListEntry({
           id: "thr_story_ancestor",
           projectId: bbProject.id,
@@ -274,10 +272,7 @@ function SidebarFrame({ children }: SidebarFrameProps) {
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
           <div className="shrink-0 space-y-1 px-2 py-2">
-            <ProjectListActionButtons
-              onNewChat={noop}
-              onSearchThreads={noop}
-            />
+            <ProjectListActionButtons onNewChat={noop} onSearchThreads={noop} />
             <ExtensionsNavSidebarItem routePath={getSkillsRoutePath()} />
           </div>
           <div aria-hidden="true" className="mx-2 h-px bg-sidebar-border" />
@@ -489,7 +484,9 @@ function OrganizationSidebar({
               persistedMode,
             );
           }
-        } catch {}
+        } catch {
+          // The story can still use its isolated store if persistence is blocked.
+        }
       }
     }
 
@@ -560,7 +557,7 @@ export function OrganizationModes() {
           navigation={emptySidebarNavigation}
         />
       </StoryRow>
-      <StoryRow label="Custom">
+      <StoryRow label="Manual">
         <OrganizationSidebar
           mode="manual"
           navigation={loadedSidebarNavigation}
@@ -590,12 +587,12 @@ export function RowLayoutContract() {
   return (
     <StoryCard
       labelWidth="120px"
-      columns={["Standard width", "Compact width"]}
+      columns={["Wide", "Compact width"]}
       className="min-w-max items-start"
     >
       <StoryRow
         label="Project tree"
-        hint="Loose, project, worktree, parent, nested, unread, working, and attention rows; use the production carets to compare expanded and collapsed geometry"
+        hint="Production rows at the two representative sidebar widths"
       >
         <div className="w-[320px]">
           <OrganizationSidebar
@@ -606,30 +603,13 @@ export function RowLayoutContract() {
         <div className="w-[240px]">
           <OrganizationSidebar
             mode="project"
-            navigation={loadedSidebarNavigation}
-          />
-        </div>
-      </StoryRow>
-      <StoryRow
-        label="Custom tree"
-        hint="Sections and loose threads use the same fixed status and disclosure rails"
-      >
-        <div className="w-[320px]">
-          <OrganizationSidebar
-            mode="manual"
-            navigation={loadedSidebarNavigation}
-          />
-        </div>
-        <div className="w-[240px]">
-          <OrganizationSidebar
-            mode="manual"
             navigation={loadedSidebarNavigation}
           />
         </div>
       </StoryRow>
       <StoryRow
         label="Machine tree"
-        hint="Machine groups preserve the same compact row contract at both widths"
+        hint="The same status, identity, content, action, and disclosure rails"
       >
         <div className="w-[320px]">
           <OrganizationSidebar

@@ -7,7 +7,6 @@ import {
   type BuiltInSidebarSectionOptionsById,
 } from "./BuiltInSidebarSection";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
-import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions";
 
 const SECTIONS: BuiltInSidebarSectionOptionsById = {
   pinned: {
@@ -59,67 +58,6 @@ describe("built-in sidebar section renderer", () => {
     expect(result.container.querySelector('[data-icon="Pin"]')).toBeNull();
   });
 
-  it("uses the shared sticky tier and keeps only Threads actions visible at rest", () => {
-    render(
-      <>
-        {renderBuiltInSidebarSection({
-          collapsedSectionIds: new Set(),
-          disabled: true,
-          onToggleCollapsed: vi.fn(),
-          sectionId: "pinned",
-          sections: {
-            pinned: {
-              ...SECTIONS.pinned,
-              actions: <button type="button">Pinned action</button>,
-            },
-            threads: {
-              ...SECTIONS.threads,
-              actions: <button type="button">Threads action</button>,
-            },
-          },
-          showPinnedSection: true,
-        })}
-        {renderBuiltInSidebarSection({
-          collapsedSectionIds: new Set(),
-          disabled: true,
-          onToggleCollapsed: vi.fn(),
-          sectionId: "threads",
-          sections: {
-            pinned: {
-              ...SECTIONS.pinned,
-              actions: <button type="button">Pinned action</button>,
-            },
-            threads: {
-              ...SECTIONS.threads,
-              actions: <button type="button">Threads action</button>,
-            },
-          },
-          showPinnedSection: true,
-        })}
-      </>,
-    );
-
-    const pinnedActionContainer = screen.getByRole("button", {
-      name: "Pinned action",
-    }).parentElement;
-    const threadsActionContainer = screen.getByRole("button", {
-      name: "Threads action",
-    }).parentElement;
-    const threadsTier = screen
-      .getByTitle("Threads")
-      .closest('[data-sidebar-sticky-tier="label"]');
-    const threadsGroup = threadsTier?.closest("[data-sidebar-sticky-group]");
-
-    expect(threadsTier).not.toBeNull();
-    expect(threadsGroup).not.toBeNull();
-    expect(
-      pinnedActionContainer?.classList.contains(SIDEBAR_HOVER_ACTIONS_CLASS),
-    ).toBe(true);
-    expect(
-      threadsActionContainer?.classList.contains(SIDEBAR_HOVER_ACTIONS_CLASS),
-    ).toBe(false);
-  });
-
   it("surfaces shared activity when Threads is collapsed", () => {
     render(
       renderBuiltInSidebarSection({
@@ -146,8 +84,8 @@ describe("built-in sidebar section renderer", () => {
     expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
   });
 
-  it("renders loose Threads after a stable divider without a collapse caret", () => {
-    const { container } = render(
+  it("keeps built-in section controls visible without hover", () => {
+    const result = render(
       renderBuiltInSidebarSection({
         collapsedSectionIds: new Set(),
         disabled: true,
@@ -157,8 +95,7 @@ describe("built-in sidebar section renderer", () => {
           ...SECTIONS,
           threads: {
             ...SECTIONS.threads,
-            presentation: "loose",
-            showLooseHeading: true,
+            actions: <button type="button">Display options</button>,
           },
         },
         showPinnedSection: false,
@@ -166,9 +103,10 @@ describe("built-in sidebar section renderer", () => {
     );
 
     expect(
-      container.querySelector("[data-sidebar-loose-thread-group]"),
-    ).not.toBeNull();
-    expect(screen.getByText("Threads")).not.toBeNull();
-    expect(container.querySelector("[data-sidebar-collapse-caret]")).toBeNull();
+      screen.getByRole("button", { name: "Display options" }),
+    ).toBeDefined();
+    expect(
+      result.container.querySelector(".bb-sidebar-hover-actions"),
+    ).toBeNull();
   });
 });
