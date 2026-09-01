@@ -61,6 +61,11 @@ Read the installed declarations for exact current signatures.
 - `PluginDispatchAttemptKind`
 - `PluginDispatchExecution`
 - `PluginDispatchExecutionSources`
+- `PluginEnvironments` — `bb.experimental_environments`: `registerTarget` +
+  `recheck` (see backend-events.md, environment targets)
+- `PluginEnvironmentTargetDeclaration`
+- `PluginEnvironmentProvisionContext`
+- `PluginEnvironmentProvisionDecision`
 - `PluginDispatchInput`
 - `PluginHookHandler`
 - `PluginHookName`
