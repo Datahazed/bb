@@ -9,7 +9,7 @@ describe("normalizeSidebarSectionOrder", () => {
   const projectA = buildSidebarEntitySectionId("project", "a");
   const projectB = buildSidebarEntitySectionId("project", "b");
 
-  it("expands the legacy aggregate section without changing its placement", () => {
+  it("expands the legacy aggregate section while keeping Pinned first", () => {
     expect(
       normalizeSidebarSectionOrder({
         storedOrder: ["threads", "projects", "pinned"],
@@ -17,10 +17,10 @@ describe("normalizeSidebarSectionOrder", () => {
         legacyEntityAnchor: "projects",
         hasPinnedSection: true,
       }),
-    ).toEqual(["threads", projectA, projectB, "pinned"]);
+    ).toEqual(["pinned", "threads", projectA, projectB]);
   });
 
-  it("preserves a free mixed order of built-ins and entities", () => {
+  it("keeps Pinned first while preserving the remaining mixed order", () => {
     expect(
       normalizeSidebarSectionOrder({
         storedOrder: [projectB, "pinned", "threads", projectA],
@@ -28,7 +28,7 @@ describe("normalizeSidebarSectionOrder", () => {
         legacyEntityAnchor: "projects",
         hasPinnedSection: true,
       }),
-    ).toEqual([projectB, "pinned", "threads", projectA]);
+    ).toEqual(["pinned", projectB, "threads", projectA]);
   });
 
   it("drops removed entities and appends new ones after existing entities", () => {

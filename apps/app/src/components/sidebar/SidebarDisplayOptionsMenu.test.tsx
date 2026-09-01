@@ -13,7 +13,6 @@ import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
-  getSidebarThreadListLabel,
   SidebarFilterSortMenu,
   SidebarOrganizeMenu,
 } from "./ProjectList";
@@ -47,46 +46,6 @@ function openMenu(name: RegExp) {
 }
 
 describe("sidebar thread-list menus", () => {
-  it.each([
-    {
-      expected: "Machines",
-      hasProjects: false,
-      hasSections: false,
-      mode: "machine",
-    },
-    {
-      expected: "Projects",
-      hasProjects: true,
-      hasSections: false,
-      mode: "project",
-    },
-    {
-      expected: "Threads",
-      hasProjects: false,
-      hasSections: false,
-      mode: "project",
-    },
-    {
-      expected: "Sections",
-      hasProjects: false,
-      hasSections: true,
-      mode: "manual",
-    },
-    {
-      expected: "Threads",
-      hasProjects: false,
-      hasSections: false,
-      mode: "manual",
-    },
-  ] as const)(
-    "uses $expected for $mode mode with projects=$hasProjects and sections=$hasSections",
-    ({ expected, hasProjects, hasSections, mode }) => {
-      expect(
-        getSidebarThreadListLabel({ hasProjects, hasSections, mode }),
-      ).toBe(expected);
-    },
-  );
-
   it("separates organization from filtering and uses the approved labels", async () => {
     const store = renderMenus();
     openMenu(/^Organize:/);

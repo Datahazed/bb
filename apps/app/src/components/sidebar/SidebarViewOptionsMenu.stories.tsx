@@ -171,7 +171,17 @@ function usePrototypeSelection(initialGrouping: Grouping = "project") {
 
 type PrototypeSelection = ReturnType<typeof usePrototypeSelection>;
 
-function IconTrigger({ icon, label }: { icon: IconName; label: string }) {
+function IconTrigger({
+  fillIcon = false,
+  icon,
+  label,
+  pressed,
+}: {
+  fillIcon?: boolean;
+  icon: IconName;
+  label: string;
+  pressed?: boolean;
+}) {
   return (
     <DropdownMenuTrigger asChild>
       <Button
@@ -179,13 +189,20 @@ function IconTrigger({ icon, label }: { icon: IconName; label: string }) {
         variant="ghost"
         size="icon"
         aria-label={label}
+        aria-pressed={pressed}
         className={cn(
           "rounded-md p-0 data-[state=open]:bg-sidebar-accent",
           PROTOTYPE_ACTION_TONE_CLASS,
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
-        <Icon name={icon} className={COARSE_POINTER_ICON_SIZE_CLASS} />
+        <Icon
+          name={icon}
+          className={cn(
+            COARSE_POINTER_ICON_SIZE_CLASS,
+            fillIcon && "[&_path]:fill-current",
+          )}
+        />
       </Button>
     </DropdownMenuTrigger>
   );
@@ -675,7 +692,7 @@ function CustomizeSidebarMenu({
       >
         <DropdownMenuLabel
           className={cn(
-            CHROME_SECTION_LABEL_CLASS,
+            "text-sm font-medium leading-5 text-popover-foreground",
             PROTOTYPE_COMPACT_MENU_LABEL_CLASS,
           )}
         >
@@ -709,7 +726,7 @@ function CustomizeSidebarMenu({
         <DropdownMenuSeparator />
         <DropdownMenuLabel
           className={cn(
-            "text-xs font-medium text-muted-foreground",
+            CHROME_SECTION_LABEL_CLASS,
             PROTOTYPE_COMPACT_MENU_LABEL_CLASS,
           )}
         >
@@ -914,7 +931,7 @@ function PluginSidebarRow({
             </DropdownMenuItem>
             <DropdownMenuItem>
               <Icon name="Info" aria-hidden="true" />
-              Detail page
+              View details
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={index === 0}>
@@ -954,7 +971,11 @@ function PluginsSection() {
   );
 }
 
-function ThreadToolbarOverflow({ grouping }: { grouping: Grouping }) {
+function ThreadToolbarAdditionalActions({ grouping }: { grouping: Grouping }) {
+  if (grouping !== "manual") {
+    return <RowActionIcon icon="FolderPlus" label="New project" />;
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -979,15 +1000,11 @@ function ThreadToolbarOverflow({ grouping }: { grouping: Grouping }) {
         align="end"
         className={PROTOTYPE_COMPACT_MENU_CONTENT_CLASS}
       >
-        {grouping === "manual" ? (
-          <>
-            <DropdownMenuItem>
-              <Icon name="SectionAdd" aria-hidden="true" />
-              New section
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
+        <DropdownMenuItem>
+          <Icon name="SectionAdd" aria-hidden="true" />
+          New section
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem>
           <Icon name="FolderPlus" aria-hidden="true" />
           New project
@@ -1402,7 +1419,7 @@ function ThreadListSection({
             </DropdownMenuContent>
           </DropdownMenu>
           <RowActionIcon icon="MessageSquarePlus" label="New thread" />
-          <ThreadToolbarOverflow grouping={state.grouping} />
+          <ThreadToolbarAdditionalActions grouping={state.grouping} />
         </span>
         {stickyToolbar ? (
           <OverflowFade placement="below" tone="sidebar" size="sm" />

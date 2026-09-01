@@ -281,7 +281,7 @@ const childThread = makeThread({
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="idle" hint="quiet thread, title then trailing slot">
+      <StoryRow label="idle" hint="quiet thread reserves its leading status slot">
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
@@ -523,7 +523,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="draft + unread"
-        hint="the persistent draft pencil owns the trailing slot instead of the unread dot"
+        hint="the persistent draft pencil owns the leading status slot instead of the unread dot"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -580,7 +580,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="long title + draft"
-        hint="title truncates before the right-aligned draft icon"
+        hint="title truncates while the leading draft icon stays fixed"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -736,7 +736,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, collapsed — child working"
-        hint="trailing slot shows the Loading03 working spinner when a hidden child is working"
+        hint="leading status slot shows the Loading03 working spinner when a hidden child is working"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -754,7 +754,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, collapsed — child needs input"
-        hint="trailing slot shows the grey question icon when a hidden child is blocked on the user"
+        hint="leading status slot shows the grey question icon when a hidden child is blocked on the user"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -772,7 +772,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, collapsed — needs input + working"
-        hint="input needed wins priority over working: the trailing slot shows the grey question icon, not the spinner"
+        hint="input needed wins priority over working: the leading status slot shows the grey question icon, not the spinner"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -896,7 +896,7 @@ export function SplitViewStatus() {
       <StoryCard>
         <StoryRow
           label="idle split"
-          hint="pane mini-map occupies the trailing status slot"
+          hint="pane mini-map occupies the leading status slot"
         >
           <SidebarStage>
             <StoryThreadRow
@@ -914,7 +914,7 @@ export function SplitViewStatus() {
         </StoryRow>
         <StoryRow
           label="working split"
-          hint="the same trailing pane mini-map shimmers while work is active"
+          hint="the same leading pane mini-map shimmers while work is active"
         >
           <SidebarStage>
             <StoryThreadRow

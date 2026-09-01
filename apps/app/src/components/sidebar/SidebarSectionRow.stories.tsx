@@ -144,7 +144,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed plan mode"
-        hint="hidden plan-mode banner rolls up to the right-aligned plan glyph"
+        hint="hidden plan-mode banner rolls up to the leading plan glyph"
       >
         <SidebarStage>
           <SectionRow
@@ -156,7 +156,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="collapsed goal"
-        hint="hidden active-goal banner rolls up to the right-aligned target glyph"
+        hint="hidden active-goal banner rolls up to the leading target glyph"
       >
         <SidebarStage>
           <SectionRow

@@ -57,35 +57,37 @@ describe("SidebarSectionRow", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
-    const mobileStatusSlot = trailingControls?.querySelector(
-      "[data-sidebar-mobile-status-slot]",
+    const statusSlot = row?.querySelector(
+      '[data-sidebar-row-slot="status"]',
     );
-    const mobileActions = more.closest(
-      "[data-sidebar-hover-actions-mobile]",
-    );
+    const mobileActions = more.closest("[data-sidebar-hover-actions-mobile]");
 
     expect(icon).toBeNull();
     expect(
       label.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
-    expect(row?.style.paddingLeft).toBe("32px");
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(row?.getAttribute("data-sidebar-row-depth")).toBe("1");
+    expect(row?.style.getPropertyValue("--sidebar-row-depth")).toBe("1");
+    expect(caretSlot?.getAttribute("data-sidebar-row-slot")).toBe(
+      "disclosure",
+    );
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(mobileStatusSlot).not.toBeNull();
+    expect(statusSlot).not.toBeNull();
     expect(
-      mobileStatusSlot!.compareDocumentPosition(more) &
+      statusSlot!.compareDocumentPosition(more) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
       true,
     );
-    expect(mobileActions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
-      "always",
-    );
     expect(
-      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
+      mobileActions?.getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBe("always");
+    expect(
+      newThread.compareDocumentPosition(more) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
       more.compareDocumentPosition(disclosure) &
