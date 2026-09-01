@@ -44,47 +44,20 @@ function routeForContent(content: PaneContent): string {
   });
 }
 
-function navigationOptionsForContent(
-  content: PaneContent,
-  replace = false,
-): { replace?: true; state?: { draftSlotId: string } } | undefined {
-  const state =
-    content.kind === "new-thread"
-      ? { draftSlotId: content.draftSlotId }
-      : undefined;
-  if (!replace && state === undefined) return undefined;
-  return {
-    ...(replace ? { replace: true as const } : {}),
-    ...(state === undefined ? {} : { state }),
-  };
-}
-
-type PaneContentSplitDragSource =
-  | { content: PaneContent; createContent?: never }
-  | { content?: never; createContent: () => PaneContent };
-
-/** Prototype drag/cmd-click source for non-thread pages. */
 export function usePaneContentSplitDrag({
+  content,
   enabled,
   label,
-  ...source
-}: PaneContentSplitDragSource & {
+}: {
+  content: PaneContent;
   enabled: boolean;
   label: string;
 }) {
   const store = useStore();
   const navigate = useNavigate();
   const isCompact = useIsCompactViewport();
-  const fixedContent = source.content;
-  const createContent = source.createContent;
-  const resolveContent = useCallback(() => {
-    if (fixedContent !== undefined) return fixedContent;
-    if (createContent !== undefined) return createContent();
-    throw new Error("A pane-content split source is required.");
-  }, [createContent, fixedContent]);
 
   const openInSplit = useCallback(() => {
-    const content = resolveContent();
     openPaneContentInSplit({
       store,
       navigate,
@@ -92,7 +65,7 @@ export function usePaneContentSplitDrag({
       route: routeForContent(content),
       enabled: enabled && !isCompact,
     });
-  }, [enabled, isCompact, navigate, resolveContent, store]);
+  }, [content, enabled, isCompact, navigate, store]);
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -123,18 +96,13 @@ export function usePaneContentSplitDrag({
           if (layout === null) return null;
           return decideThreadDrop({
             zone,
-            // Factory-backed sources create a new identity only after a
-            // successful drop, so they can never already be open here.
-            threadAlreadyOpen:
-              fixedContent !== undefined &&
-              findPaneByContent(layout.root, fixedContent) !== null,
+            threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
             atMaxPanes: countPanes(layout.root) >= MAX_PANES,
           });
         },
         onDrop: (target) => {
           const layout = store.get(splitLayoutAtom);
           if (layout === null) return;
-          const content = resolveContent();
           const existing = findPaneByContent(layout.root, content);
           const next =
             existing !== null
@@ -145,12 +113,12 @@ export function usePaneContentSplitDrag({
           if (next !== layout) store.set(splitLayoutAtom, next);
           navigate(
             routeForContent(content),
-            navigationOptionsForContent(content, existing !== null),
+            existing !== null ? { replace: true } : undefined,
           );
         },
       });
     },
-    [enabled, fixedContent, label, navigate, resolveContent, store],
+    [content, enabled, label, navigate, store],
   );
 
   return {

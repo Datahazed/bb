@@ -42,6 +42,7 @@ import {
   type SidebarTopRegionItemId,
 } from "./sidebarTopRegionItemPreferences";
 import {
+  normalizeSidebarRegionOrder,
   reorderSidebarRegions,
   sidebarRegionOrderAtom,
   type SidebarRegionId,
@@ -62,6 +63,8 @@ const REGION_LABELS: Record<SidebarRegionId, string> = {
 const COMPACT_MENU_CONTENT_CLASS =
   "w-44 min-w-44 p-2 [&_[role=menuitem]]:!py-1 [&_[role=menuitemcheckbox]]:!py-1 [&_[role=separator]]:!my-0.5";
 const COMPACT_MENU_LABEL_CLASS = "!px-2 !py-1";
+const CUSTOMIZE_MENU_TITLE_CLASS =
+  "text-sm font-medium leading-5 text-popover-foreground";
 const SORTABLE_ITEM_CLASS = "gap-2 !px-2 !py-1";
 
 const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
@@ -71,11 +74,7 @@ const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
 
 const dragModifiers: Modifier[] = [restrictDragToVerticalAxis];
 
-function SortableTopRegionItem({
-  id,
-}: {
-  id: SidebarTopRegionItemId;
-}) {
+function SortableTopRegionItem({ id }: { id: SidebarTopRegionItemId }) {
   const [preferences, setPreferences] = useAtom(
     sidebarTopRegionItemPreferencesAtom,
   );
@@ -215,6 +214,9 @@ export function SidebarTopRegionCustomizeMenu({
     sidebarTopRegionItemPreferencesAtom,
   );
   const [regionOrder, setRegionOrder] = useAtom(sidebarRegionOrderAtom);
+  const reorderableRegionOrder = normalizeSidebarRegionOrder(
+    regionOrder,
+  ).filter((id) => id !== "threads");
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, {
@@ -260,7 +262,7 @@ export function SidebarTopRegionCustomizeMenu({
               aria-label="Customize sidebar"
               className={cn(
                 COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
-                "text-muted-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+                "text-subtle-foreground opacity-60 ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:opacity-100 data-[state=open]:opacity-100",
                 className,
               )}
             >
@@ -280,7 +282,7 @@ export function SidebarTopRegionCustomizeMenu({
         mobileTitle="Customize"
       >
         <DropdownMenuLabel
-          className={cn(CHROME_SECTION_LABEL_CLASS, COMPACT_MENU_LABEL_CLASS)}
+          className={cn(CUSTOMIZE_MENU_TITLE_CLASS, COMPACT_MENU_LABEL_CLASS)}
         >
           Customize
         </DropdownMenuLabel>
@@ -303,10 +305,7 @@ export function SidebarTopRegionCustomizeMenu({
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuLabel
-          className={cn(
-            "text-xs font-medium text-muted-foreground",
-            COMPACT_MENU_LABEL_CLASS,
-          )}
+          className={cn(CHROME_SECTION_LABEL_CLASS, COMPACT_MENU_LABEL_CLASS)}
         >
           Sidebar order
         </DropdownMenuLabel>
@@ -317,10 +316,10 @@ export function SidebarTopRegionCustomizeMenu({
           onDragEnd={handleRegionDragEnd}
         >
           <SortableContext
-            items={regionOrder}
+            items={reorderableRegionOrder}
             strategy={verticalListSortingStrategy}
           >
-            {regionOrder.map((id) => (
+            {reorderableRegionOrder.map((id) => (
               <SortableSidebarRegionItem key={id} id={id} />
             ))}
           </SortableContext>

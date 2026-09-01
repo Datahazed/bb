@@ -6,10 +6,7 @@ import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
-import {
-  useNewThreadSplitIndicator,
-  usePaneContentSplitIndicator,
-} from "./paneContentSplitIndicator";
+import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 
 const { compactState } = vi.hoisted(() => ({
   compactState: { value: false },
@@ -68,8 +65,6 @@ describe("usePaneContentSplitIndicator", () => {
     expect(result.current.isOpenInSplit).toBe(false);
     const settled = renderCount();
 
-    // Thread navigation on a phone still reconciles the layout atom; rows must
-    // not pay a render for a change they can never show.
     act(() => {
       store.set(splitLayoutAtom, twoPanes("pane-2"));
     });
@@ -88,47 +83,6 @@ describe("usePaneContentSplitIndicator", () => {
     });
     expect(result.current.miniMap?.find((slot) => slot.isFocused)?.paneId).toBe(
       "pane-2",
-    );
-  });
-
-  it("marks every independent New thread pane for the action indicator", () => {
-    const store = createStore();
-    store.set(splitLayoutAtom, {
-      root: {
-        type: "split",
-        dir: "row",
-        sizes: [0.3, 0.3, 0.4],
-        children: [
-          {
-            type: "pane",
-            paneId: "pane-compose-1",
-            content: { kind: "new-thread", draftSlotId: "slot-1" },
-          },
-          pane("pane-thread", "t1"),
-          {
-            type: "pane",
-            paneId: "pane-compose-2",
-            content: { kind: "new-thread", draftSlotId: "slot-2" },
-          },
-        ],
-      },
-      focusedPaneId: "pane-compose-2",
-    });
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <Provider store={store}>{children}</Provider>
-    );
-
-    const { result } = renderHook(() => useNewThreadSplitIndicator(true), {
-      wrapper,
-    });
-
-    expect(
-      result.current.miniMap
-        ?.filter((slot) => slot.isMe)
-        .map((slot) => slot.paneId),
-    ).toEqual(["pane-compose-1", "pane-compose-2"]);
-    expect(result.current.miniMap?.find((slot) => slot.isFocused)?.paneId).toBe(
-      "pane-compose-2",
     );
   });
 });

@@ -41,6 +41,13 @@ import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import {
+  SidebarRow,
+  SidebarRowAccessory,
+  SidebarRowActions,
+  SidebarRowContent,
+  SidebarRowIdentityRail,
+} from "@/components/sidebar/SidebarRow";
+import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
@@ -50,6 +57,7 @@ import {
 import {
   usePluginNavPanelChrome,
   type PluginNavPanelChrome,
+  type PluginNavPanelChromeEntry,
 } from "@/lib/plugin-nav-panel-chrome";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
@@ -108,11 +116,21 @@ type SidebarNavRow = {
  * Rows are drag-reorderable. One persisted order supplies the first five rows
  * and a positional overflow; plugin pages never disappear from navigation.
  */
+export function getTraditionalPluginNavPanelEntries(
+  entries: readonly PluginNavPanelChromeEntry[],
+): PluginNavPanelChromeEntry[] {
+  return entries.filter(
+    ({ chrome }) => chrome.pluginId !== AUTOMATIONS_PLUGIN_ID,
+  );
+}
+
 export function PluginNavSidebarItems(props: {
+  entries?: readonly PluginNavPanelChromeEntry[];
   onNavigate?: () => void;
   splitEnabled?: boolean;
 }) {
-  const navPanels = usePluginNavPanelChrome();
+  const discoveredEntries = usePluginNavPanelChrome();
+  const navPanels = props.entries ?? discoveredEntries;
   const rows = useMemo<SidebarNavRow[]>(
     () =>
       navPanels.flatMap(({ chrome, panel }) =>
@@ -133,7 +151,13 @@ export function PluginNavSidebarItems(props: {
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
   if (rows.length === 0) return null;
-  return <PluginNavSidebarItemList {...props} rows={rows} />;
+  return (
+    <PluginNavSidebarItemList
+      rows={rows}
+      splitEnabled={props.splitEnabled ?? false}
+      {...(props.onNavigate ? { onNavigate: props.onNavigate } : {})}
+    />
+  );
 }
 
 function PluginNavSidebarItemList({
@@ -303,33 +327,34 @@ function PluginNavSidebarOverflowToggle({
   onToggle: () => void;
 }) {
   return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      aria-expanded={isOpen}
-      className={cn(
-        PROJECT_LIST_ACTION_BUTTON_CLASS,
-        // Quieter than the hidden rows it heads, matching the sidebar's
-        // section labels ("Pinned"). Hover still brightens it via the shared
-        // interactive-state class.
-        "w-full text-subtle-foreground/75",
-      )}
-      onClick={onToggle}
-      data-testid="plugin-nav-sidebar-overflow-toggle"
-    >
-      <span className="min-w-0 flex-1 truncate text-left">
-        {isOpen ? "Show fewer" : "More plugins"}
-      </span>
-      <Icon
-        name="ChevronRight"
+    <SidebarRow asChild anatomy="navigation" variant="groupLabel">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        aria-expanded={isOpen}
         className={cn(
-          "size-3 shrink-0 transition-transform duration-150",
-          isOpen && "rotate-90",
+          PROJECT_LIST_ACTION_BUTTON_CLASS,
+          "w-full text-subtle-foreground/75",
         )}
-        aria-hidden="true"
-      />
-    </Button>
+        onClick={onToggle}
+        data-testid="plugin-nav-sidebar-overflow-toggle"
+      >
+        <SidebarRowContent className="truncate text-left">
+          {isOpen ? "Show fewer" : "More plugins"}
+        </SidebarRowContent>
+        <SidebarRowAccessory>
+          <Icon
+            name="ChevronRight"
+            className={cn(
+              "size-3 shrink-0 transition-transform duration-150",
+              isOpen && "rotate-90",
+            )}
+            aria-hidden="true"
+          />
+        </SidebarRowAccessory>
+      </Button>
+    </SidebarRow>
   );
 }
 
@@ -472,7 +497,7 @@ function PluginNavRowMenuItems({
         icon="Info"
         onSelect={onOpenDetails}
       >
-        Detail page
+        View details
       </PluginNavRowMenuItem>
       <PluginNavRowMenuSeparator surface={surface} />
       <PluginNavRowMenuItem
@@ -550,19 +575,25 @@ export function ExtensionsNavSidebarItem({
 }) {
   const navigate = useNavigate();
   return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-      onClick={() => {
-        onNavigate?.();
-        void navigate(routePath);
-      }}
-    >
-      <ToolsNavSidebarItemIcon />
-      <span className="min-w-0 flex-1 truncate text-left">Extensions</span>
-    </Button>
+    <SidebarRow asChild anatomy="navigation" variant="item">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+        onClick={() => {
+          onNavigate?.();
+          void navigate(routePath);
+        }}
+      >
+        <SidebarRowIdentityRail>
+          <ToolsNavSidebarItemIcon />
+        </SidebarRowIdentityRail>
+        <SidebarRowContent className="truncate text-left">
+          Extensions
+        </SidebarRowContent>
+      </Button>
+    </SidebarRow>
   );
 }
 
@@ -588,24 +619,30 @@ export function AutomationsNavSidebarItem({
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      className={cn(
-        PROJECT_LIST_ACTION_BUTTON_CLASS,
-        "w-full",
-        isActive && "bg-sidebar-accent text-sidebar-foreground",
-      )}
-      aria-current={isActive ? "page" : undefined}
-      onClick={() => {
-        onNavigate?.();
-        void navigate(path);
-      }}
-    >
-      <PluginIcon pluginId={chrome.pluginId} icon={chrome.icon} />
-      <span className="min-w-0 flex-1 truncate text-left">{chrome.title}</span>
-    </Button>
+    <SidebarRow asChild anatomy="navigation" variant="item">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className={cn(
+          PROJECT_LIST_ACTION_BUTTON_CLASS,
+          "w-full",
+          isActive && "bg-sidebar-accent text-sidebar-foreground",
+        )}
+        aria-current={isActive ? "page" : undefined}
+        onClick={() => {
+          onNavigate?.();
+          void navigate(path);
+        }}
+      >
+        <SidebarRowIdentityRail>
+          <PluginIcon pluginId={chrome.pluginId} icon={chrome.icon} />
+        </SidebarRowIdentityRail>
+        <SidebarRowContent className="truncate text-left">
+          {chrome.title}
+        </SidebarRowContent>
+      </Button>
+    </SidebarRow>
   );
 }
 
@@ -753,23 +790,23 @@ function SidebarNavRowChrome({
   return (
     <ContextMenu onOpenChange={setIsActionsOpen}>
       <ContextMenuTrigger asChild>
-        <div
+        <SidebarRow
           ref={rowRef}
           style={rowStyle}
-          className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}
+          anatomy="navigation"
+          variant="item"
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+            PROJECT_LIST_ACTION_BUTTON_CLASS,
+            isActive && "bg-sidebar-accent text-sidebar-foreground",
+          )}
         >
           <Button
             type="button"
             size="sm"
             variant="ghost"
             className={cn(
-              PROJECT_LIST_ACTION_BUTTON_CLASS,
-              // Accessory-less rows keep their existing title width. A row
-              // with one reserves its 4rem trailing value; the options trigger
-              // replaces that value on hover rather than taking more space.
-              "w-full pr-7",
-              accessory && "pr-18",
-              isActive && "bg-sidebar-accent text-sidebar-foreground",
+              "absolute inset-0 w-full rounded-md bg-transparent p-0 ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2",
             )}
             aria-current={isActive ? "page" : undefined}
             ref={dragBindings?.setActivatorNodeRef}
@@ -778,20 +815,24 @@ function SidebarNavRowChrome({
             onPointerDown={onPointerDown}
             onClick={onSelect}
           >
-            {icon}
-            <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span className="min-w-0 truncate">{title}</span>
-              {splitMiniMap ? (
-                <SplitPaneMiniMap
-                  slots={splitMiniMap}
-                  label={`${title} — open in split`}
-                />
-              ) : null}
-            </span>
+            <span className="sr-only">{title}</span>
           </Button>
+          <SidebarRowIdentityRail className="pointer-events-none relative z-10">
+            {icon}
+          </SidebarRowIdentityRail>
+          <SidebarRowContent className="pointer-events-none relative z-10 flex items-center gap-1.5 text-left">
+            <span className="min-w-0 truncate">{title}</span>
+            {splitMiniMap ? (
+              <SplitPaneMiniMap
+                slots={splitMiniMap}
+                label={`${title} — open in split`}
+              />
+            ) : null}
+          </SidebarRowContent>
           {accessory ? (
-            <span
+            <SidebarRowAccessory
               data-plugin-nav-sidebar-accessory=""
+              style={{ gridArea: "actions" }}
               data-sidebar-hover-actions-open={
                 isActionsOpen ? "true" : undefined
               }
@@ -801,23 +842,20 @@ function SidebarNavRowChrome({
               // while the menu is open without unmounting plugin state.
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-                "pointer-events-none absolute right-1 top-1/2 block min-w-5 max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-center leading-5",
+                "pointer-events-none relative z-10 block min-w-5 max-h-5 max-w-16 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-center leading-5",
               )}
             >
               {accessory}
-            </span>
+            </SidebarRowAccessory>
           ) : null}
-          <div
+          <SidebarRowActions
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             data-sidebar-hover-actions-mobile={
               SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
             }
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
-              // right-0 (not right-1): the trigger's own m-1 supplies the inset,
-              // so the glyph centers on the same column as the sidebar search
-              // icon above and the thread-row more menus below.
-              "absolute inset-y-0 right-0 flex items-center",
+              "relative z-20 flex items-center",
             )}
           >
             <DropdownMenu onOpenChange={setIsActionsOpen}>
@@ -843,8 +881,8 @@ function SidebarNavRowChrome({
                 {menuItems("dropdown")}
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-        </div>
+          </SidebarRowActions>
+        </SidebarRow>
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${title} panel options`}>
         {menuItems("context")}

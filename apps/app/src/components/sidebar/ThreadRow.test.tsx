@@ -52,15 +52,9 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-  ThreadActionsMenu: ({ triggerClassName }: { triggerClassName?: string }) => (
-    <button
-      type="button"
-      aria-label="Thread actions"
-      className={triggerClassName}
-    />
-  ),
+  ThreadActionsMenu: () => <button data-testid="thread-actions-menu" />,
   ThreadArchiveQuickAction: ({ className }: { className?: string }) => (
-    <button type="button" aria-label="Archive thread" className={className} />
+    <button className={className} data-testid="thread-archive-quick-action" />
   ),
 }));
 
@@ -141,7 +135,7 @@ function ThreadRowTestHarness({
 
   return (
     <MemoryRouter>
-      <TooltipProvider delayDuration={0}>
+      <TooltipProvider>
         <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
           <ThreadRow
             projectId={thread.projectId}
@@ -231,7 +225,7 @@ function renderSplitThreadRow({
         {
           type: "pane",
           paneId: "pane-compose",
-          content: { kind: "new-thread", draftSlotId: "draft-compose" },
+          content: { kind: "new-thread" },
         },
       ],
     },
@@ -255,36 +249,11 @@ afterEach(() => {
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
-  // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
 
 describe("ThreadRow", () => {
-  it.each([
-    { depth: 0, paddingLeft: "8px", statusOffset: "translateX(0px)" },
-    { depth: 1, paddingLeft: "32px", statusOffset: "translateX(-24px)" },
-    { depth: 2, paddingLeft: "56px", statusOffset: "translateX(-48px)" },
-  ])(
-    "keeps the status column fixed while depth $depth indents the thread title",
-    ({ depth, paddingLeft, statusOffset }) => {
-      const { container } = renderThreadRow({
-        thread: createThread({ title: `Depth ${depth}` }),
-        options: {
-          kind: "default",
-          depth,
-          isCompact: false,
-        },
-      });
-
-      const link = screen.getByLabelText(`Open Depth ${depth}`);
-      expect(link.parentElement).toHaveStyle({ paddingLeft });
-      expect(
-        container.querySelector("[data-sidebar-thread-status-column]"),
-      ).toHaveStyle({ transform: statusOffset });
-    },
-  );
-
   const splitWorkingCases: Array<{
     label: string;
     pluginStatus?: PluginComposerThreadRowStatus;
@@ -385,7 +354,7 @@ describe("ThreadRow", () => {
       const splitMap = screen.getByRole("img", { name: /open in split/ });
       expect(Array.from(splitMap.classList)).toContain("animate-shine-icon");
       expect(
-        splitMap.closest("[data-sidebar-item-status-slot]"),
+        splitMap.closest("[data-sidebar-thread-trailing-indicator]"),
       ).not.toBeNull();
       expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
     },
@@ -451,79 +420,19 @@ describe("ThreadRow", () => {
     },
   );
 
-  it("keeps the draft icon in the fixed leading status slot with its tooltip", async () => {
+  it("puts the draft icon in the trailing status slot", () => {
     const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
     expect(
-      draftIcon?.closest('[data-sidebar-item-status="draft"]'),
+      draftIcon?.closest("[data-sidebar-thread-trailing-indicator]"),
     ).not.toBeNull();
-    fireEvent.pointerMove(screen.getByRole("img", { name: "Draft" }));
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Draft");
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
-  });
-
-  it("reserves the same fixed leading status slot for a default row", () => {
-    const { container } = renderThreadRow({
-      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
-    });
-
-    const statusSlot = container.querySelector(
-      '[data-sidebar-item-status="none"]',
-    );
-    expect(statusSlot).not.toBeNull();
-    expect(statusSlot?.classList.contains("h-4")).toBe(true);
-    expect(statusSlot?.classList.contains("w-4")).toBe(true);
-    expect(statusSlot?.childElementCount).toBe(0);
-    const statusActionSlot = statusSlot?.closest(
-      "[data-sidebar-item-status-action-slot]",
-    );
-    expect(statusActionSlot?.nextElementSibling?.textContent).toContain(
-      "Thread",
-    );
-    expect(
-      statusSlot?.closest(".bb-sidebar-hover-actions-fade"),
-    ).not.toBeNull();
-    expect(
-      statusActionSlot?.querySelector('[aria-label="Archive thread"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector(
-        '[data-sidebar-thread-trailing-controls] [aria-label="Archive thread"]',
-      ),
-    ).toBeNull();
-  });
-
-  it("confines the archive hover action to the leading status slot", () => {
-    const { container } = renderThreadRow({
-      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
-    });
-
-    const archiveAction = screen.getByRole("button", {
-      name: "Archive thread",
-    });
-    const statusActionSlot = archiveAction.closest(
-      "[data-sidebar-item-status-action-slot]",
-    );
-    const trailingControls = container.querySelector(
-      "[data-sidebar-thread-trailing-controls]",
-    );
-
-    expect(statusActionSlot).not.toBeNull();
-    expect(
-      archiveAction.closest("[data-sidebar-item-status-hover-action]"),
-    ).not.toBeNull();
-    expect(statusActionSlot?.classList.contains("shrink-0")).toBe(true);
-    expect(archiveAction.classList.contains("size-4")).toBe(true);
-    expect(trailingControls?.contains(archiveAction)).toBe(false);
-    expect(
-      trailingControls?.querySelector('[aria-label="Thread actions"]'),
-    ).not.toBeNull();
   });
 
   it("replaces the draft icon with a plugin status and restores it when cleared", () => {
@@ -545,7 +454,7 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
-  it("keeps a plugin status visible beside a keyboard shortcut", () => {
+  it("shows a keyboard shortcut in place of a plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
@@ -554,14 +463,14 @@ describe("ThreadRow", () => {
     renderThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
   });
 
-  it("keeps a split mini-map visible beside a keyboard shortcut", () => {
+  it("shows a keyboard shortcut in place of a split mini-map", () => {
     renderSplitThreadRow({ shortcutKey: "3" });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.getByRole("img", { name: /open in split/ })).not.toBeNull();
+    expect(screen.queryByRole("img", { name: /open in split/ })).toBeNull();
   });
 
   it("renders a plugin status with the semantic success tone", () => {
@@ -642,7 +551,7 @@ describe("ThreadRow", () => {
     expect(Array.from(runningIcon.classList)).toContain("animate-spin");
     expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
     expect(
-      container.querySelector("[data-sidebar-thread-status-indicator]"),
+      container.querySelector("[data-sidebar-thread-trailing-indicator]"),
     ).not.toBeNull();
   });
 
@@ -862,10 +771,9 @@ describe("ThreadRow", () => {
     );
     expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
-    expect(marker?.classList.contains("text-muted-foreground/75")).toBe(true);
-    expect(marker?.classList.contains("text-muted-foreground")).toBe(false);
-    // The marker hugs the title; it never sits in the leading status slot.
-    expect(marker?.closest("[data-sidebar-item-status-slot]")).toBeNull();
+    expect(
+      marker?.closest("[data-sidebar-thread-trailing-indicator]"),
+    ).toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Thread" }).getAttribute("href"),
     ).toBe("/projects/proj_other/threads/thr_test");
@@ -1000,116 +908,36 @@ describe("ThreadRow", () => {
       },
     });
 
-    const disclosure = screen.getByRole("button", {
-      name: "Collapse Parent thread threads",
-    });
-    expect(disclosure.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
-      "always",
-    );
-    expect(disclosure.classList.contains("text-subtle-foreground/75")).toBe(
-      true,
-    );
-    expect(disclosure.classList.contains("text-subtle-foreground")).toBe(false);
     expect(
-      disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
-    ).toBe(true);
-    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
-    const row = caretSlot?.parentElement;
-    const trailingControls = row?.querySelector(
-      "[data-sidebar-thread-trailing-controls]",
-    );
-    const statusActionSlot = row?.querySelector(
-      "[data-sidebar-item-status-action-slot]",
-    );
-    const statusSlot = statusActionSlot?.querySelector(
-      "[data-sidebar-item-status-slot]",
-    );
-    const statusHoverAction = statusActionSlot?.querySelector(
-      "[data-sidebar-item-status-hover-action]",
-    );
-    const actionSlot = trailingControls?.querySelector(
-      "[data-sidebar-thread-action-slot]",
-    );
-    const mobileActions = trailingControls?.querySelector(
-      "[data-sidebar-mobile-row-actions]",
-    );
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
-    expect(row?.lastElementChild).toBe(caretSlot);
-    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(statusSlot?.getAttribute("data-sidebar-item-status")).toBe(
-      "unread-success",
-    );
-    expect(
-      actionSlot!.compareDocumentPosition(mobileActions!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(
-      mobileActions?.getAttribute("data-sidebar-hover-actions-mobile"),
+      screen
+        .getByRole("button", { name: "Collapse Parent thread threads" })
+        .getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
-    expect(
-      mobileActions?.querySelector('[aria-label="Thread actions"]'),
-    ).not.toBeNull();
-    expect(
-      statusHoverAction?.classList.contains("max-md:pointer-coarse:hidden"),
-    ).toBe(true);
-    expect(
-      statusActionSlot
-        ?.querySelector(".bb-sidebar-hover-actions-fade")
-        ?.classList.contains("max-md:pointer-coarse:!opacity-100"),
-    ).toBe(true);
-    expect(
-      statusHoverAction?.querySelector('[aria-label="Archive thread"]'),
-    ).not.toBeNull();
-    expect(
-      trailingControls?.querySelector('[aria-label="Archive thread"]'),
-    ).toBeNull();
-    expect(
-      row?.querySelector(".bb-sidebar-collapsible-hover-actions-inset"),
-    ).toBeNull();
-    expect(row?.querySelector(".bb-sidebar-hover-actions-inset")).toBeNull();
   });
 
-  it("keeps a collapsed parent caret visible beside unread status", () => {
-    renderThreadRow({
-      thread: createThread({ title: "Unread parent thread" }),
-      options: {
-        kind: "parent",
-        depth: 1,
-        isCompact: false,
-        isCollapsed: true,
-        childCount: 1,
-        childActivity: {
-          pending: false,
-          working: false,
-          hasUnsubmittedDraft: false,
-          runtimeWorking: false,
-          workflow: false,
-          backgroundAgent: false,
-          backgroundCommand: false,
-          planMode: false,
-          goal: false,
-          unread: true,
-          unreadError: false,
-        },
-        onToggleCollapsed: vi.fn(),
-      },
-    });
+  it("places the archive action immediately after the title without moving its left edge", () => {
+    const { container } = renderThreadRow();
 
-    const disclosure = screen.getByRole("button", {
-      name: "Expand Unread parent thread threads",
-    });
-
-    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
-    expect(disclosure.classList.contains("bb-sidebar-hover-actions")).toBe(
-      false,
+    const title = screen.getByTitle("Thread");
+    const archiveInline = container.querySelector(
+      "[data-sidebar-thread-archive-inline]",
     );
-    expect(disclosure.classList.contains("pointer-events-auto")).toBe(true);
+    const archiveAction = screen.getByTestId("thread-archive-quick-action");
+
+    expect(title.nextElementSibling).toBe(archiveInline);
+    expect(title.parentElement?.className).toContain("gap-1");
+    expect(archiveInline?.className).not.toContain("absolute");
+    expect(archiveInline?.className).toContain("max-md:pointer-coarse:hidden");
+    expect(archiveAction.className).toContain("m-0");
+    expect(archiveAction.className).toContain("text-subtle-foreground/50");
     expect(
-      disclosure.getAttribute("data-sidebar-hover-actions-mobile"),
+      screen
+        .getByTestId("thread-actions-menu")
+        .closest("[data-sidebar-thread-archive-inline]"),
     ).toBeNull();
   });
 
-  it("keeps its active indicator visible beside a Command shortcut", () => {
+  it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({
       shortcutKey: "3",
       thread: createThread({
@@ -1125,17 +953,16 @@ describe("ThreadRow", () => {
     expect(shortcut.className).toContain("px-1.5");
     expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
         .getAttribute("aria-keyshortcuts"),
     ).toBe("Meta+3");
+    expect(screen.queryByTestId("thread-archive-quick-action")).toBeNull();
   });
 
   it("shows the pending-input glyph while the runtime is still active", () => {
-    // A thread blocked on AskUserQuestion keeps an active runtime for as long as
-    // the question is open, so the spinner must not win this row.
     renderThreadRow({
       thread: createThread({
         hasPendingInteraction: true,
@@ -1234,8 +1061,6 @@ describe("ThreadRow", () => {
   ] as const)(
     "shows concurrent %s activity before runtime work",
     (activityKey, modeLabel) => {
-      // Plan and goal describe how the running turn behaves, and their glyphs
-      // shimmer, so they stay legible instead of collapsing into the spinner.
       renderThreadRow({
         thread: createThread({
           status: "active",
@@ -1514,11 +1339,6 @@ describe("ThreadRow", () => {
     });
 
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
-    expect(
-      container
-        .querySelector('[data-sidebar-item-status="unread-success"]')
-        ?.contains(screen.getByLabelText("Unread thread succeeded")),
-    ).toBe(true);
     expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
   });
 
@@ -1558,6 +1378,7 @@ describe("ThreadRow", () => {
     fireEvent.doubleClick(screen.getByText("Thread"));
     const input = screen.getByRole("textbox", { name: "Thread name" });
     expect(input).toHaveProperty("value", "Thread");
+    expect(screen.queryByTestId("thread-archive-quick-action")).toBeNull();
 
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });

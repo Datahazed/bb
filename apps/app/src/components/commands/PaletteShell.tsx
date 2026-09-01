@@ -4,6 +4,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
 
+export const PALETTE_FOOTER_CONTROL_SURFACE_CLASS =
+  "border border-border/70 bg-background/70 shadow-xs";
+export const PALETTE_FOOTER_KEYCAP_CLASS = `inline-flex min-w-5 items-center justify-center rounded px-1.5 py-0.5 font-mono text-xs leading-none text-muted-foreground ${PALETTE_FOOTER_CONTROL_SURFACE_CLASS}`;
+export const PALETTE_FOOTER_LABEL_CLASS = "text-subtle-foreground opacity-70";
+
 interface PaletteModeChipProps {
   clearLabel: string;
   icon: Parameters<typeof Icon>[0]["name"];
@@ -68,9 +73,7 @@ export function PaletteShell({
           className="flex h-10 items-center gap-2 px-3"
           data-palette-input-frame
         >
-          {modeChip === undefined ? null : (
-            <PaletteModeChip {...modeChip} />
-          )}
+          {modeChip === undefined ? null : <PaletteModeChip {...modeChip} />}
           <input
             ref={inputRef}
             autoFocus
@@ -134,20 +137,18 @@ export function PaletteShell({
               {hint.keys.map((keys, index) => (
                 <span key={keys} className="inline-flex items-center gap-1">
                   {index === 0 ? null : (
-                    <span
-                      aria-hidden
-                      className="text-muted-foreground/60"
-                    >
+                    <span aria-hidden className="text-muted-foreground/60">
                       /
                     </span>
                   )}
-                  <kbd className="inline-flex min-w-5 items-center justify-center rounded border border-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-xs leading-none text-muted-foreground shadow-xs">
-                    {keys}
-                  </kbd>
+                  <kbd className={PALETTE_FOOTER_KEYCAP_CLASS}>{keys}</kbd>
                 </span>
               ))}
             </span>
-            <span className="opacity-70" data-palette-footer-label>
+            <span
+              className={PALETTE_FOOTER_LABEL_CLASS}
+              data-palette-footer-label
+            >
               {hint.label}
             </span>
           </span>
@@ -170,6 +171,7 @@ function PaletteModeChip({
         label={label}
         title={label}
         isActive
+        className={PALETTE_FOOTER_CONTROL_SURFACE_CLASS}
         onSelect={() => undefined}
         leadingVisual={<Icon name={icon} aria-hidden />}
         closeAction={{ onClose: onClear, closeLabel: clearLabel }}

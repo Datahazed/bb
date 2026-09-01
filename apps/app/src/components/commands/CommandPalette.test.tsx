@@ -424,16 +424,19 @@ describe("CommandPalette", () => {
     expect(event.defaultPrevented).toBe(true);
     const modeSelect = screen.getByRole("button", { name: "Threads search" });
     expect(modeSelect).toHaveAttribute("aria-pressed", "true");
+    expect(modeSelect.parentElement).toHaveClass(
+      "border-border/70",
+      "bg-background/70",
+      "shadow-xs",
+    );
     expect(modeSelect.querySelector('[data-icon="Search"]')).not.toBeNull();
     expect(
       screen.getByRole("button", { name: "Return to commands" }),
     ).toHaveAttribute("data-tab-pill-close");
-    expect(
-      screen.getByRole("button", { name: "Thread scope" }).textContent,
-    ).toContain("All");
-    expect(screen.getByTestId("command-palette")).toHaveTextContent(
-      "Split",
-    );
+    const scopeButton = screen.getByRole("button", { name: "Thread scope" });
+    expect(scopeButton.textContent).toContain("All");
+    expect(scopeButton).toHaveClass("text-subtle-foreground", "opacity-70");
+    expect(screen.getByTestId("command-palette")).toHaveTextContent("Split");
     const footer = screen
       .getByTestId("command-palette")
       .querySelector("[data-palette-footer]");
@@ -453,8 +456,9 @@ describe("CommandPalette", () => {
         "shadow-xs",
       );
     }
-    for (const label of
-      footer?.querySelectorAll("[data-palette-footer-label]") ?? []) {
+    for (const label of footer?.querySelectorAll(
+      "[data-palette-footer-label]",
+    ) ?? []) {
       expect(label).toHaveClass("opacity-70");
       expect(label.closest("[data-palette-footer]")).toHaveClass(
         "text-subtle-foreground",
@@ -722,9 +726,10 @@ describe("CommandPalette", () => {
     expect(results.querySelector("[data-palette-thread-state]")).toBeNull();
     expect(results.querySelector("[data-icon]")).toBeNull();
     for (const row of rows) {
-      expect(
-        row.querySelector("[data-palette-thread-metadata]"),
-      ).toHaveClass("text-subtle-foreground");
+      expect(row.querySelector("[data-palette-thread-metadata]")).toHaveClass(
+        "text-subtle-foreground",
+        "opacity-70",
+      );
     }
     expect(within(rows[1] as HTMLElement).getByText("Draft")).toHaveClass(
       "text-subtle-foreground",
@@ -803,6 +808,7 @@ describe("CommandPalette", () => {
     for (const row of rows) {
       expect(row.querySelector("[data-palette-thread-metadata]")).toHaveClass(
         "text-subtle-foreground",
+        "opacity-70",
       );
     }
     expect(results.querySelector("[data-palette-thread-state]")).toBeNull();

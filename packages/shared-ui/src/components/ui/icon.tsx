@@ -55,10 +55,10 @@ import {
   subscribeExtendedIcons,
 } from "./icon-registry";
 
-// Custom section glyph. Hugeicons has no matching outlined-row icon, so it
-// lives here in the same element format as the set. `SectionAdd` intentionally
-// reuses this artwork: the action label communicates creation without adding a
-// visually heavy plus to the compact sidebar toolbar.
+// Custom section glyphs. Hugeicons has no matching outlined-row icons, so they
+// live here in the same element format as the set. The add variant preserves
+// the explicit plus-bearing action glyph used on main while the identity glyph
+// remains plus-free.
 const SectionStrokeRoundedIcon: IconSvgElement = [
   [
     "path",
@@ -88,6 +88,49 @@ const SectionStrokeRoundedIcon: IconSvgElement = [
       strokeLinecap: "round",
       strokeWidth: "1.5",
       key: "2",
+    },
+  ],
+];
+
+const SectionAddStrokeRoundedIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M2 3.4C2 2.24173 2.24173 2 3.4 2H20.6C21.7583 2 22 2.24173 22 3.4V4.6C22 5.75827 21.7583 6 20.6 6H3.4C2.24173 6 2 5.75827 2 4.6V3.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "0",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M2 11.4C2 10.2417 2.24173 10 3.4 10H10.6C11.7583 10 12 10.2417 12 11.4V12.6C12 13.7583 11.7583 14 10.6 14H3.4C2.24173 14 2 13.7583 2 12.6V11.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "1",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M2 19.4C2 18.2417 2.24173 18 3.4 18H10.6C11.7583 18 12 18.2417 12 19.4V20.6C12 21.7583 11.7583 22 10.6 22H3.4C2.24173 22 2 21.7583 2 20.6V19.4Z",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "2",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M18 13V21M22 17H14",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeWidth: "1.5",
+      key: "3",
     },
   ],
 ];
@@ -155,7 +198,7 @@ const CORE_ICON_MAP = {
   PanelLeft: SidebarLeftIcon,
   Search: Search01Icon,
   Section: SectionStrokeRoundedIcon,
-  SectionAdd: SectionStrokeRoundedIcon,
+  SectionAdd: SectionAddStrokeRoundedIcon,
   Settings: Settings01Icon,
   SlidersHorizontal: SlidersHorizontalIcon,
   Spinner: DashedLineCircleIcon,

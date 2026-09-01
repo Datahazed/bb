@@ -82,7 +82,7 @@ const personalProject = makeProject({
 });
 
 const loadedSidebarNavigation = {
-  sections: [],
+  sections: [{ id: "sec_story_review", name: "Review queue" }],
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,
@@ -218,6 +218,7 @@ const loadedSidebarNavigation = {
         makeThreadListEntry({
           id: "thr_story_docs",
           projectId: docsProject.id,
+          sectionId: "sec_story_review",
           title: "Refresh onboarding docs",
           titleFallback: "Refresh onboarding docs",
           latestAttentionAt: 120,
@@ -271,10 +272,7 @@ function SidebarFrame({ children }: SidebarFrameProps) {
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
           <div className="shrink-0 space-y-1 px-2 py-2">
-            <ProjectListActionButtons
-              onNewChat={noop}
-              onSearchThreads={noop}
-            />
+            <ProjectListActionButtons onNewChat={noop} onSearchThreads={noop} />
             <ExtensionsNavSidebarItem routePath={getSkillsRoutePath()} />
           </div>
           <div aria-hidden="true" className="mx-2 h-px bg-sidebar-border" />
@@ -580,6 +578,53 @@ export function OrganizationModes() {
           hosts={machineStoryHosts}
           navigation={emptySidebarNavigation}
         />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function RowLayoutContract() {
+  return (
+    <StoryCard
+      labelWidth="120px"
+      columns={["Wide", "Compact width"]}
+      className="min-w-max items-start"
+    >
+      <StoryRow
+        label="Project tree"
+        hint="Production rows at the two representative sidebar widths"
+      >
+        <div className="w-[320px]">
+          <OrganizationSidebar
+            mode="project"
+            navigation={loadedSidebarNavigation}
+          />
+        </div>
+        <div className="w-[240px]">
+          <OrganizationSidebar
+            mode="project"
+            navigation={loadedSidebarNavigation}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="Machine tree"
+        hint="The same status, identity, content, action, and disclosure rails"
+      >
+        <div className="w-[320px]">
+          <OrganizationSidebar
+            mode="machine"
+            hosts={machineStoryHosts}
+            navigation={machineSidebarNavigation}
+          />
+        </div>
+        <div className="w-[240px]">
+          <OrganizationSidebar
+            mode="machine"
+            hosts={machineStoryHosts}
+            navigation={machineSidebarNavigation}
+          />
+        </div>
       </StoryRow>
     </StoryCard>
   );

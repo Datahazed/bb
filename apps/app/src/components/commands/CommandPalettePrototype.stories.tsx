@@ -6,6 +6,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
+import {
+  PALETTE_FOOTER_CONTROL_SURFACE_CLASS,
+  PALETTE_FOOTER_KEYCAP_CLASS,
+  PALETTE_FOOTER_LABEL_CLASS,
+} from "./PaletteShell";
 
 export default {
   title: "commands/Command palette prototype",
@@ -396,9 +401,7 @@ function CommandPalettePrototype() {
     <PaletteFrame>
       <div className="border-b border-border bg-background px-3 py-2">
         <div className="flex h-10 items-center gap-2 px-3">
-          {mode === "threads" ? (
-            <ModeChip onClear={exitThreads} />
-          ) : null}
+          {mode === "threads" ? <ModeChip onClear={exitThreads} /> : null}
           <input
             ref={inputRef}
             autoFocus
@@ -490,6 +493,7 @@ function ModeChip({ onClear }: { onClear: () => void }) {
       label="Threads"
       title="Threads"
       isActive
+      className={PALETTE_FOOTER_CONTROL_SURFACE_CLASS}
       onSelect={() => undefined}
       leadingVisual={<Icon name="Search" aria-hidden />}
       closeAction={{
@@ -518,7 +522,10 @@ function ScopePicker({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-subtle-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+          PALETTE_FOOTER_LABEL_CLASS,
+        )}
         onClick={() => onOpenChange(!open)}
       >
         <span>{current?.label ?? "All"}</span>
@@ -564,7 +571,8 @@ function CommandResults({
   rows: readonly CommandRow[];
   selectedIndex: number;
 }) {
-  if (rows.length === 0) return <EmptyMessage>No matching commands</EmptyMessage>;
+  if (rows.length === 0)
+    return <EmptyMessage>No matching commands</EmptyMessage>;
 
   if (!grouped) {
     return rows.map((row, index) => (
@@ -659,7 +667,8 @@ function ThreadResults({
   rows: readonly ThreadRow[];
   selectedIndex: number;
 }) {
-  if (rows.length === 0) return <EmptyMessage>No matching threads</EmptyMessage>;
+  if (rows.length === 0)
+    return <EmptyMessage>No matching threads</EmptyMessage>;
   return rows.map((row, index) => {
     const presentation = THREAD_STATE[row.state];
     return (
@@ -676,7 +685,12 @@ function ThreadResults({
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate">{row.title}</span>
-          <span className="block truncate text-xs leading-4 text-subtle-foreground">
+          <span
+            className={cn(
+              "block truncate text-xs leading-4",
+              PALETTE_FOOTER_LABEL_CLASS,
+            )}
+          >
             {row.metadata}
           </span>
         </span>
@@ -723,13 +737,11 @@ function PaletteFooter({ mode }: { mode: Mode }) {
                     /
                   </span>
                 )}
-                <kbd className="inline-flex min-w-5 items-center justify-center rounded border border-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-xs leading-none text-muted-foreground shadow-xs">
-                  {keys}
-                </kbd>
+                <kbd className={PALETTE_FOOTER_KEYCAP_CLASS}>{keys}</kbd>
               </span>
             ))}
           </span>
-          <span className="opacity-70">{hint.label}</span>
+          <span className={PALETTE_FOOTER_LABEL_CLASS}>{hint.label}</span>
         </span>
       ))}
     </div>

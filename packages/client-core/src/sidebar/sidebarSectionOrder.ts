@@ -56,10 +56,10 @@ interface NormalizeSidebarSectionOrderArgs {
 
 /**
  * Reconciles locally persisted order with the live entity set. The old
- * aggregate section token is expanded in place, so existing users keep their
- * Pinned/primary/Threads layout when projects and sections become first-level
- * sections. New entities join after the last entity without disturbing a
- * user's explicit placement of built-in sections.
+ * aggregate section token is expanded in place. Pinned remains the leading
+ * section while the relative order of every other section is preserved. New
+ * entities join after the last entity without disturbing that remaining
+ * order.
  */
 export function normalizeSidebarSectionOrder({
   storedOrder,
@@ -77,6 +77,11 @@ export function normalizeSidebarSectionOrder({
   const seen = new Set<SidebarSectionId>();
   const normalized: SidebarSectionId[] = [];
   let expandedLegacyAnchor = false;
+
+  if (hasPinnedSection) {
+    seen.add("pinned");
+    normalized.push("pinned");
+  }
 
   const append = (sectionId: SidebarSectionId) => {
     if (!available.has(sectionId) || seen.has(sectionId)) {
@@ -97,11 +102,6 @@ export function normalizeSidebarSectionOrder({
     if (isSidebarSectionId(storedId)) {
       append(storedId);
     }
-  }
-
-  if (hasPinnedSection && !seen.has("pinned")) {
-    normalized.unshift("pinned");
-    seen.add("pinned");
   }
 
   const missingEntities = entitySectionIds.filter(

@@ -15,8 +15,10 @@ import type {
 } from "@dnd-kit/core";
 import type { ThreadListEntry } from "@bb/domain";
 import {
-  useMoveThreadToSection,
   usePinThread,
+  useUnpinAndMoveThread,
+  useUnpinThread,
+  useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import type { NeighborReorderRequest } from "@bb/client-core";
 import {
@@ -46,7 +48,6 @@ export interface SectionThreadDndState {
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
   dragOverParentKey: string | null;
-  /** `undefined` means no projection; `null` means the loose Threads section. */
   projectedSectionId: string | null | undefined;
   pinnedItemIds: readonly string[];
   pinnedReorderPending: boolean;
@@ -262,27 +263,11 @@ export function resolveProjectedSectionThreadDropTarget(
   return { activeId, fromParentKey, toParentKey: projectedParentKey };
 }
 
-/**
- * Decides whether a projection change may apply (#1830).
- *
- * dnd-kit recomputes `over` synchronously whenever a projection re-renders the
- * dragged row into another list: the row's droppable re-registers, every
- * container is re-measured, and the sidebar's scroll geometry can shift under
- * a pointer that never moved. That recomputation can resolve to the target we
- * just left, which un-projects the row, which flips `over` again, until React
- * aborts the nested update loop with error #185 and the route falls into its
- * error boundary.
- *
- * The gate therefore lets each target apply at most once per user input
- * (pointer move, touch move, wheel, key press). A revert that arrives without
- * new input is our own render feeding back, not the user, and is dropped.
- */
 export class SectionThreadProjectionGate {
   private inputGeneration = 0;
   private appliedInputGeneration = -1;
   private readonly visitedTargets = new Set<string | null>();
 
-  /** Records user input; the next projection change starts a fresh cycle. */
   noteInput(): void {
     this.inputGeneration += 1;
   }
@@ -293,10 +278,6 @@ export class SectionThreadProjectionGate {
     this.visitedTargets.clear();
   }
 
-  /**
-   * Returns true when `target` may replace `current`. Call only when they
-   * differ; a successful call marks `target` as visited for the current input.
-   */
   allow(current: string | null, target: string | null): boolean {
     if (this.appliedInputGeneration !== this.inputGeneration) {
       this.appliedInputGeneration = this.inputGeneration;
@@ -366,8 +347,10 @@ export function useSectionThreadDnd({
     },
     [topLevelSectionIds],
   );
-  const moveThreadToSection = useMoveThreadToSection();
+  const updateThread = useUpdateThread();
   const pinThread = usePinThread();
+  const unpinThread = useUnpinThread();
+  const unpinAndMoveThread = useUnpinAndMoveThread();
   const { handleDragEnd: handlePinnedDragEnd, itemIds: pinnedItemIds } =
     useNeighborReorderSortable({
       disabled: pinnedReorderPending || pinnedThreads.length < 2,
@@ -568,29 +551,25 @@ export function useSectionThreadDnd({
         return;
       }
       switch (decision.kind) {
-        case "move": {
-          const thread = lookup.threadByItemId.get(decision.activeId);
-          if (thread) {
-            moveThreadToSection({
-              thread,
-              sectionId: decision.sectionId,
-            });
-          }
+        case "move":
+          updateThread.mutate({
+            id: decision.activeId,
+            sectionId: decision.sectionId,
+          });
           break;
-        }
         case "pin":
           pinThread.mutate({ id: decision.activeId });
           break;
-        case "unpin": {
-          const thread = lookup.threadByItemId.get(decision.activeId);
-          if (thread) {
-            moveThreadToSection({
-              thread,
+        case "unpin":
+          if (decision.move) {
+            unpinAndMoveThread.mutate({
+              id: decision.activeId,
               sectionId: decision.sectionId,
             });
+          } else {
+            unpinThread.mutate({ id: decision.activeId });
           }
           break;
-        }
         case "reorder-pinned":
           handlePinnedDragEnd(event);
           clearProjectedDrag();
@@ -611,12 +590,14 @@ export function useSectionThreadDnd({
       enabled,
       handlePinnedDragEnd,
       lookup,
-      moveThreadToSection,
       onTopLevelSectionOrderChange,
       pinThread,
       stopProjectionInputTracking,
       topLevelSectionIds,
       topLevelSectionOrder,
+      updateThread,
+      unpinAndMoveThread,
+      unpinThread,
     ],
   );
 

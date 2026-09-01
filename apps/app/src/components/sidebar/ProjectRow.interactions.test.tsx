@@ -159,15 +159,15 @@ function renderProjectRow(
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
 }
 
-function expectCollapsedActivityInTrailingSlot(label: string) {
-  const trailingSlot = screen
+function expectCollapsedActivityAtSidebarEdge(label: string) {
+  const edgeSlot = screen
     .getAllByLabelText(label)
     .map((indicator) =>
-      indicator.closest("[data-sidebar-group-status-slot]"),
+      indicator.closest("[data-sidebar-collapsed-activity-edge]"),
     )
     .find((slot) => slot !== null);
 
-  expect(trailingSlot).toBeInstanceOf(HTMLElement);
+  expect(edgeSlot).toBeInstanceOf(HTMLElement);
 }
 
 describe("ProjectRow interactions", () => {
@@ -193,13 +193,6 @@ describe("ProjectRow interactions", () => {
     const projectGroup = result.container.querySelector(
       "[data-sidebar-sticky-project-item]",
     );
-    const projectIcon = projectGroup?.querySelector('[data-icon="Folder"]');
-    const newThread = screen.getByRole("button", {
-      name: "New thread in Test project",
-    });
-    const more = screen.getByRole("button", {
-      name: "Test project actions",
-    });
 
     expect(
       label.compareDocumentPosition(disclosure) &
@@ -211,30 +204,11 @@ describe("ProjectRow interactions", () => {
     expect(projectGroup?.getAttribute("data-sidebar-project-id")).toBe(
       "proj_test",
     );
-    expect(projectIcon).not.toBeNull();
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
-    expect(
-      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
-      true,
-    );
-    expect(newThread).toHaveClass("h-6", "w-6");
-    expect(newThread).not.toHaveClass("h-7", "w-7");
-    expect(more).toHaveClass("m-0", "h-6", "w-6");
-    expect(
-      more
-        .closest("[data-sidebar-hover-actions-mobile]")
-        ?.getAttribute("data-sidebar-hover-actions-mobile"),
-    ).toBe("always");
-    expect(
-      more.compareDocumentPosition(disclosure) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
   });
 
   it("shows generic runtime activity before a named workflow rollup", () => {
-    const result = renderProjectRow(
+    renderProjectRow(
       vi.fn(),
       {
         status: "ready",
@@ -278,27 +252,6 @@ describe("ProjectRow interactions", () => {
     ).not.toBeNull();
     expect(screen.getByLabelText("Thread working")).not.toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
-    const folderIcon = result.container.querySelector(
-      '[data-icon="FolderGit"]',
-    );
-    const folderIconContainer = folderIcon?.parentElement;
-    expect(folderIconContainer).not.toBeNull();
-    expect(
-      folderIconContainer?.classList.contains("text-subtle-foreground/75"),
-    ).toBe(true);
-    expect(
-      folderIconContainer?.classList.contains("text-subtle-foreground"),
-    ).toBe(false);
-    expect(
-      folderIconContainer?.nextElementSibling?.classList.contains(
-        "text-subtle-foreground/80",
-      ),
-    ).toBe(true);
-    expect(
-      folderIconContainer?.nextElementSibling?.nextElementSibling?.hasAttribute(
-        "data-sidebar-group-status-slot",
-      ),
-    ).toBe(true);
   });
 
   it("shows a working draft before named work for a collapsed environment", () => {
@@ -373,9 +326,6 @@ describe("ProjectRow interactions", () => {
                 collapsedEnvironmentIds={new Set()}
                 onToggleThreadCollapsed={vi.fn()}
                 onToggleEnvironmentCollapsed={vi.fn()}
-                onCreateThreadInSection={vi.fn()}
-                onRenameSection={vi.fn()}
-                onRemoveSection={vi.fn()}
                 topLevelSectionOrder={[
                   buildSidebarEntitySectionId("section", sectionId),
                 ]}
@@ -390,33 +340,8 @@ describe("ProjectRow interactions", () => {
       </TooltipProvider>,
     );
 
-    const newThread = screen.getByRole("button", {
-      name: "New thread in Active work",
-    });
-    const more = screen.getByRole("button", {
-      name: "Active work section actions",
-    });
-    const disclosure = screen.getByRole("button", {
-      name: "Collapse Active work section",
-    });
-    expect(
-      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
-      true,
-    );
-    expect(
-      more
-        .closest("[data-sidebar-hover-actions-mobile]")
-        ?.getAttribute("data-sidebar-hover-actions-mobile"),
-    ).toBe("always");
-    expect(
-      more.compareDocumentPosition(disclosure) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-
     fireEvent.click(
-      disclosure,
+      screen.getByRole("button", { name: "Collapse Active work section" }),
     );
 
     expect(
@@ -428,7 +353,7 @@ describe("ProjectRow interactions", () => {
 
     expect(screen.queryByText("Test thread")).toBeNull();
     expect(screen.getAllByLabelText("Plan mode active")).not.toHaveLength(0);
-    expectCollapsedActivityInTrailingSlot("Plan mode active");
+    expectCollapsedActivityAtSidebarEdge("Plan mode active");
     expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
   });
@@ -511,7 +436,7 @@ describe("ProjectRow interactions", () => {
 
     expect(screen.queryByText("Test thread")).toBeNull();
     expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
-    expectCollapsedActivityInTrailingSlot("Goal active");
+    expectCollapsedActivityAtSidebarEdge("Goal active");
   });
 
   it("shows an idle draft before unread success for a collapsed project", () => {
@@ -589,37 +514,22 @@ describe("ProjectRow interactions", () => {
       ],
     });
 
-    const disclosure = screen.getByRole("button", {
-      name: "Collapse Feature workspace threads",
-    });
-    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
-    const row = caretSlot?.parentElement;
-    const trailingControls = row?.querySelector(
-      "[data-sidebar-collapsible-trailing-controls]",
-    );
-    const mobileActions = row?.querySelector(
-      "[data-sidebar-mobile-row-actions]",
-    );
-
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
-    expect(row?.lastElementChild).toBe(caretSlot);
-    expect(trailingControls?.nextElementSibling).toBe(mobileActions);
-    expect(mobileActions?.nextElementSibling).toBe(caretSlot);
-    expect(
-      mobileActions?.getAttribute("data-sidebar-hover-actions-mobile"),
-    ).toBe("always");
-
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Worktree actions" }),
       { button: 0 },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Rename worktree" }),
+    );
 
     expect(
-      await screen.findByRole("dialog", { name: "Rename environment" }),
+      await screen.findByRole("dialog", { name: "Rename worktree" }),
     ).not.toBeNull();
+    expect(screen.getByText("feat/menu-close")).not.toBeNull();
     await waitFor(() => {
-      expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
+      expect(
+        screen.queryByRole("menuitem", { name: "Rename worktree" }),
+      ).toBeNull();
     });
   });
 });

@@ -3,11 +3,13 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
+import { SIDEBAR_ROW_INTERACTIVE_STATE_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import {
-  SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-} from "@/components/sidebar/sidebarRowClasses";
+  SidebarRow,
+  SidebarRowAccessory,
+  SidebarRowContent,
+  SidebarRowIdentityRail,
+} from "@/components/sidebar/SidebarRow";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { AppCommandShortcutPill } from "./AppCommandShortcutHint";
 
@@ -115,28 +117,30 @@ function ToolbarExample() {
   );
 }
 
-function SidebarRowExample({ shortcut }: { shortcut: AppShortcutPresentation }) {
+function SidebarRowExample({
+  shortcut,
+}: {
+  shortcut: AppShortcutPresentation;
+}) {
   return (
     <div className="w-80 rounded-md bg-sidebar p-2 text-sidebar-foreground">
-      <div
-        className={cn(
-          SIDEBAR_ROW_BASE_CLASS,
-          SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-          SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-          "min-h-8",
-        )}
+      <SidebarRow
+        anatomy="navigation"
+        className={cn(SIDEBAR_ROW_INTERACTIVE_STATE_CLASS, "min-h-8")}
       >
-        <Icon
-          name="MessageSquare"
-          className="size-4 shrink-0 text-subtle-foreground"
-        />
-        <span className="min-w-0 flex-1 truncate">
+        <SidebarRowIdentityRail>
+          <Icon
+            name="MessageSquare"
+            className="size-4 shrink-0 text-subtle-foreground"
+          />
+        </SidebarRowIdentityRail>
+        <SidebarRowContent className="truncate">
           Storybook pass for shortcut alignment
-        </span>
-        <span className="flex shrink-0 items-center gap-0.5">
+        </SidebarRowContent>
+        <SidebarRowAccessory className="flex shrink-0 items-center gap-0.5">
           <AppCommandShortcutPill shortcut={shortcut} />
-        </span>
-      </div>
+        </SidebarRowAccessory>
+      </SidebarRow>
     </div>
   );
 }
@@ -160,13 +164,19 @@ export function Overview() {
           label="text-xs"
           hint="baseline frame shows the row center line"
         >
-          <TextBaselineExample className="text-xs" shortcut={MAC_SHORTCUTS[0]} />
+          <TextBaselineExample
+            className="text-xs"
+            shortcut={MAC_SHORTCUTS[0]}
+          />
         </StoryRow>
         <StoryRow
           label="text-sm"
           hint="matches most sidebar and toolbar labels"
         >
-          <TextBaselineExample className="text-sm" shortcut={MAC_SHORTCUTS[0]} />
+          <TextBaselineExample
+            className="text-sm"
+            shortcut={MAC_SHORTCUTS[0]}
+          />
         </StoryRow>
         <StoryRow label="text-base">
           <TextBaselineExample

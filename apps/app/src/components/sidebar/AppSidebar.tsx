@@ -32,6 +32,7 @@ import { useThreadListReplacement } from "./threadListProvider";
 import {
   AutomationsNavSidebarItem,
   ExtensionsNavSidebarItem,
+  getTraditionalPluginNavPanelEntries,
   PluginNavSidebarItems,
 } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
@@ -108,9 +109,9 @@ type SidebarTopLevelSectionId =
 
 /**
  * Renders the three persistent sidebar regions and derives dividers from the
- * regions that actually contribute content. The thread-list surface owns its
- * own separate preceding divider; every other divider stays structural and
- * outside keyboard order.
+ * regions that actually contribute content. Dividers belong to the boundary
+ * between major regions, stay outside keyboard order, and disappear with an
+ * empty region.
  */
 export function SidebarTopLevelSections({
   sections,
@@ -124,35 +125,29 @@ export function SidebarTopLevelSections({
     },
   );
 
-  return visibleSections.map(({ id, regionId, content }, index) => {
-    const integratesDivider = id === "thread-list" && index > 0;
-    return (
-      <Fragment key={id}>
-        {index > 0 && !integratesDivider ? (
-          <div
-            aria-hidden="true"
-            data-sidebar-top-level-divider=""
-            className="mx-2 h-px shrink-0 bg-sidebar-border"
-          />
-        ) : null}
+  return visibleSections.map(({ id, regionId, content }, index) => (
+    <Fragment key={id}>
+      {index > 0 ? (
         <div
-          data-sidebar-region={regionId}
-          data-sidebar-integrated-divider={
-            integratesDivider ? "" : undefined
-          }
-          data-sidebar-top-level-section={id}
-          className={cn(
-            "min-w-0",
-            id === "thread-list"
-              ? "flex min-h-0 flex-1 flex-col"
-              : "shrink-0",
-          )}
-        >
-          {content}
-        </div>
-      </Fragment>
-    );
-  });
+          aria-hidden="true"
+          data-sidebar-top-level-divider=""
+          className="mx-2 h-px shrink-0 bg-sidebar-border"
+        />
+      ) : null}
+      <div
+        data-sidebar-region={regionId}
+        data-sidebar-top-level-section={id}
+        className={cn(
+          "min-w-0",
+          id === "thread-list"
+            ? "flex min-h-0 flex-1 flex-col"
+            : "shrink-0",
+        )}
+      >
+        {content}
+      </div>
+    </Fragment>
+  ));
 }
 
 interface AppSidebarProps {
@@ -224,8 +219,8 @@ export function AppSidebar({
   const automationsNavPanel = pluginNavPanels.find(
     ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
   );
-  const hasTraditionalPluginPanels = pluginNavPanels.some(
-    ({ chrome }) => chrome.pluginId !== AUTOMATIONS_PLUGIN_ID,
+  const traditionalPluginNavPanels = getTraditionalPluginNavPanelEntries(
+    pluginNavPanels,
   );
 
   const handleNewChat = useCallback(() => {
@@ -442,8 +437,12 @@ export function AppSidebar({
                   {visibleTopRegionItems}
                 </div>
               ) : null,
-            "plugin-pages": hasTraditionalPluginPanels ? (
-              <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
+            "plugin-pages": traditionalPluginNavPanels.length > 0 ? (
+              <PluginNavSidebarItems
+                entries={traditionalPluginNavPanels}
+                onNavigate={closeOnMobile}
+                splitEnabled
+              />
             ) : null,
             "thread-list": (
               <PluginThreadList

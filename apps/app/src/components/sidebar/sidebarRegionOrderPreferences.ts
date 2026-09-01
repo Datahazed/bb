@@ -13,6 +13,8 @@ export const SIDEBAR_REGION_IDS = [
   "threads",
 ] as const;
 
+const SIDEBAR_REORDERABLE_REGION_IDS = ["bb-controls", "plugins"] as const;
+
 export type SidebarRegionId = (typeof SIDEBAR_REGION_IDS)[number];
 
 const LEGACY_SECTION_ID_BY_REGION: Readonly<Record<SidebarRegionId, string>> = {
@@ -53,12 +55,17 @@ export function normalizeSidebarRegionOrder(value: unknown): SidebarRegionId[] {
   if (Array.isArray(value)) {
     for (const candidate of value) {
       const id = toSidebarRegionId(candidate);
-      if (id !== null && !presentOrder.includes(id)) presentOrder.push(id);
+      if (id !== null && id !== "threads" && !presentOrder.includes(id)) {
+        presentOrder.push(id);
+      }
     }
   }
   return [
     ...presentOrder,
-    ...SIDEBAR_REGION_IDS.filter((id) => !presentOrder.includes(id)),
+    ...SIDEBAR_REORDERABLE_REGION_IDS.filter(
+      (id) => !presentOrder.includes(id),
+    ),
+    "threads",
   ];
 }
 
@@ -68,6 +75,7 @@ export function reorderSidebarRegions(
   overId: SidebarRegionId,
 ): SidebarRegionId[] {
   const normalized = normalizeSidebarRegionOrder(current);
+  if (activeId === "threads" || overId === "threads") return normalized;
   const activeIndex = normalized.indexOf(activeId);
   const overIndex = normalized.indexOf(overId);
   if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {

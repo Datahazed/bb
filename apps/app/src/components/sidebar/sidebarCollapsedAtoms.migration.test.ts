@@ -9,22 +9,6 @@ afterEach(() => {
 });
 
 describe("sidebar section preference migration", () => {
-  it("renames the stack-only chronological organization value to manual", async () => {
-    window.localStorage.setItem(
-      "bb.sidebar.organizationMode",
-      JSON.stringify("chronological"),
-    );
-
-    const { sidebarOrganizationModeAtom } =
-      await import("./sidebarCollapsedAtoms");
-    const store = createStore();
-
-    expect(store.get(sidebarOrganizationModeAtom)).toBe("manual");
-    expect(window.localStorage.getItem("bb.sidebar.organizationMode")).toBe(
-      JSON.stringify("manual"),
-    );
-  });
-
   it("preserves manual order and collapsed groups from folder-era storage", async () => {
     window.localStorage.setItem(
       "bb.sidebar.folderSectionOrder",

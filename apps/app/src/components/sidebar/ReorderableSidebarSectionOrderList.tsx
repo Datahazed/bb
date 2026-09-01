@@ -13,6 +13,7 @@ interface ReorderableSidebarSectionOrderListProps {
   ) => ReactNode;
   onOrderChange: (order: SidebarSectionId[]) => void;
   order: readonly SidebarSectionId[];
+  pinnedTrailingContent?: ReactNode;
   reorderOrder?: readonly SidebarSectionId[];
 }
 
@@ -20,6 +21,7 @@ export function ReorderableSidebarSectionOrderList({
   children,
   onOrderChange,
   order,
+  pinnedTrailingContent,
   reorderOrder = order,
 }: ReorderableSidebarSectionOrderListProps) {
   const handleDragEnd = useCallback(
@@ -45,7 +47,11 @@ export function ReorderableSidebarSectionOrderList({
   });
 
   return (
-    <SidebarSectionOrderList order={order} dndContextProps={dndContextProps}>
+    <SidebarSectionOrderList
+      order={order}
+      dndContextProps={dndContextProps}
+      pinnedTrailingContent={pinnedTrailingContent}
+    >
       {(sectionId) => children(sectionId, consumeClickSuppression)}
     </SidebarSectionOrderList>
   );

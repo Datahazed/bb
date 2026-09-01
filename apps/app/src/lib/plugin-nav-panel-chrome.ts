@@ -22,7 +22,7 @@ const pluginNavPanelChromeSchema = z.object({
  */
 export type PluginNavPanelChrome = z.infer<typeof pluginNavPanelChromeSchema>;
 
-interface PluginNavPanelChromeEntry {
+export interface PluginNavPanelChromeEntry {
   chrome: PluginNavPanelChrome;
   /** The live registration, or null while this entry is a remembered one. */
   panel: PluginNavPanelSlot | null;

@@ -38,6 +38,18 @@ function renderMenu() {
 }
 
 describe("SidebarTopRegionCustomizeMenu", () => {
+  it("uses the persistent shortcut-muted treatment for its trigger", () => {
+    render(
+      <TooltipProvider>
+        <SidebarTopRegionCustomizeMenu />
+      </TooltipProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Customize sidebar" }),
+    ).toHaveClass("text-subtle-foreground", "opacity-60");
+  });
+
   it("shows exactly the four host-owned rows in stored order", async () => {
     const store = createStore();
     store.set(sidebarTopRegionItemPreferencesAtom, {
@@ -68,7 +80,11 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     expect(
       document.querySelectorAll("[data-sidebar-customize-drag-handle]"),
     ).toHaveLength(4);
-    expect(screen.getByText("Customize")).toBeDefined();
+    expect(screen.getByText("Customize")).toHaveClass(
+      "text-sm",
+      "font-medium",
+      "text-popover-foreground",
+    );
     expect(screen.queryByText("Sidebar items")).toBeNull();
     expect(screen.queryByText("Drag to reorder. Uncheck to hide.")).toBeNull();
     expect(
@@ -92,27 +108,26 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     )) {
       expect(dragIcon.classList.contains("size-4")).toBe(true);
     }
-    expect(screen.getByText("Sidebar order")).toBeDefined();
+    expect(screen.getByText("Sidebar order")).toHaveClass(
+      "text-xs",
+      "font-normal",
+      "text-subtle-foreground/75",
+    );
     expect(
       Array.from(
         document.querySelectorAll("[data-sidebar-customize-region]"),
       ).map((item) => item.textContent),
-    ).toEqual(["Threads", "BB controls", "Plugins"]);
+    ).toEqual(["BB controls", "Plugins"]);
     expect(
-      document.querySelectorAll(
-        "[data-sidebar-customize-region-drag-handle]",
-      ),
-    ).toHaveLength(3);
+      document.querySelectorAll("[data-sidebar-customize-region-drag-handle]"),
+    ).toHaveLength(2);
     expect(screen.getByRole("group", { name: "BB controls" })).toBeDefined();
-    expect(
-      screen.queryByRole("menuitem", { name: "Add action" }),
-    ).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Add action" })).toBeNull();
     for (const label of [
       "New thread",
       "Search threads",
       "Extensions",
       "Automations",
-      "Threads",
       "BB controls",
       "Plugins",
     ]) {
