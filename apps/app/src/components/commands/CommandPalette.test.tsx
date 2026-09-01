@@ -398,7 +398,7 @@ describe("CommandPalette", () => {
     expect(titles).toEqual(
       expect.arrayContaining([
         expect.stringContaining("Search threads"),
-        expect.stringContaining("Open settings"),
+        expect.stringContaining("General settings"),
         expect.stringContaining("Open terminal"),
       ]),
     );
