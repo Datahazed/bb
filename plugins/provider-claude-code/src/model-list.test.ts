@@ -1,6 +1,7 @@
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it } from "vitest";
 import { buildClaudeCodeModels } from "./model-list.js";
+import { resolveClaudeModelContextWindowHint } from "./sdk-extraction.js";
 
 const DISCOVERED_MODELS: ModelInfo[] = [
   {
@@ -16,10 +17,22 @@ const DISCOVERED_MODELS: ModelInfo[] = [
     description: "Opus 5 with 1M context",
   },
   {
+    value: "claude-fable-5-1[1m]",
+    resolvedModel: "claude-fable-5-1",
+    displayName: "Fable",
+    description: "Fable 5.1",
+  },
+  {
     value: "claude-fable-5[1m]",
     resolvedModel: "claude-fable-5",
     displayName: "Fable",
     description: "Fable 5",
+  },
+  {
+    value: "claude-mythos-5-1[1m]",
+    resolvedModel: "claude-mythos-5-1",
+    displayName: "Mythos",
+    description: "Mythos 5.1",
   },
   {
     value: "sonnet",
@@ -36,7 +49,7 @@ const DISCOVERED_MODELS: ModelInfo[] = [
 ];
 
 const CURATED_MODELS = [
-  "claude-fable-5",
+  "claude-fable-5-1",
   "claude-opus-5[1m]",
   "claude-opus-4-8[1m]",
   "claude-opus-4-7[1m]",
@@ -55,15 +68,15 @@ describe("buildClaudeCodeModels", () => {
       "claude-opus-5[1m]",
     );
     expect(result.selectedOnlyModels.map((model) => model.model)).toEqual([
+      "claude-fable-5",
+      "claude-mythos-5-1",
       "opus[1m]",
       "sonnet",
       "haiku",
     ]);
     expect(
-      [...result.models, ...result.selectedOnlyModels].some(
-        (model) => model.model === "claude-mythos-5",
-      ),
-    ).toBe(false);
+      result.models.find((model) => model.model === "claude-fable-5-1"),
+    ).toEqual(expect.objectContaining({ displayName: "Fable 5.1" }));
   });
 
   it("still offers the curated catalog when the provider reports no models", () => {
@@ -116,4 +129,37 @@ describe("buildClaudeCodeModels", () => {
       "claude-sonnet-5",
     );
   });
+
+  it("names the current Fable version in moving alias descriptions", () => {
+    const result = buildClaudeCodeModels([
+      {
+        value: "best",
+        resolvedModel: "claude-fable-5-1",
+        displayName: "Best",
+        description: "Best model",
+      },
+      {
+        value: "fable",
+        resolvedModel: "claude-fable-5-1",
+        displayName: "Fable",
+        description: "Fable model",
+      },
+    ]);
+
+    expect(
+      result.selectedOnlyModels
+        .filter((model) => model.model === "best" || model.model === "fable")
+        .map((model) => model.description),
+    ).toEqual([
+      expect.stringContaining("Fable 5.1"),
+      expect.stringContaining("Fable 5.1"),
+    ]);
+  });
+
+  it.each(["claude-fable-5-1", "claude-mythos-5-1"])(
+    "reports the native context window for %s",
+    (model) => {
+      expect(resolveClaudeModelContextWindowHint(model)).toBe(1_000_000);
+    },
+  );
 });

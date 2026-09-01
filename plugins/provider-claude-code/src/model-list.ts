@@ -33,12 +33,30 @@ const CLAUDE_OPUS_4_7_MODEL = "claude-opus-4-7";
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
 const CLAUDE_SONNET_4_6_MODEL = "claude-sonnet-4-6";
 const CLAUDE_HAIKU_4_5_MODEL = "claude-haiku-4-5";
+const CLAUDE_FABLE_5_MODEL = "claude-fable-5";
+const CLAUDE_MYTHOS_5_1_MODEL = "claude-mythos-5-1";
 
 function withOneMillionContext(model: string): string {
   return `${model}[1m]`;
 }
 
 const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
+  {
+    id: CLAUDE_FABLE_5_MODEL,
+    model: CLAUDE_FABLE_5_MODEL,
+    displayName: "Fable 5 (Legacy)",
+    description: "Legacy Fable 5 model retained for existing selections",
+    supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
+  {
+    id: CLAUDE_MYTHOS_5_1_MODEL,
+    model: CLAUDE_MYTHOS_5_1_MODEL,
+    displayName: "Mythos 5.1",
+    description: "Mythos 5.1 retained for eligible existing selections",
+    supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
   {
     id: withOneMillionContext(CLAUDE_SONNET_4_6_MODEL),
     model: withOneMillionContext(CLAUDE_SONNET_4_6_MODEL),
@@ -102,7 +120,7 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     model: "best",
     displayName: "Best Alias",
     description:
-      "Moving best alias retained for existing selections; resolves to Fable 5 where available",
+      "Moving best alias retained for existing selections; resolves to Fable 5.1 where available",
     supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
     defaultReasoningEffort: "high",
   },
@@ -111,7 +129,7 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     model: "fable",
     displayName: "Fable Alias",
     description:
-      "Moving Fable alias retained for existing selections; resolves to Claude Fable 5",
+      "Moving Fable alias retained for existing selections; resolves to Claude Fable 5.1",
     supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
     defaultReasoningEffort: "high",
   },
@@ -223,6 +241,12 @@ function modelIsDiscovered(
   );
 }
 
+function modelIsSelectedOnly(model: string): boolean {
+  return CLAUDE_CODE_SELECTED_ONLY_CATALOG.some(
+    (entry) => entry.model === model,
+  );
+}
+
 function resolveDiscoveredDefaultModel(
   discoveredModels: readonly ModelInfo[],
 ): string | null {
@@ -263,7 +287,10 @@ export function buildClaudeCodeModels(
     ...discoveredModels.filter((model) => model.value === "default"),
   ]) {
     const resolvedModel = discovered.resolvedModel ?? discovered.value;
-    if (models.some((model) => model.model === resolvedModel)) {
+    if (
+      models.some((model) => model.model === resolvedModel) ||
+      modelIsSelectedOnly(resolvedModel)
+    ) {
       continue;
     }
     models.push(buildDiscoveredModel(discovered));
