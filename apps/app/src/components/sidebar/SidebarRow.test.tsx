@@ -85,10 +85,19 @@ describe("SidebarRow", () => {
       "[grid-template-areas:'status_body_actions_disclosure']",
     );
     expect(row?.className).toContain("[--sidebar-row-depth-step:0.75rem]");
+    expect(row?.className).toContain(
+      "[--sidebar-row-body-inset:calc(var(--sidebar-row-depth)*var(--sidebar-row-depth-step))]",
+    );
     expect(status?.childElementCount).toBe(0);
     expect(status?.classList.contains("[grid-area:status]")).toBe(true);
     expect(status?.className).not.toContain("translate");
     expect(body?.classList.contains("[grid-area:body]")).toBe(true);
+    expect(body?.className).toContain(
+      "[grid-template-areas:'identity_content_accessory']",
+    );
+    expect(body?.className).toContain(
+      "[grid-template-columns:var(--sidebar-row-identity-rail)_minmax(0,1fr)_auto]",
+    );
     expect(body?.className).toContain("pl-[var(--sidebar-row-body-inset)]");
     expect(content?.classList.contains("[grid-area:content]")).toBe(true);
     expect(disclosure?.childElementCount).toBe(0);
@@ -130,6 +139,12 @@ describe("SidebarRow", () => {
     const disclosure = collapsibleRow.querySelector(
       '[data-sidebar-row-slot="disclosure"]',
     );
+    const plainBody = plainRow.querySelector(
+      '[data-sidebar-row-slot="body"]',
+    );
+    const collapsibleBody = collapsibleRow.querySelector(
+      '[data-sidebar-row-slot="body"]',
+    );
 
     expect(plainRow.className).toContain(
       "[grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]",
@@ -138,6 +153,10 @@ describe("SidebarRow", () => {
       "[grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]",
     );
     expect(plainStatus?.className).toBe(collapsibleStatus?.className);
+    expect(plainBody?.className).toBe(collapsibleBody?.className);
+    expect(plainBody?.className).toContain(
+      "[grid-template-columns:var(--sidebar-row-identity-rail)_minmax(0,1fr)_auto]",
+    );
     expect(disclosure?.classList.contains("justify-center")).toBe(true);
     expect(container.querySelectorAll("[data-sidebar-row]")).toHaveLength(2);
   });
