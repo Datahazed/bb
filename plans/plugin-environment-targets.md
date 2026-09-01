@@ -660,3 +660,48 @@ Built as planned, with these deliberate deviations to keep the branch safe:
   the AGENTS.md experimental rule) rather than the plan's
   `bb.environments.experimental_*` spelling.
 - `plugins/docker-sandbox` is PR 2, unchanged.
+
+## Implementation notes (2026-09-01, PR 2 — the cutover)
+
+Branch `bb/worktree-cutover`, stacked on PR 1. All worktree code now lives
+in the plugin:
+
+- **The shim**: `rewriteManagedWorktreeEnvironment` at the create boundary
+  and `rewriteLegacyManagedStartIntent` at the dispatch checkpoint. Every
+  producer — picker, root-compose default, parent inheritance, forks,
+  `--new-environment worktree`, stored automations, and pre-cutover pending
+  threads — lands on the worktree target. A disabled worktree plugin means
+  no worktrees (same rule as provider plugins); the wait card names it.
+- **Generic primitives**: `GET /environments` + `DELETE /environments/:id`
+  (new `destroy.recorded` lifecycle transition, live-thread SQL guard,
+  personal refused), `sdk.environments.list/delete`, `bb environment
+  list/delete`.
+- **The plugin owns lifecycle**: readable `bb/<title-slug>` branch names
+  with collision retry; row finalization after teardown; adoption of
+  core-created managed rows (kv record OR `managed &&
+  workspaceProvisionType === "managed-worktree"`; user checkouts and
+  personal rows never touched); a 5-minute retire grace with a per-minute
+  sweep that also adopts orphaned rows continuously; `thread.deleted`
+  tears down immediately.
+- **Deleted from core** (~5,100 lines): managed reprovision
+  ("Restoring environment" and the queued replay), the whole
+  retire/destroy pipeline and its sweeps, the managed provisioning arm and
+  prepared-environment machinery, branch-slug inference and metadata
+  transcripts, the daemon's `environment.destroy` command and the
+  managed-worktree arm of `environment.provision`.
+  `HOST_DAEMON_PROTOCOL_VERSION` 176 → 177.
+- **Contract relaxation**: a queued row's `content` may be empty — a fork
+  clone waiting on its environment starts a turn with no message of its
+  own; user-facing routes still refuse to queue or edit a message down to
+  nothing.
+- **Host-entry build rule** (found by CI, fixed on PR 1): host entries may
+  bundle `@bb/*` workspace packages that resolve for the plugin — the same
+  rule server entries always had; unresolvable ones keep the guidance
+  error. This is what lets the plugin's host entry share
+  `@bb/host-workspace` with the daemon instead of duplicating it.
+- **Known deltas**, deliberate: branch names come from the title/fallback
+  slug at provision time (no post-title rename; core's inference machinery
+  is gone); worktree creates sit `pending` with a wait card instead of
+  `starting` with streamed provisioning steps; rows wedged in `error` are
+  no longer auto-restored on send (`throwEnvironmentNotReady` instead) —
+  re-asking a target for a dead environment is the follow-up if wanted.
