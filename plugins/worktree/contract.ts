@@ -8,6 +8,8 @@ export const baseBranchSpecSchema = z.discriminatedUnion("kind", [
 
 export type BaseBranchSpec = z.infer<typeof baseBranchSpecSchema>;
 
+export const BRANCH_EXISTS_ERROR_MARKER = "worktree-branch-exists";
+
 export const worktreeHostContract = defineRpcContract({
   create: {
     input: z
@@ -15,6 +17,7 @@ export const worktreeHostContract = defineRpcContract({
         threadId: z.string().min(1),
         sourcePath: z.string().min(1),
         baseBranch: baseBranchSpecSchema,
+        branchName: z.string().min(1),
         setupScript: z.string().min(1),
       })
       .strict(),

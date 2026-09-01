@@ -1,13 +1,9 @@
-import { getThread } from "@bb/db";
+import { getThread, getThreadPendingStartContext } from "@bb/db";
 import { threadSchema, type GitSourceInspection } from "@bb/domain";
 import type { HostDaemonRpcCommand } from "@bb/host-daemon-contract";
 import { threadResponseSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
-import {
-  registerTestHostRpcCapture,
-  requireManagedWorktreeEnvironmentProvisionLiveCommand,
-  waitForQueuedCommand,
-} from "../helpers/commands.js";
+import { registerTestHostRpcCapture } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -47,7 +43,7 @@ async function createNamedBaseBranchThread(
       >,
     ) => void;
   },
-): Promise<string | null> {
+): Promise<unknown> {
   const { host, session } = seedHostSession(harness.deps);
   seedPrimaryHost(harness.deps, host.id);
   registerTestHostRpcCapture(harness, {
@@ -82,13 +78,30 @@ async function createNamedBaseBranchThread(
     }),
   });
   expect(response.status).toBe(201);
-  threadSchema.parse(await readJson(response));
-  const queued = await waitForQueuedCommand(
-    harness,
-    ({ command }) => command.type === "environment.provision",
-  );
-  return requireManagedWorktreeEnvironmentProvisionLiveCommand(queued).command
-    .baseBranch;
+  const thread = threadSchema.parse(await readJson(response));
+  return readWorktreeTargetBaseBranch(harness, thread.id);
+}
+
+function readWorktreeTargetBaseBranch(
+  harness: TestAppHarness,
+  threadId: string,
+): unknown {
+  const stored = getThreadPendingStartContext(harness.db, threadId);
+  expect(stored).not.toBeNull();
+  const context = JSON.parse(stored ?? "null") as {
+    environmentIntent: {
+      type: string;
+      pluginId?: string;
+      targetId?: string;
+      configuration?: { baseBranch?: unknown };
+    };
+  };
+  expect(context.environmentIntent).toMatchObject({
+    type: "plugin-target",
+    pluginId: "worktree",
+    targetId: "worktree",
+  });
+  return context.environmentIntent.configuration?.baseBranch;
 }
 
 describe("named managed-worktree base branch", () => {
@@ -101,7 +114,7 @@ describe("named managed-worktree base branch", () => {
           defaultBranchRelation: "local-behind",
           onInspectGitSource,
         }),
-      ).resolves.toBe("main");
+      ).resolves.toEqual({ kind: "named", name: "main" });
       expect(onInspectGitSource).not.toHaveBeenCalled();
     });
   });
@@ -113,7 +126,7 @@ describe("named managed-worktree base branch", () => {
           baseBranch: "main",
           defaultBranchRelation: "local-ahead",
         }),
-      ).resolves.toBe("main");
+      ).resolves.toEqual({ kind: "named", name: "main" });
     });
   });
 
@@ -124,7 +137,7 @@ describe("named managed-worktree base branch", () => {
           baseBranch: "release/2026-05",
           defaultBranchRelation: "local-behind",
         }),
-      ).resolves.toBe("release/2026-05");
+      ).resolves.toEqual({ kind: "named", name: "release/2026-05" });
     });
   });
 
@@ -137,7 +150,7 @@ describe("named managed-worktree base branch", () => {
           defaultBranchRelation: "local-behind",
           onInspectGitSource,
         }),
-      ).resolves.toBe("origin/main");
+      ).resolves.toEqual({ kind: "named", name: "origin/main" });
       expect(onInspectGitSource).not.toHaveBeenCalled();
     });
   });
@@ -188,18 +201,11 @@ describe("named managed-worktree base branch", () => {
       });
       expect(response.status).toBe(201);
       const fork = threadResponseSchema.parse(await readJson(response));
-      const forkEnvironmentId = getThread(harness.db, fork.id)?.environmentId;
-      expect(forkEnvironmentId).not.toBeNull();
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "environment.provision" &&
-          command.environmentId === forkEnvironmentId,
-      );
-      expect(
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued).command
-          .baseBranch,
-      ).toBe("main");
+      expect(getThread(harness.db, fork.id)?.environmentId).toBeNull();
+      expect(readWorktreeTargetBaseBranch(harness, fork.id)).toEqual({
+        kind: "named",
+        name: "main",
+      });
     });
   });
 });

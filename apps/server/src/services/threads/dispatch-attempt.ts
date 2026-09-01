@@ -64,7 +64,10 @@ import {
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { queueInputForStartingTurn } from "./thread-turn-starting.js";
-import { pluginTargetIntentHostId } from "./thread-environment-placement.js";
+import {
+  pluginTargetIntentHostId,
+  rewriteLegacyManagedStartIntent,
+} from "./thread-environment-placement.js";
 import { resolvePluginTargetEnvironment } from "./thread-environment-targets.js";
 import {
   ensureThreadIsWritable,
@@ -394,8 +397,17 @@ async function runDispatchAttempt(
     // other core waits, not a policy — and only a `ready` answer lets the
     // attempt continue into the hook pass, which then sees the real
     // environment. Send-now cannot skip this: there is nothing to run on.
-    const startContext =
+    const rawStartContext =
       args.startContext ?? readPendingThreadStartContext(deps, thread.id);
+    const startContext =
+      rawStartContext === null
+        ? null
+        : {
+            ...rawStartContext,
+            environmentIntent: rewriteLegacyManagedStartIntent(
+              rawStartContext.environmentIntent,
+            ),
+          };
     if (startContext?.environmentIntent.type === "plugin-target") {
       const resolution = await resolvePluginTargetEnvironment(deps, {
         thread,

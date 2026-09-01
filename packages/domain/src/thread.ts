@@ -343,7 +343,12 @@ export const threadQueuedMessageSchema = z.object({
    * both hand out rows with no surrounding thread to read it from.
    */
   threadId: z.string(),
-  content: z.array(promptInputSchema).min(1),
+  /**
+   * Empty only for a row that starts a turn with no message of its own — a
+   * fork clone waiting on its environment. User-facing routes still refuse
+   * to queue or edit a message down to nothing.
+   */
+  content: z.array(promptInputSchema),
   model: z.string().min(1),
   reasoningLevel: reasoningLevelSchema,
   permissionMode: permissionModeSchema,

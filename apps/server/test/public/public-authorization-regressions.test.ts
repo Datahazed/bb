@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import {
+import { getThreadPendingStartContext,
   createProject,
   environments,
   getQueuedThreadMessage,
@@ -99,7 +99,7 @@ describe("public authorization regressions", () => {
     });
   });
 
-  it("validates managed workspace requirements before inserting environment or thread rows", async () => {
+  it("routes a managed request without a matching host source to the worktree target with no environment rows", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-managed-check",
@@ -137,10 +137,15 @@ describe("public authorization regressions", () => {
         }),
       });
 
-      expect(response.status).toBe(409);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-      });
+      expect(response.status).toBe(201);
+      const created = harness.db
+        .select()
+        .from(threads)
+        .where(eq(threads.projectId, project.id))
+        .all();
+      expect(created).toHaveLength(1);
+      expect(created[0]?.status).toBe("pending");
+      expect(created[0]?.environmentId).toBeNull();
       expect(
         harness.db
           .select()
@@ -149,12 +154,13 @@ describe("public authorization regressions", () => {
           .all(),
       ).toHaveLength(0);
       expect(
-        harness.db
-          .select()
-          .from(threads)
-          .where(eq(threads.projectId, project.id))
-          .all(),
-      ).toHaveLength(0);
+        JSON.parse(
+          getThreadPendingStartContext(harness.db, created[0]?.id ?? "") ??
+            "null",
+        ),
+      ).toMatchObject({
+        environmentIntent: { type: "plugin-target", pluginId: "worktree" },
+      });
     });
   });
 

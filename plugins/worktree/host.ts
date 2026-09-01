@@ -1,13 +1,38 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
-import { createWorktree, removeWorktree } from "@bb/host-workspace";
-import { worktreeHostContract } from "./contract.js";
+import { createWorktree, removeWorktree, runGit } from "@bb/host-workspace";
+import { BRANCH_EXISTS_ERROR_MARKER, worktreeHostContract } from "./contract.js";
 
 const LIFECYCLE_SCRIPT_TIMEOUT_MS = 15 * 60 * 1000;
+
+interface BranchExistsArgs {
+  sourcePath: string;
+  branchName: string;
+  signal: AbortSignal;
+}
 
 interface WorktreeHostDependencies {
   createWorktree: typeof createWorktree;
   removeWorktree: typeof removeWorktree;
+  branchExists: (args: BranchExistsArgs) => Promise<boolean>;
+}
+
+async function branchExistsInSource(args: BranchExistsArgs): Promise<boolean> {
+  const result = await runGit(
+    ["rev-parse", "--verify", "--quiet", `refs/heads/${args.branchName}`],
+    { cwd: args.sourcePath, allowFailure: true, signal: args.signal },
+  );
+  return result.exitCode === 0;
+}
+
+async function pathExists(candidate: string): Promise<boolean> {
+  try {
+    await fs.stat(candidate);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolveScriptName(workspacePath: string, script: string): string {
@@ -35,10 +60,22 @@ export function createWorktreeHostEntry(deps: WorktreeHostDependencies) {
           targetPath,
           input.setupScript,
         );
+        if (
+          !(await pathExists(targetPath)) &&
+          (await deps.branchExists({
+            sourcePath,
+            branchName: input.branchName,
+            signal: context.signal,
+          }))
+        ) {
+          throw new Error(
+            `${BRANCH_EXISTS_ERROR_MARKER}: branch ${input.branchName} already exists in ${sourcePath}`,
+          );
+        }
         return deps.createWorktree({
           sourcePath,
           targetPath,
-          branchName: `bb/${input.threadId}`,
+          branchName: input.branchName,
           baseBranch:
             input.baseBranch.kind === "named" ? input.baseBranch.name : null,
           timeoutMs: LIFECYCLE_SCRIPT_TIMEOUT_MS,
@@ -65,4 +102,8 @@ export function createWorktreeHostEntry(deps: WorktreeHostDependencies) {
   });
 }
 
-export default createWorktreeHostEntry({ createWorktree, removeWorktree });
+export default createWorktreeHostEntry({
+  createWorktree,
+  removeWorktree,
+  branchExists: branchExistsInSource,
+});

@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { setPluginEnvironmentTargetProvider } from "../../../src/services/plugins/plugin-environment-target-registry.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -165,6 +166,38 @@ describe("hero plugin: slack-bot", () => {
         hostId: host.id,
         path: "/tmp/slack-bot-hero-source",
       });
+      setPluginEnvironmentTargetProvider({
+        listEnvironmentTargets: () => [],
+        getEnvironmentTarget: (pluginId, targetId) =>
+          pluginId === "worktree" && targetId === "worktree"
+            ? {
+                pluginId: "worktree",
+                target: {
+                  id: "worktree",
+                  title: "New worktree",
+                  icon: null,
+                  hostScoped: true,
+                  defaultConfiguration: null,
+                  provision: () => ({
+                    action: "ready",
+                    environment: {
+                      type: "host",
+                      hostId: host.id,
+                      workspace: {
+                        type: "unmanaged",
+                        path: "/tmp/slack-bot-hero-source",
+                      },
+                    },
+                  }),
+                },
+              }
+            : undefined,
+        invokeTarget: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
 
       globalThis.fetch = (async (
         input: Parameters<typeof fetch>[0],
@@ -310,6 +343,7 @@ describe("hero plugin: slack-bot", () => {
       expect(listed?.handlerStats.errorCount).toBe(0);
     } finally {
       globalThis.fetch = realFetch;
+      setPluginEnvironmentTargetProvider(undefined);
       await server.pluginService.stop();
       await server.close();
     }

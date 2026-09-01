@@ -1,4 +1,4 @@
-import { getThread } from "@bb/db";
+import { getThread, getThreadPendingStartContext } from "@bb/db";
 import {
   PERSONAL_PROJECT_ID,
   threadSchema,
@@ -8,8 +8,6 @@ import { describe, expect, it } from "vitest";
 import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
 import { getActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-active-context.js";
 import {
-  requireManagedWorktreeEnvironmentProvisionLiveCommand,
-  waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
@@ -49,48 +47,35 @@ async function postCreateThread(
   });
 }
 
-interface ProvisionPolicyFields {
-  baseBranch: string | null;
-  sourcePath: string;
-  workspaceProvisionType: "managed-worktree";
-}
-
-async function createAndCaptureProvision(
+async function createAndReadTargetIntent(
   harness: TestAppHarness,
   args: { environment: unknown; projectId: string },
-): Promise<{ provision: ProvisionPolicyFields; threadId: string }> {
+): Promise<{ intent: Record<string, unknown>; threadId: string }> {
   const response = await postCreateThread(harness, args.projectId, {
     environment: args.environment,
   });
   expect(response.status).toBe(201);
   const thread = threadSchema.parse(await readJson(response));
-  const queued = await waitForQueuedCommand(
-    harness,
-    ({ command }) => command.type === "environment.provision",
-  );
-  const managed = requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-  return {
-    provision: {
-      baseBranch: managed.command.baseBranch,
-      sourcePath: managed.command.sourcePath,
-      workspaceProvisionType: managed.command.workspaceProvisionType,
-    },
-    threadId: thread.id,
+  const stored = getThreadPendingStartContext(harness.db, thread.id);
+  expect(stored).not.toBeNull();
+  const context = JSON.parse(stored ?? "null") as {
+    environmentIntent: Record<string, unknown>;
   };
+  return { intent: context.environmentIntent, threadId: thread.id };
 }
 
 describe("project-default thread environment", () => {
-  it("resolves project-default exactly like the explicit managed-worktree default", async () => {
+  it("routes project-default and the explicit managed default through the worktree target", async () => {
     const sourcePath = "/tmp/project-default-source";
 
-    const explicit = await withTestHarness(async (harness) => {
+    await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: sourcePath,
       });
-      const { provision } = await createAndCaptureProvision(harness, {
+      const explicit = await createAndReadTargetIntent(harness, {
         projectId: project.id,
         environment: {
           type: "host",
@@ -101,7 +86,12 @@ describe("project-default thread environment", () => {
           },
         },
       });
-      return provision;
+      expect(explicit.intent).toEqual({
+        type: "plugin-target",
+        pluginId: "worktree",
+        targetId: "worktree",
+        configuration: { hostId: host.id, baseBranch: { kind: "default" } },
+      });
     });
 
     await withTestHarness(async (harness) => {
@@ -111,11 +101,19 @@ describe("project-default thread environment", () => {
         hostId: host.id,
         path: sourcePath,
       });
-      const { provision, threadId } = await createAndCaptureProvision(harness, {
+      const { intent, threadId } = await createAndReadTargetIntent(harness, {
         projectId: project.id,
         environment: { type: "project-default" },
       });
-      expect(provision).toEqual(explicit);
+      expect(intent).toMatchObject({
+        type: "plugin-target",
+        pluginId: "worktree",
+        targetId: "worktree",
+        configuration: {
+          hostId: host.id,
+          baseBranch: { kind: "named", name: "origin/main" },
+        },
+      });
       expect(getThread(harness.db, threadId)?.originPluginId).toBeNull();
     });
   });

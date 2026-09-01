@@ -8,9 +8,10 @@ type RemoveWorktreeFn = HostWorkspaceModule["removeWorktree"];
 type CreateWorktreeArgs = Parameters<CreateWorktreeFn>[0];
 type RemoveWorktreeArgs = Parameters<RemoveWorktreeFn>[0];
 
-function makeDeps() {
+function makeDeps(options: { branchExists?: boolean } = {}) {
   const createCalls: CreateWorktreeArgs[] = [];
   const removeCalls: RemoveWorktreeArgs[] = [];
+  const branchChecks: { sourcePath: string; branchName: string }[] = [];
   const createWorktree: CreateWorktreeFn = async (args) => {
     createCalls.push(args);
     return { path: args.targetPath };
@@ -18,12 +19,27 @@ function makeDeps() {
   const removeWorktree: RemoveWorktreeFn = async (args) => {
     removeCalls.push(args);
   };
-  return { createCalls, removeCalls, deps: { createWorktree, removeWorktree } };
+  const branchExists = async (args: {
+    sourcePath: string;
+    branchName: string;
+  }) => {
+    branchChecks.push({
+      sourcePath: args.sourcePath,
+      branchName: args.branchName,
+    });
+    return options.branchExists ?? false;
+  };
+  return {
+    createCalls,
+    removeCalls,
+    branchChecks,
+    deps: { createWorktree, removeWorktree, branchExists },
+  };
 }
 
 describe("worktree host entry", () => {
-  it("creates the worktree under the plugin data dir with the thread branch", async () => {
-    const { createCalls, deps } = makeDeps();
+  it("creates the worktree under the plugin data dir on the requested branch", async () => {
+    const { createCalls, branchChecks, deps } = makeDeps();
     const harness = experimental_createHostEntryHarness(
       createWorktreeHostEntry(deps),
     );
@@ -33,6 +49,7 @@ describe("worktree host entry", () => {
         threadId: "thread-9",
         sourcePath: "/Users/me/repo",
         baseBranch: { kind: "named", name: "release" },
+        branchName: "bb/fix-login-flow",
         setupScript: "scripts/setup.sh",
       }),
     ).resolves.toEqual({
@@ -42,11 +59,33 @@ describe("worktree host entry", () => {
     expect(createCalls[0]).toMatchObject({
       sourcePath: "/Users/me/repo",
       targetPath: "/test/plugin-data/worktrees/thread-9/repo",
-      branchName: "bb/thread-9",
+      branchName: "bb/fix-login-flow",
       baseBranch: "release",
       setupScriptName: "scripts/setup.sh",
       pruneEmptyParent: true,
     });
+    expect(branchChecks).toEqual([
+      { sourcePath: "/Users/me/repo", branchName: "bb/fix-login-flow" },
+    ]);
+    await harness.experimental_dispose();
+  });
+
+  it("refuses a branch that already exists in the source repo", async () => {
+    const { createCalls, deps } = makeDeps({ branchExists: true });
+    const harness = experimental_createHostEntryHarness(
+      createWorktreeHostEntry(deps),
+    );
+
+    await expect(
+      harness.experimental_call("create", {
+        threadId: "thread-9",
+        sourcePath: "/Users/me/repo",
+        baseBranch: { kind: "default" },
+        branchName: "bb/fix-login-flow",
+        setupScript: ".bb-env-setup.sh",
+      }),
+    ).rejects.toThrow(/worktree-branch-exists/);
+    expect(createCalls).toHaveLength(0);
     await harness.experimental_dispose();
   });
 
@@ -60,6 +99,7 @@ describe("worktree host entry", () => {
       threadId: "thread-9",
       sourcePath: "/Users/me/repo",
       baseBranch: { kind: "default" },
+      branchName: "bb/thread-9",
       setupScript: ".bb-env-setup.sh",
     });
     expect(createCalls[0]?.baseBranch).toBeNull();
@@ -77,6 +117,7 @@ describe("worktree host entry", () => {
         threadId: "thread-9",
         sourcePath: "/Users/me/repo",
         baseBranch: { kind: "default" },
+        branchName: "bb/thread-9",
         setupScript: "../evil.sh",
       }),
     ).rejects.toThrow(/escapes the worktree root/);
@@ -85,6 +126,7 @@ describe("worktree host entry", () => {
         threadId: "thread-9",
         sourcePath: "/Users/me/repo",
         baseBranch: { kind: "default" },
+        branchName: "bb/thread-9",
         setupScript: "/etc/evil.sh",
       }),
     ).rejects.toThrow(/escapes the worktree root/);

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type {
   BaseBranchSpec,
   CreateThreadEnvironmentArgs,
+  PluginTargetEnvironmentArgs,
   UnmanagedBranchSpec,
 } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -22,6 +23,61 @@ import { resolveStableThreadRequestEnvironment } from "./thread-request-eligibil
 import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
 
 type PlacementDeps = LoggedPendingInteractionWorkSessionDeps;
+
+export const WORKTREE_TARGET_PLUGIN_ID = "worktree";
+export const WORKTREE_TARGET_ID = "worktree";
+
+/**
+ * The cutover shim: a managed-worktree request becomes a worktree-target
+ * selection at the boundary, so the worktree plugin is the only producer of
+ * worktrees no matter which surface asked — the picker, root-compose
+ * defaults, parent inheritance, `--new-environment worktree`, or a stored
+ * automation request from before the cutover. Core's managed provisioning
+ * has no producers left behind this line.
+ */
+export function rewriteManagedWorktreeEnvironment<
+  T extends CreateThreadEnvironmentArgs,
+>(environment: T): T | PluginTargetEnvironmentArgs {
+  if (
+    environment.type !== "host" ||
+    environment.workspace.type !== "managed-worktree" ||
+    environment.hostId === undefined
+  ) {
+    return environment;
+  }
+  return {
+    type: "plugin-target",
+    pluginId: WORKTREE_TARGET_PLUGIN_ID,
+    targetId: WORKTREE_TARGET_ID,
+    configuration: {
+      hostId: environment.hostId,
+      baseBranch: environment.workspace.baseBranch,
+    },
+  };
+}
+
+/**
+ * The same shim for start contexts persisted before the cutover: a pending
+ * thread created last week with a `direct-managed` intent re-attempts
+ * against the plugin instead of the deleted core path. In-memory only — a
+ * `ready` answer persists the resolved intent through the normal write.
+ */
+export function rewriteLegacyManagedStartIntent(
+  intent: ThreadProvisionEnvironmentIntent,
+): ThreadProvisionEnvironmentIntent {
+  if (intent.type !== "direct-managed") {
+    return intent;
+  }
+  return {
+    type: "plugin-target",
+    pluginId: WORKTREE_TARGET_PLUGIN_ID,
+    targetId: WORKTREE_TARGET_ID,
+    configuration: {
+      hostId: intent.hostId,
+      baseBranch: intent.baseBranch,
+    },
+  };
+}
 
 export interface ThreadEnvironmentPlacement {
   environmentId: string | null;

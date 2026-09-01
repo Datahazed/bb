@@ -49,7 +49,7 @@ function parseStoredQueuedThreadMessageContent(
     );
   }
 
-  const parsed = z.array(promptInputSchema).min(1).safeParse(content);
+  const parsed = z.array(promptInputSchema).safeParse(content);
   if (!parsed.success) {
     throw new ApiError(
       500,

@@ -39,6 +39,7 @@ import {
 import {
   pluginTargetIntentHostId,
   resolveThreadEnvironmentPlacement,
+  rewriteManagedWorktreeEnvironment,
 } from "./thread-environment-placement.js";
 import {
   buildProviderThreadExecutionDefaults,
@@ -556,7 +557,7 @@ export async function createThreadFromRequest(
       parentThread,
       requestedVisibility: requestInput.visibility,
     }),
-    environment:
+    environment: rewriteManagedWorktreeEnvironment(
       requestInput.environment.type === "plugin-target"
         ? requestInput.environment
         : resolveCreateThreadEnvironment({
@@ -567,6 +568,7 @@ export async function createThreadFromRequest(
             projectId: requestInput.projectId,
             requestedEnvironment: requestInput.environment,
           }),
+    ),
     providerId,
     titleFallback: deriveTitleFallback(requestInput.input),
   };

@@ -3,7 +3,7 @@ import {
   resumeHostMock,
 } from "./public-thread-test-harness.js";
 
-import {
+import { getThreadPendingStartContext,
   createProjectSource,
   getProjectExecutionDefaults,
   listThreads,
@@ -155,11 +155,15 @@ describe("public thread default routes", () => {
 
       expect(response.status).toBe(201);
       const thread = threadSchema.parse(await readJson(response));
-      const environmentResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}?include=environment`,
-      );
-      await expect(readJson(environmentResponse)).resolves.toMatchObject({
-        environment: { hostId: secondaryHost.id },
+      const stored = getThreadPendingStartContext(harness.db, thread.id);
+      expect(stored).not.toBeNull();
+      expect(JSON.parse(stored ?? "null")).toMatchObject({
+        environmentIntent: {
+          type: "plugin-target",
+          pluginId: "worktree",
+          targetId: "worktree",
+          configuration: { hostId: secondaryHost.id },
+        },
       });
       expect(secondarySource.path).toBe("/tmp/secondary-managed-source");
     });

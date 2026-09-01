@@ -413,16 +413,16 @@ describe("environment list and delete", () => {
         path: "/tmp/env-list-b",
       });
 
-      const scoped = await readJson<Array<{ id: string }>>(
+      const scoped = (await readJson(
         await harness.app.request(
           `/api/v1/environments?projectId=${project.id}`,
         ),
-      );
+      )) as Array<{ id: string }>;
       expect(scoped.map((environment) => environment.id)).toEqual([mine.id]);
 
-      const everything = await readJson<Array<{ id: string }>>(
+      const everything = (await readJson(
         await harness.app.request("/api/v1/environments"),
-      );
+      )) as Array<{ id: string }>;
       expect(everything.length).toBeGreaterThanOrEqual(2);
     });
   });
@@ -448,11 +448,11 @@ describe("environment list and delete", () => {
       expect(after?.status).toBe("destroyed");
       expect(after?.path).toBeNull();
 
-      const listed = await readJson<Array<{ id: string }>>(
+      const listed = (await readJson(
         await harness.app.request(
           `/api/v1/environments?projectId=${project.id}`,
         ),
-      );
+      )) as Array<{ id: string }>;
       expect(listed).toEqual([]);
     });
   });
