@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
+  migrateLegacyHiddenPluginNavPanelOrder,
+  movePluginNavPanelToTop,
   reorderPluginNavPanels,
-  seedLeadingNavPanelKeys,
 } from "./pluginNavSidebarOrder";
 
 function panel(pluginId: string, id: string) {
@@ -16,13 +17,12 @@ const tasks = panel("tasks", "board");
 
 describe("arrangePluginNavPanels", () => {
   it("falls back to registry order before the user has reordered anything", () => {
-    const { visible, normalizedOrder } = arrangePluginNavPanels({
+    const { ordered, normalizedOrder } = arrangePluginNavPanels({
       panels: [github, docs, tasks],
       storedOrder: [],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "github/pulls",
       "docs/vault",
       "tasks/board",
@@ -34,28 +34,26 @@ describe("arrangePluginNavPanels", () => {
     ]);
   });
 
-  it("appends newly installed panels last instead of at the top of a customized list", () => {
-    const { visible } = arrangePluginNavPanels({
+  it("appends newly installed panels last", () => {
+    const { ordered } = arrangePluginNavPanels({
       panels: [github, docs, tasks],
       storedOrder: ["tasks/board", "github/pulls"],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "tasks/board",
       "github/pulls",
       "docs/vault",
     ]);
   });
 
-  it("renders no row for an unregistered key but keeps its slot in the order", () => {
-    const { visible, normalizedOrder } = arrangePluginNavPanels({
+  it("keeps unregistered keys in the normalized order", () => {
+    const { ordered, normalizedOrder } = arrangePluginNavPanels({
       panels: [github, docs],
       storedOrder: ["strudel/repl", "docs/vault", "github/pulls"],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "docs/vault",
       "github/pulls",
     ]);
@@ -65,70 +63,65 @@ describe("arrangePluginNavPanels", () => {
       "github/pulls",
     ]);
   });
+});
 
-  it("returns a late-registering panel to its stored slot", () => {
-    const { visible } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
-      hiddenKeys: [],
-    });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
-      "tasks/board",
-      "docs/vault",
-      "github/pulls",
-    ]);
+describe("legacy hidden-panel migration", () => {
+  it("moves hidden keys behind visible keys while preserving both orders", () => {
+    expect(
+      migrateLegacyHiddenPluginNavPanelOrder(
+        ["tasks/board", "docs/vault", "github/pulls", "docs/vault"],
+        ["tasks/board", "docs/vault"],
+      ),
+    ).toEqual(["github/pulls", "tasks/board", "docs/vault"]);
   });
 
-  it("splits hidden panels out while both lists keep the user's order", () => {
-    const { visible, hidden } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
-      hiddenKeys: ["docs/vault", "tasks/board"],
-    });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual(["github/pulls"]);
-    expect(hidden.map(getPluginNavPanelKey)).toEqual([
-      "tasks/board",
-      "docs/vault",
-    ]);
+  it("retains a hidden key missing from the stored order", () => {
+    expect(
+      migrateLegacyHiddenPluginNavPanelOrder(
+        ["github/pulls"],
+        ["docs/vault"],
+      ),
+    ).toEqual(["github/pulls", "docs/vault"]);
   });
 
-  it("ignores duplicate stored keys so a corrupted list can't render a panel twice", () => {
-    const { visible } = arrangePluginNavPanels({
-      panels: [github, docs],
-      storedOrder: ["github/pulls", "github/pulls", "docs/vault"],
-      hiddenKeys: [],
-    });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
-      "github/pulls",
-      "docs/vault",
-    ]);
+  it("moves a panel to the top without duplicating it", () => {
+    expect(
+      movePluginNavPanelToTop(
+        ["github/pulls", "docs/vault", "tasks/board"],
+        "tasks/board",
+      ),
+    ).toEqual(["tasks/board", "github/pulls", "docs/vault"]);
   });
 });
 
 describe("reorderPluginNavPanels", () => {
-  it("moves a visible row to the target slot", () => {
-    expect(
-      reorderPluginNavPanels({
-        activeKey: "tasks/board",
-        overKey: "github/pulls",
-        order: ["github/pulls", "docs/vault", "tasks/board"],
-        visibleKeys: ["github/pulls", "docs/vault", "tasks/board"],
-      }),
-    ).toEqual(["tasks/board", "github/pulls", "docs/vault"]);
-  });
+  it("moves a row across the five-row overflow boundary", () => {
+    const order = [
+      "one/main",
+      "two/main",
+      "three/main",
+      "four/main",
+      "five/main",
+      "six/main",
+      "seven/main",
+    ];
 
-  it("keeps hidden panels pinned to their index in the stored order", () => {
     expect(
       reorderPluginNavPanels({
-        activeKey: "tasks/board",
-        overKey: "github/pulls",
-        order: ["github/pulls", "docs/vault", "tasks/board"],
-        visibleKeys: ["github/pulls", "tasks/board"],
+        activeKey: "one/main",
+        overKey: "six/main",
+        order,
+        visibleKeys: order,
       }),
-    ).toEqual(["tasks/board", "docs/vault", "github/pulls"]);
+    ).toEqual([
+      "two/main",
+      "three/main",
+      "four/main",
+      "five/main",
+      "six/main",
+      "one/main",
+      "seven/main",
+    ]);
   });
 
   it("returns null when the drag lands where it started", () => {
@@ -140,40 +133,5 @@ describe("reorderPluginNavPanels", () => {
         visibleKeys: ["github/pulls", "docs/vault"],
       }),
     ).toBeNull();
-  });
-
-  it("returns null when the drop target is not a visible row", () => {
-    expect(
-      reorderPluginNavPanels({
-        activeKey: "github/pulls",
-        overKey: "docs/vault",
-        order: ["github/pulls", "docs/vault"],
-        visibleKeys: ["github/pulls"],
-      }),
-    ).toBeNull();
-  });
-});
-
-describe("seedLeadingNavPanelKeys", () => {
-  it("leaves an untouched order empty so registry order still wins", () => {
-    expect(seedLeadingNavPanelKeys([], ["__builtin__/tools"])).toEqual([]);
-  });
-
-  it("prepends a built-in key that a customized order predates", () => {
-    expect(
-      seedLeadingNavPanelKeys(
-        ["github/pulls", "docs/vault"],
-        ["__builtin__/tools"],
-      ),
-    ).toEqual(["__builtin__/tools", "github/pulls", "docs/vault"]);
-  });
-
-  it("keeps the user's slot for a built-in key they already moved", () => {
-    expect(
-      seedLeadingNavPanelKeys(
-        ["github/pulls", "__builtin__/tools"],
-        ["__builtin__/tools"],
-      ),
-    ).toEqual(["github/pulls", "__builtin__/tools"]);
   });
 });

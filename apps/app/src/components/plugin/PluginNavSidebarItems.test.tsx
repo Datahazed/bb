@@ -11,6 +11,7 @@ import { useEffect, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
@@ -22,7 +23,10 @@ import {
   resetAllCrashedPluginSlotsForTest,
   resetCrashedPluginSlots,
 } from "./PluginSlotMount";
-import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
+import {
+  ExtensionsNavSidebarItem,
+  PluginNavSidebarItems,
+} from "./PluginNavSidebarItems";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 
 function registrationSet(
@@ -68,12 +72,14 @@ function registerPanel(
 
 function renderSidebarItems(
   options: {
-    toolsRoutePath?: string;
     storedOrder?: string[];
     compactViewport?: boolean;
   } = {},
 ) {
   const store = createStore();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   if (options.storedOrder) {
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
   }
@@ -81,24 +87,25 @@ function renderSidebarItems(
     <CompactViewportOverrideProvider
       isCompactViewport={options.compactViewport ?? false}
     >
-      <Provider store={store}>
-        <MemoryRouter initialEntries={["/"]}>
-          <SidebarProvider>
-            <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
-          </SidebarProvider>
-        </MemoryRouter>
-      </Provider>
+      <QueryClientProvider client={queryClient}>
+        <Provider store={store}>
+          <MemoryRouter initialEntries={["/"]}>
+            <SidebarProvider>
+              <PluginNavSidebarItems />
+            </SidebarProvider>
+          </MemoryRouter>
+        </Provider>
+      </QueryClientProvider>
     </CompactViewportOverrideProvider>,
   );
 }
 
-const ROW_LABELS = new Set(["Extensions", "Docs", "GitHub"]);
-
-function panelRowNames(): string[] {
+function panelRowNames(labels: readonly string[] = ["Docs", "GitHub"]): string[] {
+  const rowLabels = new Set(labels);
   return screen
     .getAllByRole("button")
     .map((button) => button.textContent?.trim() ?? "")
-    .filter((label) => ROW_LABELS.has(label));
+    .filter((label) => rowLabels.has(label));
 }
 
 beforeEach(() => {
@@ -212,7 +219,7 @@ describe("PluginNavSidebarItems", () => {
       { button: 0 },
     );
     expect(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      await screen.findByRole("menuitem", { name: "Move to top" }),
     ).not.toBeNull();
 
     expect(accessory?.getAttribute("data-sidebar-hover-actions-open")).toBe(
@@ -257,158 +264,68 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
-  it("moves a hidden panel into an expanded More disclosure and back", async () => {
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
+  it("puts the sixth plugin behind a count-free disclosure", async () => {
+    const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
 
     renderSidebarItems();
 
-    expect(panelRowNames()).toEqual(["Docs", "GitHub"]);
-    expect(
-      screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
-    ).toBeNull();
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
-      ).toContain("More (1)");
-    });
-    expect(panelRowNames()).toEqual(["GitHub"]);
-    expect(
-      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
-    ).toContain("docs/main");
-
-    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
-    });
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Show in sidebar" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
-      ).toBeNull();
-    });
-    expect(panelRowNames()).toEqual(["Docs", "GitHub"]);
-  });
-
-  it("collapses hidden panels behind the More toggle on a later mount", async () => {
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
-    window.localStorage.setItem(
-      "bb.sidebar.hiddenPluginPanels",
-      JSON.stringify(["docs/main"]),
-    );
-
-    renderSidebarItems();
-
-    expect(panelRowNames()).toEqual(["GitHub"]);
+    expect(panelRowNames(labels)).toEqual(labels.slice(0, 5));
     const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
-    expect(toggle.textContent).toContain("More (1)");
+    expect(toggle.textContent).toBe("More plugins");
+    expect(toggle.textContent).not.toMatch(/\d/);
 
     fireEvent.click(toggle);
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
-    });
+    await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
+    expect(toggle.textContent).toBe("Show fewer");
   });
 
-  it("hides the built-in Extensions row like a plugin row", async () => {
-    registerPanel("docs", "Docs");
-
-    renderSidebarItems({ toolsRoutePath: "/extensions/skills" });
-
-    expect(panelRowNames()).toEqual(["Extensions", "Docs"]);
+  it("moves a visible row to overflow and back to top", async () => {
+    const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    renderSidebarItems();
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Extensions panel options" }),
+      screen.getByRole("button", { name: "One panel options" }),
       { button: 0 },
     );
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      await screen.findByRole("menuitem", { name: "Move to overflow" }),
     );
 
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["Docs"]);
-    });
-    expect(
-      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
-    ).toContain("More (1)");
-    expect(
-      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
-    ).toContain("__builtin__/tools");
+    await waitFor(() =>
+      expect(panelRowNames(labels)).toEqual([
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+      ]),
+    );
+    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "One panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Move to top" }),
+    );
+    await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
   });
+});
 
-  it("keeps Extensions on top for users who already reordered their plugin rows", () => {
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
+describe("ExtensionsNavSidebarItem", () => {
+  it("is host-owned and has no plugin-panel options menu", () => {
+    render(
+      <MemoryRouter>
+        <ExtensionsNavSidebarItem routePath="/extensions/plugins" />
+      </MemoryRouter>,
+    );
 
-    renderSidebarItems({
-      toolsRoutePath: "/extensions/skills",
-      storedOrder: ["github/main", "docs/main"],
-    });
-
-    expect(panelRowNames()).toEqual(["Extensions", "GitHub", "Docs"]);
-  });
-
-  it("keeps a saved order when plugin frontends register after the first render", async () => {
-    renderSidebarItems({
-      toolsRoutePath: "/extensions/skills",
-      storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
-    });
-
-    expect(panelRowNames()).toEqual(["Extensions"]);
-
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
-
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Extensions", "Docs"]);
-    });
-  });
-
-  it("saves no Extensions key while the row is absent", async () => {
-    registerPanel("docs", "Docs");
-
-    renderSidebarItems({ storedOrder: ["docs/main"] });
-
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["Docs"]);
-    });
+    const row = screen.getByRole("button", { name: "Extensions" });
+    expect(row.querySelector(".bb-sidebar-row-icon-swap")).not.toBeNull();
     expect(
-      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
-    ).not.toContain("__builtin__/tools");
-  });
-
-  it("carries both Extensions glyphs so hover swaps without reflow", () => {
-    renderSidebarItems({ toolsRoutePath: "/extensions/plugins" });
-
-    const extensionsRow = screen
-      .getAllByRole("button")
-      .find((button) => button.textContent?.trim() === "Extensions");
-    expect(extensionsRow).toBeTruthy();
-
-    const swap = extensionsRow?.querySelector(".bb-sidebar-row-icon-swap");
-    expect(swap).toBeTruthy();
-    expect(
-      swap?.querySelector('.bb-sidebar-row-icon-rest[data-icon="Toolbox"]'),
-    ).toBeTruthy();
-    expect(
-      swap?.querySelector('.bb-sidebar-row-icon-hover[data-icon="ToolCase"]'),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: "Extensions panel options" }),
+    ).toBeNull();
   });
 });
