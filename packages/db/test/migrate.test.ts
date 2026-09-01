@@ -300,14 +300,6 @@ function dropThreadConversationOutlinesTable(db: DbConnection): void {
 
 function dropPushSubscriptionsSchema(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS push_subscriptions").run();
-  const columns = db.$client
-    .prepare<[], TableInfoRow>("PRAGMA table_info(app_settings)")
-    .all();
-  if (columns.some((column) => column.name === "push_notifications")) {
-    db.$client
-      .prepare("ALTER TABLE app_settings DROP COLUMN push_notifications")
-      .run();
-  }
 }
 
 function dropRewindAddedTables(db: DbConnection): void {

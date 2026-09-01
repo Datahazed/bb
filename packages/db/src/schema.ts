@@ -168,9 +168,6 @@ export const appSettings = sqliteTable("app_settings", {
   showKeyboardHints: integer("show_keyboard_hints", { mode: "boolean" })
     .notNull()
     .default(true),
-  pushNotifications: integer("push_notifications", { mode: "boolean" })
-    .notNull()
-    .default(true),
   steerActiveThreadOnEnter: integer("steer_active_thread_on_enter", {
     mode: "boolean",
   })

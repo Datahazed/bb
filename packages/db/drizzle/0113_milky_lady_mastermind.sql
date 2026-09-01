@@ -7,5 +7,4 @@ CREATE TABLE `push_subscriptions` (
 	`last_seen_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `push_subscriptions_expo_push_token_idx` ON `push_subscriptions` (`expo_push_token`);--> statement-breakpoint
-ALTER TABLE `app_settings` ADD `push_notifications` integer DEFAULT true NOT NULL;
+CREATE UNIQUE INDEX `push_subscriptions_expo_push_token_idx` ON `push_subscriptions` (`expo_push_token`);

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b3a8c289-c50e-4b1a-9eae-2693b0e093ea",
+  "id": "95d1a43f-7c8a-4a25-a3d8-3d904edf865a",
   "prevId": "1372ccec-3fb1-4472-968f-5db67682af56",
   "tables": {
     "app_settings": {
@@ -24,14 +24,6 @@
         },
         "show_keyboard_hints": {
           "name": "show_keyboard_hints",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "push_notifications": {
-          "name": "push_notifications",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
