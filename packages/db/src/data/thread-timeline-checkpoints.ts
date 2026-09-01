@@ -29,6 +29,29 @@ export function getThreadTimelineCheckpointRecord(
   );
 }
 
+export type ThreadTimelineCheckpointIdentity = Omit<
+  ThreadTimelineCheckpointRecord,
+  "payloadJson"
+>;
+
+export function getThreadTimelineCheckpointIdentity(
+  db: DbConnection,
+  threadId: string,
+): ThreadTimelineCheckpointIdentity | null {
+  return (
+    db
+      .select({
+        checkpointKey: threadTimelineCheckpoints.checkpointKey,
+        eventCount: threadTimelineCheckpoints.eventCount,
+        eventId: threadTimelineCheckpoints.eventId,
+        sequence: threadTimelineCheckpoints.sequence,
+      })
+      .from(threadTimelineCheckpoints)
+      .where(eq(threadTimelineCheckpoints.threadId, threadId))
+      .get() ?? null
+  );
+}
+
 export function upsertThreadTimelineCheckpointRecord(
   db: DbConnection,
   args: ThreadTimelineCheckpointRecord & { threadId: string },
@@ -48,10 +71,6 @@ export function upsertThreadTimelineCheckpointRecord(
     .run();
 }
 
-/**
- * Sweeps that rewrite stored events in place cannot invalidate through the
- * checkpoint's event identity, so they drop the affected threads' rows.
- */
 export function deleteThreadTimelineCheckpointRecords(
   db: DbConnection,
   threadIds: readonly string[],

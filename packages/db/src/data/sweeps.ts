@@ -1,10 +1,4 @@
-import {
-  eq,
-  and,
-  sql,
-  lt,
-  asc,
-} from "drizzle-orm";
+import { eq, and, sql, lt, asc } from "drizzle-orm";
 import { type ThreadEventItemType } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
@@ -63,18 +57,17 @@ interface CompletedEventOutputScanRow {
 }
 
 interface TruncateCompletedEventItemOutputPathArgs
-  extends CompletedEventOutputPathTarget,
+  extends
+    CompletedEventOutputPathTarget,
     TruncateCompletedEventItemOutputsArgs {}
 
-interface UpdateCompletedEventOutputScanRowsArgs
-  extends CompletedEventOutputPathTarget {
+interface UpdateCompletedEventOutputScanRowsArgs extends CompletedEventOutputPathTarget {
   rows: CompletedEventOutputScanRow[];
   truncatedAt: number;
 }
 
 interface AdvanceCompletedEventOutputScanCursorArgs
-  extends CompletedEventOutputPathTarget,
-    CompletedEventOutputScanCursor {
+  extends CompletedEventOutputPathTarget, CompletedEventOutputScanCursor {
   updatedAt: number;
 }
 
@@ -107,7 +100,6 @@ export interface TruncateCompletedEventItemOutputsResult {
   toolCallResults: number;
   webFetchResultTexts: number;
   webSearchResultTexts: number;
-  /** Threads whose stored events this batch rewrote in place. */
   threadIds: string[];
 }
 

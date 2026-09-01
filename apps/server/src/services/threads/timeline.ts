@@ -31,6 +31,7 @@ import {
   getEnvironment,
   getLatestStoredEventTip,
   getThreadConversationOutlineRecord,
+  getThreadTimelineCheckpointIdentity,
   getThreadTimelineCheckpointRecord,
   upsertThreadTimelineCheckpointRecord,
   listContextWindowUsageRows,
@@ -119,11 +120,6 @@ interface ResolveTurnSummaryDetailsSourceRangeArgs {
 }
 
 interface BuildThreadTimelineOptions {
-  /**
-   * Identifies the running release for persisted-projection reuse. When
-   * omitted, projections are never persisted or read back - deliberate for
-   * tests and corpus harnesses, whose builds must not depend on prior runs.
-   */
   appVersion?: string;
   includeProviderUnhandledOperations: boolean;
   includeNestedRows?: boolean;
@@ -169,11 +165,6 @@ interface PersistedProjectionKeyArgs {
   workspaceRoot: string | null;
 }
 
-/**
- * Identifies which release and projection options produced a persisted
- * projection; the event tip it was built from lives in the record's own
- * columns.
- */
 function buildPersistedProjectionKey(args: PersistedProjectionKeyArgs): string {
   return JSON.stringify([
     args.appVersion,
@@ -188,12 +179,6 @@ function buildPersistedProjectionKey(args: PersistedProjectionKeyArgs): string {
   ]);
 }
 
-/**
- * Threads with fewer stored events are cheap enough to rebuild on demand;
- * at or above it the projection is persisted and warmed ahead of requests.
- * Measured in total stored events (the tip's count) so warmup selection and
- * persistence agree exactly.
- */
 export const LARGE_THREAD_MIN_EVENT_COUNT = 1_000;
 
 type ThreadTimelineBuildProfileStage =
@@ -655,13 +640,6 @@ function resolveTurnSummaryDetailsSourceRange(
   };
 }
 
-/**
- * Reads every timeline-relevant event for the thread. The summary timeline
- * always projects the full thread and pages by slicing the projected rows,
- * so the read needs no window bounds and no context recovery: turn
- * lifecycle, background-task state, head state, and delegation subtrees are
- * all inherently present.
- */
 function selectTimelineEventRows(
   db: DbConnection,
   thread: Thread,
@@ -997,11 +975,6 @@ function resolveTimelineProjectionKeys(
   };
 }
 
-/**
- * Whether the thread's persisted projection matches the current tip and the
- * given options, without parsing its payload. Warmup uses it to skip threads
- * that are already ready.
- */
 export function hasFreshPersistedTimelineProjection(
   db: DbConnection,
   thread: Thread,
@@ -1014,7 +987,7 @@ export function hasFreshPersistedTimelineProjection(
   if (keys.cacheKey !== null && getCachedTimelineProjection(keys.cacheKey)) {
     return true;
   }
-  const persisted = getThreadTimelineCheckpointRecord(db, thread.id);
+  const persisted = getThreadTimelineCheckpointIdentity(db, thread.id);
   return (
     persisted !== null &&
     persisted.checkpointKey === keys.persistedKey &&
@@ -1047,7 +1020,9 @@ function readCachedTimelineProjection(
     return undefined;
   }
   try {
-    const parsed = JSON.parse(persisted.payloadJson) as CachedTimelineProjection;
+    const parsed = JSON.parse(
+      persisted.payloadJson,
+    ) as CachedTimelineProjection;
     setCachedTimelineProjection(keys.cacheKey, parsed);
     return parsed;
   } catch {
@@ -1065,9 +1040,6 @@ function rememberTimelineProjection(
     return;
   }
   setCachedTimelineProjection(keys.cacheKey, entry);
-  // Persist projections that are expensive to rebuild so a restart does not
-  // re-pay the cold build; cheap threads just rebuild. Only settled threads
-  // are written - an active tip changes every poll.
   if (
     keys.persistedKey !== null &&
     keys.tip.eventCount >= LARGE_THREAD_MIN_EVENT_COUNT &&
@@ -1143,10 +1115,8 @@ function finishProjectionInputs(
   decodedRawEvents: ThreadEventWithMeta[],
   profile: ThreadTimelineBuildProfileAccumulator | null,
 ): Pick<ProjectionInputs, "contextWindowEvents" | "events"> {
-  const events = measureThreadTimelineStage(
-    profile,
-    "summary-compaction",
-    () => compactThreadTimelineSummaryEvents(decodedRawEvents),
+  const events = measureThreadTimelineStage(profile, "summary-compaction", () =>
+    compactThreadTimelineSummaryEvents(decodedRawEvents),
   );
   if (profile) {
     profile.compactedEventCount = events.length;
@@ -1175,10 +1145,6 @@ function projectionOptionsFor(
   keys: TimelineProjectionKeys,
   options: BuildThreadTimelineOptions,
 ) {
-  // Always project as the latest page: rows are isLatestPage-independent
-  // (the recombination gate proves it) and head state is nulled per page
-  // kind when the response is assembled, so one cached projection serves
-  // every page of the thread.
   return {
     includeProviderUnhandledOperations: keys.includeProviderUnhandledOperations,
     isLatestPage: true,
@@ -1189,7 +1155,9 @@ function projectionOptionsFor(
     workspaceRoot: keys.workspaceRoot,
     includeNestedRows: keys.includeNestedRows,
     providerId: thread.providerId,
-    turnMessageDetail: keys.includeNestedRows ? ("full" as const) : ("summary" as const),
+    turnMessageDetail: keys.includeNestedRows
+      ? ("full" as const)
+      : ("summary" as const),
   };
 }
 
@@ -1288,32 +1256,30 @@ function buildThreadTimelineInternal(
   return assembleTimelineResponse(cached.timeline, options, profile);
 }
 
-/** Rows per cooperative read slice; bounds one synchronous SQL call + decode. */
 const COOPERATIVE_READ_CHUNK_ROWS = 250;
 
-async function yieldToEventLoop(): Promise<void> {
+export async function yieldToEventLoop(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-/**
- * The same build as buildThreadTimelineInternal, but a cache miss reads,
- * decodes, and projects the thread in slices that yield to the event loop
- * between them, so a large thread's first build cannot stall other work.
- * Events appended while the build runs are excluded by bounding the read to
- * the tip observed at the start; if the tip's identity changed underneath
- * (suffix replacement), the build restarts once from the new tip.
- */
+interface CooperativeBuildOptions {
+  forceRebuild?: boolean;
+}
+
 async function buildThreadTimelineCooperativelyInternal(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadTimelineInternalOptions,
+  cooperative: CooperativeBuildOptions,
   attempt = 0,
 ): Promise<BuildThreadTimelineInternalResult> {
   const profile = options.includeProfile
     ? createThreadTimelineBuildProfileAccumulator()
     : null;
   const keys = resolveTimelineProjectionKeys(db, thread, options);
-  let cached = readCachedTimelineProjection(db, thread, keys);
+  let cached = cooperative.forceRebuild
+    ? undefined
+    : readCachedTimelineProjection(db, thread, keys);
   if (cached === undefined && keys.tip !== null) {
     const tip = keys.tip;
     let readMs = 0;
@@ -1369,13 +1335,27 @@ async function buildThreadTimelineCooperativelyInternal(
       tipAfterRead.sequence < tip.sequence ||
       (tipAfterRead.sequence === tip.sequence && tipAfterRead.id !== tip.id);
     if (tipReplaced && attempt === 0) {
-      return buildThreadTimelineCooperativelyInternal(db, thread, options, 1);
+      return buildThreadTimelineCooperativelyInternal(
+        db,
+        thread,
+        options,
+        cooperative,
+        1,
+      );
     }
-    const acceptedClientRequestContextRows = selectClientRequestContextRows(db, {
-      rows: contextRows,
-      threadId: thread.id,
-    });
-    const inputs = finishProjectionInputs(db, thread, decodedRawEvents, profile);
+    const acceptedClientRequestContextRows = selectClientRequestContextRows(
+      db,
+      {
+        rows: contextRows,
+        threadId: thread.id,
+      },
+    );
+    const inputs = finishProjectionInputs(
+      db,
+      thread,
+      decodedRawEvents,
+      profile,
+    );
     const projectionStart = performance.now();
     const timeline = await buildThreadTimelineFromEventsCooperatively(
       {
@@ -1418,14 +1398,17 @@ export async function buildThreadTimelineCooperatively(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadTimelineOptions,
+  cooperative: CooperativeBuildOptions = {},
 ): Promise<{
   profile: ThreadTimelineBuildProfile;
   response: ThreadTimelineResponse;
 }> {
-  const result = await buildThreadTimelineCooperativelyInternal(db, thread, {
-    ...options,
-    includeProfile: true,
-  });
+  const result = await buildThreadTimelineCooperativelyInternal(
+    db,
+    thread,
+    { ...options, includeProfile: true },
+    cooperative,
+  );
   if (result.profile === null) {
     throw new Error("Profiled timeline build returned no profile");
   }

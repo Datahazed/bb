@@ -573,7 +573,9 @@ interface FlatProjectionRun {
   state: ProjectionState;
 }
 
-function startFlatProjection(args: BuildFlatProjectionDataArgs): FlatProjectionRun {
+function startFlatProjection(
+  args: BuildFlatProjectionDataArgs,
+): FlatProjectionRun {
   const state = createProjectionState();
   const shouldTrackActiveThinking = args.includeActiveThinking;
 
@@ -633,15 +635,14 @@ function projectFlatEvent(
       decodedEventParentToolCallId,
     );
   }
-  const explicitEventParentToolCallId =
-    shouldUseExplicitEventParentToolCallId({
-      eventTurnId,
-      isAcceptedRootClientTurn,
-      parentToolCallId: decodedEventParentToolCallId,
-      state,
-    })
-      ? decodedEventParentToolCallId
-      : undefined;
+  const explicitEventParentToolCallId = shouldUseExplicitEventParentToolCallId({
+    eventTurnId,
+    isAcceptedRootClientTurn,
+    parentToolCallId: decodedEventParentToolCallId,
+    state,
+  })
+    ? decodedEventParentToolCallId
+    : undefined;
 
   if (decoded.type === "turn/started") {
     const turnId = requireThreadEventScopeTurnId({
@@ -710,10 +711,7 @@ function projectFlatEvent(
         turnId: completedTurnId,
         status: decoded.status,
       });
-      flushProjectionBufferedOutputsAfterTurnCompleted(
-        state,
-        completedTurnId,
-      );
+      flushProjectionBufferedOutputsAfterTurnCompleted(state, completedTurnId);
     } else {
       onThreadInterrupted({
         meta,
@@ -900,13 +898,7 @@ function projectFlatEvent(
         toolCallEvent.replaceOutput,
       );
     } else {
-      onExecEnd(
-        state,
-        meta,
-        decoded.threadId,
-        eventTurnId,
-        toolCallEvent.call,
-      );
+      onExecEnd(state, meta, decoded.threadId, eventTurnId, toolCallEvent.call);
     }
     return;
   }
@@ -1037,18 +1029,12 @@ function buildFlatProjectionData(
 }
 
 export interface CooperativeProjectionOptions {
-  /** Called every `yieldEvery` events so the caller can release the event loop. */
   yield: () => Promise<void>;
   yieldEvery?: number;
 }
 
 const DEFAULT_COOPERATIVE_YIELD_EVERY = 500;
 
-/**
- * Same projection as buildFlatProjectionData, folding the events in slices
- * and awaiting `yield` between them. The per-event body is shared, so the
- * result is identical; only the scheduling differs.
- */
 async function buildFlatProjectionDataCooperatively(
   args: BuildFlatProjectionDataArgs,
   cooperative: CooperativeProjectionOptions,

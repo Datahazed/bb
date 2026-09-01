@@ -67,8 +67,6 @@ export function applyTurnCompletedEvent(
       mode: "idle",
       threadId: payload.threadId,
     });
-    // The thread just settled: rebuild its summary projection off the request
-    // path so the next open (and the persisted copy) are ready.
     void warmThreadTimeline(deps, payload.threadId).catch((error) => {
       deps.logger.warn(
         { err: error, threadId: payload.threadId },

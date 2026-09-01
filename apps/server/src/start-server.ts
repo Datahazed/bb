@@ -211,9 +211,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   await runStartupRecoverySweep(sweepDeps).catch((error) => {
     logger.error({ err: error }, "Startup recovery sweep failed");
   });
-  void warmLargeThreadTimelines(sweepDeps).catch((error) => {
-    logger.error({ err: error }, "Timeline warmup failed");
-  });
 
   if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {
     logger.warn(
@@ -249,6 +246,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     .finally(() => {
       providerRegistry.markRegistrationsSettled();
       pluginService.startPeriodicUpdateChecks();
+      void warmLargeThreadTimelines(sweepDeps).catch((error) => {
+        logger.error({ err: error }, "Timeline warmup failed");
+      });
     });
   pluginCatalogService.startPeriodicRefresh();
 

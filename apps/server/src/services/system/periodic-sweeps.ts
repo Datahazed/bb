@@ -26,7 +26,6 @@ import {
   shouldRunIncrementalVacuum,
   sweepManagedEnvironments,
   threads,
-  deleteThreadTimelineCheckpointRecords,
   truncateCompletedEventItemOutputs,
 } from "@bb/db";
 import type {
@@ -37,8 +36,7 @@ import {
   recoverOrphanedEnvironmentDestroyRequests,
   runEnvironmentCleanupAdvance,
 } from "../environments/environment-cleanup-internal.js";
-import { clearTimelineProjectionCacheForThreads } from "../threads/timeline-projection-cache.js";
-import { warmThreadTimelines } from "../threads/timeline-warmup.js";
+import { rebuildThreadTimelines } from "../threads/timeline-warmup.js";
 import {
   isCommandTimeoutError,
   isHostUnavailableError,
@@ -475,12 +473,7 @@ function runCompletedEventOutputTruncationSweep(
     limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
     truncatedAt: now,
   });
-  // In-place event rewrites are invisible to tip-keyed projection caching:
-  // drop the affected threads' projections and rebuild them off the request
-  // path so a large thread does not go cold because an old output aged out.
-  clearTimelineProjectionCacheForThreads(result.threadIds);
-  deleteThreadTimelineCheckpointRecords(deps.db, result.threadIds);
-  void warmThreadTimelines(deps, result.threadIds);
+  void rebuildThreadTimelines(deps, result.threadIds);
 }
 
 function runClosedSessionPruneSweep(

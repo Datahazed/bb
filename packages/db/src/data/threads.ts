@@ -1941,3 +1941,11 @@ export function applyThreadLifecycleEvent(
     { behavior: "immediate" },
   );
 }
+
+export function listThreadIds(db: DbConnection): string[] {
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .all()
+    .map((row) => row.id);
+}

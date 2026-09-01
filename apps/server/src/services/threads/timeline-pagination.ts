@@ -90,15 +90,6 @@ interface PaginateTimelineRowsArgs {
   rows: readonly TimelineRow[];
 }
 
-/**
- * Slices the canonical projected row list into a page of logical segments.
- *
- * Every page is a slice of the same full projection, so concatenating all
- * pages oldest → newest reproduces it exactly, whatever the segment limit.
- * An older-page cursor names the segment the previous page started with;
- * it is resolved against the recomputed segments, so it stays valid as the
- * thread grows and turns 400 only when the event suffix was replaced.
- */
 export function paginateTimelineRows(
   args: PaginateTimelineRowsArgs,
 ): PaginatedTimelineRowsResult {

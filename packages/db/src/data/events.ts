@@ -80,7 +80,9 @@ function queryInSqliteVariableBatches<TValue, TRow>(
   args: QueryInSqliteVariableBatchesArgs<TValue, TRow>,
 ): TRow[] {
   const values = [
-    ...new Map(args.values.map((value) => [args.dedupeKey(value), value])).values(),
+    ...new Map(
+      args.values.map((value) => [args.dedupeKey(value), value]),
+    ).values(),
   ];
   if (values.length === 0) {
     return [];
@@ -175,10 +177,7 @@ interface ItemLifecycleLookupKey {
 }
 
 interface LatestItemLifecycleRow extends ItemLifecycleLookupKey {
-  type:
-    | "item/started"
-    | "item/completed"
-    | "item/backgroundTask/completed";
+  type: "item/started" | "item/completed" | "item/backgroundTask/completed";
 }
 
 const TERMINAL_ITEM_EVENT_TYPES = [
@@ -459,11 +458,13 @@ function listStoredTurnStartedKeySet(
   );
 }
 
-const ORPHAN_DROPPABLE_TURN_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
-  "thread/tokenUsage/updated",
-  "thread/contextWindowUsage/updated",
-  "provider/unhandled",
-]);
+const ORPHAN_DROPPABLE_TURN_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set(
+  [
+    "thread/tokenUsage/updated",
+    "thread/contextWindowUsage/updated",
+    "provider/unhandled",
+  ],
+);
 
 type DaemonTurnStartDisposition =
   | "append"
@@ -500,7 +501,9 @@ function resolveDaemonTurnStartDisposition(
   });
 }
 
-function isStoredEventPayload(value: unknown): value is Record<string, unknown> {
+function isStoredEventPayload(
+  value: unknown,
+): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -601,7 +604,9 @@ function listThreadSearchSegmentsForThreadEvent(args: {
   }
 }
 
-function parseDaemonThreadEvent(input: AppendDaemonEventInput): ThreadEvent | null {
+function parseDaemonThreadEvent(
+  input: AppendDaemonEventInput,
+): ThreadEvent | null {
   let data: unknown;
   try {
     data = JSON.parse(input.data);
@@ -653,10 +658,7 @@ export function appendDaemonEventsInTransaction(
     collectDaemonTurnStartLookupKeys(eventInputs),
   );
   const settledItemKeys = new Set(
-    listLatestItemLifecycleRows(
-      db,
-      collectTerminalItemLookupKeys(eventInputs),
-    )
+    listLatestItemLifecycleRows(db, collectTerminalItemLookupKeys(eventInputs))
       .filter((row) => isTerminalItemEventType(row.type))
       .map(buildItemLifecycleKey),
   );
@@ -1148,13 +1150,11 @@ export interface ListStoredTimelineWindowEventRowsArgs {
 export type GetStoredTimelineWindowEventDataBytesArgs =
   ListStoredTimelineWindowEventRowsArgs;
 
-export interface FindStoredTimelineWindowByteBudgetFloorArgs
-  extends ListStoredTimelineWindowEventRowsArgs {
+export interface FindStoredTimelineWindowByteBudgetFloorArgs extends ListStoredTimelineWindowEventRowsArgs {
   maxDataBytes: number;
 }
 
-export interface ReadStoredTimelineWindowForwardPageArgs
-  extends ListStoredTimelineWindowEventRowsArgs {
+export interface ReadStoredTimelineWindowForwardPageArgs extends ListStoredTimelineWindowEventRowsArgs {
   beforeSequence: number;
   maxDataBytes: number;
 }
@@ -1353,7 +1353,8 @@ export function listLatestThreadStateEventRowsByThreadIds(
       return db
         .select(storedEventRowFields)
         .from(events)
-        .where(sql`${events}.rowid IN (
+        .where(
+          sql`${events}.rowid IN (
         SELECT latest_state.rowid
         FROM ${events} AS latest_state INDEXED BY events_thread_state_thread_sequence_idx
         WHERE latest_state.thread_id IN (${threadIdList})
@@ -1365,7 +1366,8 @@ export function listLatestThreadStateEventRowsByThreadIds(
               AND candidate.type ${stateTypesPredicate}
               AND ${kindPredicate}
           )
-      )`)
+      )`,
+        )
         .all();
     },
 
@@ -1494,7 +1496,9 @@ export function listStoredEventRowsByParentToolCallIds(
   }
 
   return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .select(
+      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+    )
     .from(events)
     .where(and(...conditions))
     .orderBy(events.sequence)
@@ -1560,7 +1564,9 @@ export function listStoredDelegatingItemRowsByItemIds(
   }
 
   return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .select(
+      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+    )
     .from(events)
     .where(
       and(
@@ -1665,7 +1671,9 @@ export function listItemEventSpansByItems(
       turnId: events.turnId,
     })
     .from(events)
-    .where(and(eq(events.threadId, args.threadId), scopedItemRefsPredicate(items)))
+    .where(
+      and(eq(events.threadId, args.threadId), scopedItemRefsPredicate(items)),
+    )
     .groupBy(events.scopeKind, events.turnId, events.itemId)
     .all();
 }
@@ -1686,7 +1694,9 @@ export function listStoredItemLifecycleRowsByItems(
   }
 
   return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .select(
+      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+    )
     .from(events)
     .where(
       and(
@@ -1740,7 +1750,9 @@ export function listStoredClientTurnRequestIdsInRange(
 ): ClientTurnRequestId[] {
   const rows = db
     .select({
-      requestId: sql<string | null>`json_extract(${events.data}, '$.requestId')`,
+      requestId: sql<
+        string | null
+      >`json_extract(${events.data}, '$.requestId')`,
     })
     .from(events)
     .where(
@@ -1764,7 +1776,9 @@ export function getStoredTurnRequestEventForTurn(
   const acceptedInput =
     db
       .select({
-        clientRequestId: sql<string | null>`json_extract(${events.data}, '$.clientRequestId')`,
+        clientRequestId: sql<
+          string | null
+        >`json_extract(${events.data}, '$.clientRequestId')`,
       })
       .from(events)
       .where(
@@ -1953,28 +1967,6 @@ export interface StoredThreadEventExtent {
   threadId: string;
 }
 
-/**
- * Every thread's stored event count, largest first, from the
- * (thread_id, sequence) index alone. The timeline warmup uses the same
- * threshold as projection persistence, so the set it builds is the set that
- * stays persisted.
- */
-export function listStoredThreadEventExtents(
-  db: DbConnection,
-  args: { minEventCount: number },
-): StoredThreadEventExtent[] {
-  return db
-    .select({
-      eventCount: count().mapWith(Number),
-      threadId: events.threadId,
-    })
-    .from(events)
-    .groupBy(events.threadId)
-    .having(sql`count(*) >= ${args.minEventCount}`)
-    .orderBy(desc(count()))
-    .all();
-}
-
 export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
   itemIds: readonly string[];
   threadId: string;
@@ -2151,9 +2143,7 @@ function listStoredTurnStartedKeysChunk(
     .all();
 
   return rows.flatMap((row) =>
-    row.turnId === null
-      ? []
-      : [{ threadId: row.threadId, turnId: row.turnId }],
+    row.turnId === null ? [] : [{ threadId: row.threadId, turnId: row.turnId }],
   );
 }
 
@@ -2304,7 +2294,9 @@ export function listStoredThreadTimelineEventRows(
   }
 
   return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .select(
+      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+    )
     .from(events)
     .where(and(...conditions))
     .orderBy(events.sequence)
@@ -2542,8 +2534,7 @@ export function findStoredTimelineWindowByteBudgetFloor(
   const query = db
     .select({
       createdAt: events.createdAt,
-      dataBytes:
-        sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+      dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
       sequence: events.sequence,
       turnId: events.turnId,
     })
@@ -2621,15 +2612,11 @@ export function listStoredTimelineWindowEventRows(
     .all();
 }
 
-/** Reads the oldest byte-bounded prefix of a sequence range. */
 export function readStoredTimelineWindowForwardPage(
   db: DbConnection,
   args: ReadStoredTimelineWindowForwardPageArgs,
 ): StoredTimelineWindowForwardPage {
   const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
-  // Walk only sequence + size until the byte boundary is known. Selecting the
-  // payload here would materialize the first excluded row (which may itself be
-  // enormous) and would retain every included row while the iterator is open.
   const query = db
     .select({
       dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
@@ -2769,7 +2756,10 @@ export function getLatestThreadSystemErrorEventRow(
       .select(storedEventRowFields)
       .from(events)
       .where(
-        and(eq(events.threadId, args.threadId), eq(events.type, "system/error")),
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/error"),
+        ),
       )
       .orderBy(desc(events.sequence))
       .limit(1)
@@ -2798,12 +2788,6 @@ export interface StoredThreadEventTip {
   sequence: number;
 }
 
-/**
- * The newest stored event's identity plus the thread's event count. Cache
- * keys derived from both stay correct across appends, suffix replacement
- * (which can reuse sequence numbers but never event ids), and pruning
- * (which removes rows below an unchanged tip).
- */
 export function getLatestStoredEventTip(
   db: DbConnection,
   args: GetLatestThreadSequenceArgs,
@@ -3256,8 +3240,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
   args: ListOpenBackgroundTaskItemRowsForHostArgs,
 ): OpenBackgroundTaskItemRow[] {
   const startedType = "item/started" satisfies ThreadEventType;
-  const progressType =
-    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const progressType = "item/backgroundTask/progress" satisfies ThreadEventType;
   const completedType =
     "item/backgroundTask/completed" satisfies ThreadEventType;
   const settled = alias(events, "settled_background_task");
@@ -3313,8 +3296,7 @@ export function listOpenBackgroundTaskItemRowsForThread(
   args: ListOpenBackgroundTaskItemRowsForThreadArgs,
 ): OpenBackgroundTaskItemRow[] {
   const startedType = "item/started" satisfies ThreadEventType;
-  const progressType =
-    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const progressType = "item/backgroundTask/progress" satisfies ThreadEventType;
   const completedType =
     "item/backgroundTask/completed" satisfies ThreadEventType;
   const settled = alias(events, "settled_thread_background_task");
@@ -3368,8 +3350,7 @@ export function pruneBackgroundTaskProgressEvents(
   db: DbConnection,
   args: PruneBackgroundTaskProgressEventsArgs,
 ): number {
-  const progressType =
-    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const progressType = "item/backgroundTask/progress" satisfies ThreadEventType;
   const completedType =
     "item/backgroundTask/completed" satisfies ThreadEventType;
 

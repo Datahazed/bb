@@ -4,7 +4,10 @@ import {
   resolveEnvLoader,
   type EnvLoaderArgs,
 } from "./env.js";
-import { BB_FF_PLACEHOLDER_ENV, DEFAULT_BB_FF_PLACEHOLDER } from "./env-vars.js";
+import {
+  BB_FF_PLACEHOLDER_ENV,
+  DEFAULT_BB_FF_PLACEHOLDER,
+} from "./env-vars.js";
 
 type LoadFeatureFlagsArgs = EnvLoaderArgs;
 

@@ -172,9 +172,6 @@ export function pruneThreadEventHistory(
       removedBackgroundTaskProgressEvents >
     0
   ) {
-    // Pruning removes stored events below an unchanged tip; the event count
-    // in the projection key already invalidates persisted rows, and the
-    // in-memory entries for this thread are dropped here.
     clearTimelineProjectionCacheForThreads([args.threadId]);
   }
 

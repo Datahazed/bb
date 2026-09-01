@@ -52,7 +52,6 @@ function setup(): { db: DbConnection; thread: Thread } {
   return { db, thread };
 }
 
-/** Seeds enough events to cross LARGE_THREAD_MIN_EVENT_COUNT. */
 function seedLargeThread(db: DbConnection, thread: Thread): void {
   const events: Parameters<typeof insertEvents>[2] = [];
   let sequence = 0;
@@ -144,7 +143,6 @@ const buildOptions = {
 };
 
 describe("persisted timeline projections", () => {
-
   it("persists an expensive idle build and serves it after a restart", () => {
     const { db, thread } = setup();
     seedLargeThread(db, thread);
@@ -157,8 +155,6 @@ describe("persisted timeline projections", () => {
     expect(record).not.toBeNull();
     expect(record?.checkpointKey.startsWith('["1.2.3",')).toBe(true);
 
-    // Prove the read path: tamper with the persisted payload, clear the
-    // in-memory cache (a restart), and observe the tampered rows served.
     const payload = JSON.parse(record!.payloadJson) as {
       timeline: { rows: unknown[] };
     };
@@ -183,7 +179,6 @@ describe("persisted timeline projections", () => {
       true,
     );
 
-    // A different release ignores the stale record and rebuilds fresh.
     clearTimelineProjectionCacheForThreads([thread.id]);
     const rebuilt = buildThreadTimeline(db, thread, {
       ...buildOptions,

@@ -28,10 +28,14 @@ export type { ThreadConversationOutlineRecord } from "./thread-conversation-outl
 
 export {
   deleteThreadTimelineCheckpointRecords,
+  getThreadTimelineCheckpointIdentity,
   getThreadTimelineCheckpointRecord,
   upsertThreadTimelineCheckpointRecord,
 } from "./thread-timeline-checkpoints.js";
-export type { ThreadTimelineCheckpointRecord } from "./thread-timeline-checkpoints.js";
+export type {
+  ThreadTimelineCheckpointIdentity,
+  ThreadTimelineCheckpointRecord,
+} from "./thread-timeline-checkpoints.js";
 
 export {
   createThreadSection,
@@ -46,9 +50,7 @@ export {
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
 } from "./prompt-history.js";
-export type {
-  StoredPromptHistoryEntryRow,
-} from "./prompt-history.js";
+export type { StoredPromptHistoryEntryRow } from "./prompt-history.js";
 
 export {
   getProjectExecutionDefaults,
@@ -69,6 +71,7 @@ export {
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
+  listThreadIds,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
@@ -225,9 +228,7 @@ export {
   listRetiredLoadedEnvironmentIdsOnHost,
   updateEnvironmentMetadata,
 } from "./environments.js";
-export type {
-  CreateEnvironmentInput,
-} from "./environments.js";
+export type { CreateEnvironmentInput } from "./environments.js";
 
 export {
   upsertHost,
@@ -261,7 +262,6 @@ export {
   getLatestThreadSystemErrorEventRow,
   getLatestThreadSequence,
   getLatestStoredEventTip,
-  listStoredThreadEventExtents,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
@@ -345,9 +345,7 @@ export {
   setPendingInteractionResolving,
   setPendingInteractionResolved,
 } from "./pending-interactions.js";
-export type {
-  PendingInteractionRow,
-} from "./pending-interactions.js";
+export type { PendingInteractionRow } from "./pending-interactions.js";
 
 export {
   openSession,
@@ -357,9 +355,7 @@ export {
   heartbeatSession,
   listLatestSessionsForHosts,
 } from "./sessions.js";
-export type {
-  HostDaemonSessionRow,
-} from "./sessions.js";
+export type { HostDaemonSessionRow } from "./sessions.js";
 
 export {
   claimQueuedThreadMessage,

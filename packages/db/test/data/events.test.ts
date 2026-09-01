@@ -982,8 +982,9 @@ describe("events", () => {
       { behavior: "immediate" },
     );
 
-    expect(listEvents(db, { threadId: thread.id }).map((event) => event.type))
-      .toEqual(["turn/started", "turn/input/accepted", "system/error"]);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started", "turn/input/accepted", "system/error"]);
   });
 
   it("stores the provided createdAt timestamp", () => {
@@ -4445,13 +4446,15 @@ describe("timeline read-boundary output truncation", () => {
         ...args,
         maxDataBytes: (rowBytes.get(3) ?? 0) - 1,
       }),
-    ).toEqual(expect.objectContaining({
-      eventDataBytes: rowBytes.get(3),
-      hasOlderRows: true,
-      kind: "single-event-too-large",
-      sequenceStart: 3,
-      turnId: null,
-    }));
+    ).toEqual(
+      expect.objectContaining({
+        eventDataBytes: rowBytes.get(3),
+        hasOlderRows: true,
+        kind: "single-event-too-large",
+        sequenceStart: 3,
+        turnId: null,
+      }),
+    );
   });
 
   it("reads the oldest byte-bounded prefix and resumes at the next row", () => {
@@ -4531,7 +4534,9 @@ describe("timeline read-boundary output truncation", () => {
       ),
     );
     db.$client
-      .prepare("UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1")
+      .prepare(
+        "UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1",
+      )
       .run(`{"item":{"resultText":"${"x".repeat(1_100)}`, thread.id);
 
     expect(

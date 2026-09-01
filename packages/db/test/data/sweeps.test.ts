@@ -232,8 +232,16 @@ describe("truncateCompletedEventItemOutputs", () => {
     expect(commandData.item.aggregatedOutput).toContain(
       "output truncated by retention policy",
     );
-    expect(commandData.item.aggregatedOutput.startsWith(commandOutput.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS))).toBe(true);
-    expect(commandData.item.aggregatedOutput.endsWith(commandOutput.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS))).toBe(true);
+    expect(
+      commandData.item.aggregatedOutput.startsWith(
+        commandOutput.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS),
+      ),
+    ).toBe(true);
+    expect(
+      commandData.item.aggregatedOutput.endsWith(
+        commandOutput.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS),
+      ),
+    ).toBe(true);
     expect(commandData.item.truncation.aggregatedOutput).toEqual({
       originalLength: commandOutput.length,
       retainedHeadLength: COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
@@ -249,8 +257,16 @@ describe("truncateCompletedEventItemOutputs", () => {
     expect(toolData.item.result).toContain(
       "output truncated by retention policy",
     );
-    expect(toolData.item.result.startsWith(toolResult.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS))).toBe(true);
-    expect(toolData.item.result.endsWith(toolResult.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS))).toBe(true);
+    expect(
+      toolData.item.result.startsWith(
+        toolResult.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS),
+      ),
+    ).toBe(true);
+    expect(
+      toolData.item.result.endsWith(
+        toolResult.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS),
+      ),
+    ).toBe(true);
     expect(toolData.item.truncation.result).toEqual({
       originalLength: toolResult.length,
       retainedHeadLength: COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
@@ -259,11 +275,8 @@ describe("truncateCompletedEventItemOutputs", () => {
     });
 
     const webSearchData = JSON.parse(
-      db
-        .select()
-        .from(events)
-        .where(eq(events.id, webSearchEventId))
-        .get()?.data ?? "{}",
+      db.select().from(events).where(eq(events.id, webSearchEventId)).get()
+        ?.data ?? "{}",
     );
     expect(webSearchData.item.resultText).not.toBe(webSearchResultText);
     expect(webSearchData.item.resultText).toContain(
@@ -271,7 +284,10 @@ describe("truncateCompletedEventItemOutputs", () => {
     );
     expect(
       webSearchData.item.resultText.startsWith(
-        webSearchResultText.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS),
+        webSearchResultText.slice(
+          0,
+          COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
+        ),
       ),
     ).toBe(true);
     expect(
@@ -764,8 +780,11 @@ describe("pruneDestroyedEnvironments", () => {
     });
     expect(result.deleted).toBe(0);
     expect(
-      db.select().from(environments).where(eq(environments.id, staleEnvironment.id)).get()
-        ?.status,
+      db
+        .select()
+        .from(environments)
+        .where(eq(environments.id, staleEnvironment.id))
+        .get()?.status,
     ).toBe("destroying");
     expect(spy.notifyEnvironment).not.toHaveBeenCalled();
   });
@@ -826,9 +845,18 @@ describe("pruneDestroyedEnvironments", () => {
       return environment;
     }
 
-    const nineDaysOld = createDestroyedEnvironment("/tmp/destroyed-9d", 9 * day);
-    const tenDaysOld = createDestroyedEnvironment("/tmp/destroyed-10d", 10 * day);
-    const eightDaysOld = createDestroyedEnvironment("/tmp/destroyed-8d", 8 * day);
+    const nineDaysOld = createDestroyedEnvironment(
+      "/tmp/destroyed-9d",
+      9 * day,
+    );
+    const tenDaysOld = createDestroyedEnvironment(
+      "/tmp/destroyed-10d",
+      10 * day,
+    );
+    const eightDaysOld = createDestroyedEnvironment(
+      "/tmp/destroyed-8d",
+      8 * day,
+    );
     const fresh = createDestroyedEnvironment("/tmp/destroyed-fresh", 0);
 
     const spy: DbNotifier = {
@@ -838,7 +866,10 @@ describe("pruneDestroyedEnvironments", () => {
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
     };
-    const args = { updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS, limit: 2 };
+    const args = {
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: 2,
+    };
     const remainingIds = () =>
       db
         .select({ id: environments.id })
@@ -872,7 +903,10 @@ describe("pruneDestroyedEnvironments", () => {
     const { db, host, project } = setup();
     const now = Date.now();
 
-    function createDestroyedEnvironmentWithThread(path: string, updatedAt: number) {
+    function createDestroyedEnvironmentWithThread(
+      path: string,
+      updatedAt: number,
+    ) {
       const environment = createEnvironment(db, noopNotifier, {
         projectId: project.id,
         hostId: host.id,
@@ -922,7 +956,10 @@ describe("pruneDestroyedEnvironments", () => {
     });
     expect(result).toEqual({ deleted: 1 });
 
-    const environmentPointer = (table: typeof threads | typeof events, id: string) =>
+    const environmentPointer = (
+      table: typeof threads | typeof events,
+      id: string,
+    ) =>
       db
         .select({ environmentId: table.environmentId })
         .from(table)
@@ -931,10 +968,18 @@ describe("pruneDestroyedEnvironments", () => {
 
     expect(environmentPointer(threads, stale.thread.id)).toBeNull();
     expect(environmentPointer(events, stale.eventId)).toBeNull();
-    expect(environmentPointer(threads, fresh.thread.id)).toBe(fresh.environment.id);
-    expect(environmentPointer(events, fresh.eventId)).toBe(fresh.environment.id);
+    expect(environmentPointer(threads, fresh.thread.id)).toBe(
+      fresh.environment.id,
+    );
+    expect(environmentPointer(events, fresh.eventId)).toBe(
+      fresh.environment.id,
+    );
     expect(
-      db.select({ id: environments.id }).from(environments).all().map((row) => row.id),
+      db
+        .select({ id: environments.id })
+        .from(environments)
+        .all()
+        .map((row) => row.id),
     ).toEqual([fresh.environment.id]);
   });
 });

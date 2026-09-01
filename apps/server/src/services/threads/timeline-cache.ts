@@ -15,10 +15,6 @@ interface ThreadTimelineCache {
     key: string,
     build: () => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
-  /**
-   * Like getOrBuild for asynchronous builds. Concurrent callers for the same
-   * key share one in-flight build instead of each starting their own.
-   */
   getOrBuildAsync(
     key: string,
     build: () => Promise<ThreadTimelineResponse>,

@@ -1790,15 +1790,11 @@ describe("public thread data routes", () => {
       if (!turnRow) {
         throw new Error("Expected a turn row");
       }
-      // The summary row owns the whole turn; no transport window clamps it.
       expect(turnRow.sourceSeqStart).toBe(1);
-      expect(
-        timeline.rows.filter((row) => row.kind === "turn"),
-      ).toHaveLength(1);
+      expect(timeline.rows.filter((row) => row.kind === "turn")).toHaveLength(
+        1,
+      );
 
-      // The exact-range details resource refuses a range this large even
-      // with capped outputs; oversized turns hydrate through the paginated
-      // turn-details resource instead.
       const detailsResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
       );

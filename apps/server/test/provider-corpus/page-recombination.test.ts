@@ -1,13 +1,3 @@
-/**
- * The pagination invariant: walking every timeline summary page of a thread
- * and concatenating the results (oldest → newest) must exactly equal the
- * unpaginated projection, for any segment limit. Limits may only change how
- * many requests a walk takes, never what the combined result is.
- *
- * The reference build uses an effectively unlimited segment limit. Pages are
- * slices of the same canonical projection, so this holds by construction;
- * this gate keeps it that way.
- */
 import {
   corpusAvailable,
   listCorpusThreads,
@@ -66,10 +56,14 @@ function describeIdMismatch(
   }
   const parts: string[] = [];
   if (missing.length > 0) {
-    parts.push(`missing rows: ${missing.slice(0, 8).join(", ")}${missing.length > 8 ? ` … ${missing.length - 8} more` : ""}`);
+    parts.push(
+      `missing rows: ${missing.slice(0, 8).join(", ")}${missing.length > 8 ? ` … ${missing.length - 8} more` : ""}`,
+    );
   }
   if (extra.length > 0) {
-    parts.push(`extra/duplicated rows: ${extra.slice(0, 8).join(", ")}${extra.length > 8 ? ` … ${extra.length - 8} more` : ""}`);
+    parts.push(
+      `extra/duplicated rows: ${extra.slice(0, 8).join(", ")}${extra.length > 8 ? ` … ${extra.length - 8} more` : ""}`,
+    );
   }
   if (parts.length === 0) {
     parts.push(
@@ -122,13 +116,9 @@ describe.skipIf(!available)("timeline page recombination", () => {
           variant: "default",
           page: { kind: "latest", segmentLimit: UNLIMITED_SEGMENT_LIMIT },
         });
-        // Every thread must have an unpaginated reference: nothing may cap
-        // the canonical projection.
         expect(reference.response.timelinePage.hasOlderRows).toBe(false);
         const referenceRows = normalizeJson(reference.response.rows);
 
-        // The cooperative (yielding) build must produce the same rows as the
-        // synchronous one; it only differs in scheduling.
         const cooperative = await buildRouteTimelinePageCooperatively({
           db: loaded.db,
           registry,

@@ -205,11 +205,6 @@ export function prependOlderTimelineRows({
   return rows;
 }
 
-/**
- * Combines forward detail pages into the logical rows they represent. A
- * delegation can span page boundaries, so each page may project the same
- * delegation shell with a different bounded set of children.
- */
 export function mergeTimelineTurnDetailPages(
   pages: readonly (readonly TimelineRow[])[],
 ): TimelineRow[] {
@@ -244,16 +239,11 @@ export function mergeTimelineTurnDetailPages(
                 : Math.max(existing.completedAt, row.completedAt),
           createdAt: Math.min(existing.createdAt, row.createdAt),
           sourceSeqEnd: Math.max(existing.sourceSeqEnd, row.sourceSeqEnd),
-          sourceSeqStart: Math.min(
-            existing.sourceSeqStart,
-            row.sourceSeqStart,
-          ),
+          sourceSeqStart: Math.min(existing.sourceSeqStart, row.sourceSeqStart),
           startedAt: Math.min(existing.startedAt, row.startedAt),
         };
         continue;
       }
-      // Whole-item ownership makes the later page authoritative for ordinary
-      // rows whose lifecycle context caused the same id to appear twice.
       rows[existingIndex] = row;
     }
   }

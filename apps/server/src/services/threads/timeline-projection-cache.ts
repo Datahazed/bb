@@ -1,15 +1,5 @@
 import type { ThreadTimelineFromEventsResult } from "@bb/thread-view";
 
-/**
- * Memoizes the canonical timeline projection per thread.
- *
- * The summary timeline projects the whole thread and pages by slicing the
- * projected rows, so one build serves every page, the delta path, and
- * repeated polls of an idle thread. Entries are keyed by the newest stored
- * event's id: appends change the tip, and suffix replacement (edit-message /
- * fork truncation) can reuse sequence numbers but never event ids, so a
- * stale entry can never be served.
- */
 const MAX_ENTRIES = 64;
 
 export interface CachedTimelineProjection {
@@ -79,18 +69,15 @@ export function setCachedTimelineProjection(
   }
 }
 
-/**
- * Appends, suffix replacement, and pruning invalidate naturally through the
- * tip-id + event-count key. Sweeps that rewrite stored events in place
- * (completed-output truncation) must clear the affected threads instead.
- */
 export function clearTimelineProjectionCacheForThreads(
   threadIds: readonly string[],
 ): void {
   if (threadIds.length === 0) {
     return;
   }
-  const prefixes = threadIds.map((threadId) => JSON.stringify([threadId]).slice(0, -1) + ",");
+  const prefixes = threadIds.map(
+    (threadId) => JSON.stringify([threadId]).slice(0, -1) + ",",
+  );
   for (const key of [...entries.keys()]) {
     if (prefixes.some((prefix) => key.startsWith(prefix))) {
       entries.delete(key);

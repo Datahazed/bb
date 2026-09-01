@@ -1,18 +1,4 @@
 #!/usr/bin/env -S pnpm exec tsx
-/**
- * Extracts a provider corpus (manifest.json, profile.json,
- * threads/<provider>/<threadId>/{meta.json,events.ndjson}) from a bb.db
- * copy, in the format `@bb/test-helpers` reads. Point it at a *copy* of a
- * production database, never the live `~/.bb/bb.db`.
- *
- * Every extracted thread is validated through the real corpus reader
- * (`loadCorpusThread`), which decodes each event with
- * `parseStoredThreadEvent`. Threads that fail validation are removed from
- * the manifest and reported, so the emitted corpus always loads cleanly.
- *
- *   pnpm exec tsx scripts/provider-corpus/extract-corpus.ts \
- *     --db ~/.bb-dev/prod-copy/bb.db --out ~/.bb-dev/provider-corpus
- */
 import fs from "node:fs";
 import path from "node:path";
 import { createConnection } from "../../packages/db/src/index.js";
@@ -109,14 +95,11 @@ const selectEvents = db.prepare(
     ORDER BY sequence`,
 );
 
-// Preserve snapshots/ (row + perf baselines) across re-extractions.
 fs.rmSync(path.join(args.out, "threads"), { recursive: true, force: true });
 fs.rmSync(path.join(args.out, "manifest.json"), { force: true });
 fs.rmSync(path.join(args.out, "profile.json"), { force: true });
 fs.mkdirSync(path.join(args.out, "threads"), { recursive: true });
 
-// The perf gate (timeline-perf.test.ts) measures threads tagged "largest":
-// the 10 highest-event threads per provider, matching the original corpus.
 const LARGEST_PER_PROVIDER = 10;
 const eventCounts = new Map<string, number>(
   (
@@ -157,7 +140,12 @@ const manifestThreads: ManifestThread[] = [];
 let totalEvents = 0;
 for (const thread of threadRows) {
   const events = selectEvents.all(thread.id) as EventRow[];
-  const threadDir = path.join(args.out, "threads", thread.provider_id, thread.id);
+  const threadDir = path.join(
+    args.out,
+    "threads",
+    thread.provider_id,
+    thread.id,
+  );
   fs.mkdirSync(threadDir, { recursive: true });
   const dataBytes = events.reduce(
     (sum, event) => sum + Buffer.byteLength(event.data),

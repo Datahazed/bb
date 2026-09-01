@@ -1,10 +1,16 @@
-import { getThread, listStoredThreadEventExtents } from "@bb/db";
+import {
+  getLatestStoredEventTip,
+  getLatestThreadSequence,
+  getThread,
+  listThreadIds,
+} from "@bb/db";
 import type { AppDeps } from "../../types.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
 import {
   buildThreadTimelineCooperatively,
   hasFreshPersistedTimelineProjection,
   LARGE_THREAD_MIN_EVENT_COUNT,
+  yieldToEventLoop,
 } from "./timeline.js";
 import { resolveSummaryTimelineBuildOptions } from "./timeline-build-options.js";
 
@@ -13,40 +19,35 @@ type WarmupDeps = Pick<
   "config" | "db" | "logger" | "providerRegistry"
 >;
 
-/**
- * Builds (and, for settled threads, persists) the default summary projection
- * of one thread with the same options the timeline route uses, so the next
- * request finds it cached instead of paying the cold build.
- */
 export async function warmThreadTimeline(
   deps: WarmupDeps,
   threadId: string,
+  cooperative: { forceRebuild?: boolean } = {},
 ): Promise<void> {
+  await deps.providerRegistry.whenRegistrationsSettled();
   const thread = getThread(deps.db, threadId);
   if (!thread) {
     return;
   }
   const options = resolveSummaryTimelineBuildOptions(deps, thread);
-  if (hasFreshPersistedTimelineProjection(deps.db, thread, options)) {
+  if (
+    !cooperative.forceRebuild &&
+    hasFreshPersistedTimelineProjection(deps.db, thread, options)
+  ) {
     return;
   }
   await runEventLoopWork(`timeline-warmup ${threadId}`, () =>
-    buildThreadTimelineCooperatively(deps.db, thread, options),
+    buildThreadTimelineCooperatively(deps.db, thread, options, cooperative),
   );
 }
 
-/**
- * Re-projects the given threads one after another, off the request path.
- * Used after sweeps that rewrite stored events in place, which invalidate
- * the threads' cached and persisted projections.
- */
-export async function warmThreadTimelines(
+export async function rebuildThreadTimelines(
   deps: WarmupDeps,
   threadIds: readonly string[],
 ): Promise<void> {
   for (const threadId of threadIds) {
     try {
-      await warmThreadTimeline(deps, threadId);
+      await warmThreadTimeline(deps, threadId, { forceRebuild: true });
     } catch (error) {
       deps.logger.warn(
         { err: error, threadId },
@@ -56,30 +57,50 @@ export async function warmThreadTimelines(
   }
 }
 
-/**
- * Projects every large thread once after startup, largest first, so the
- * first open of a big thread after a restart or upgrade is served from the
- * persisted projection. Each build yields to the event loop between slices.
- */
-export async function warmLargeThreadTimelines(deps: WarmupDeps): Promise<void> {
-  const extents = listStoredThreadEventExtents(deps.db, {
-    minEventCount: LARGE_THREAD_MIN_EVENT_COUNT,
-  });
-  let warmed = 0;
+async function listLargeThreadIds(deps: WarmupDeps): Promise<string[]> {
+  const candidates: { eventCount: number; threadId: string }[] = [];
+  let probed = 0;
+  for (const threadId of listThreadIds(deps.db)) {
+    if (
+      getLatestThreadSequence(deps.db, { threadId }) <
+      LARGE_THREAD_MIN_EVENT_COUNT
+    ) {
+      continue;
+    }
+    const tip = getLatestStoredEventTip(deps.db, { threadId });
+    if (tip !== null && tip.eventCount >= LARGE_THREAD_MIN_EVENT_COUNT) {
+      candidates.push({ eventCount: tip.eventCount, threadId });
+    }
+    probed += 1;
+    if (probed % 10 === 0) {
+      await yieldToEventLoop();
+    }
+  }
+  return candidates
+    .sort((a, b) => b.eventCount - a.eventCount)
+    .map((candidate) => candidate.threadId);
+}
+
+export async function warmLargeThreadTimelines(
+  deps: WarmupDeps,
+): Promise<void> {
   const startedAt = Date.now();
-  for (const extent of extents) {
+  await deps.providerRegistry.whenRegistrationsSettled();
+  const threadIds = await listLargeThreadIds(deps);
+  let warmed = 0;
+  for (const threadId of threadIds) {
     try {
-      await warmThreadTimeline(deps, extent.threadId);
+      await warmThreadTimeline(deps, threadId);
       warmed += 1;
     } catch (error) {
       deps.logger.warn(
-        { err: error, threadId: extent.threadId },
+        { err: error, threadId },
         "Timeline warmup failed for thread",
       );
     }
   }
   deps.logger.info(
-    { candidates: extents.length, warmed, durationMs: Date.now() - startedAt },
+    { candidates: threadIds.length, warmed, durationMs: Date.now() - startedAt },
     "Timeline warmup finished",
   );
 }

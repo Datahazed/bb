@@ -118,7 +118,6 @@ describe("paginateTimelineRows", () => {
       collected.push(page.rows);
     }
 
-    // The prelude segment before the first user anchor stays reachable.
     expect(collected.length).toBe(3);
     expect(collected.reverse().flat()).toEqual(rows);
   });

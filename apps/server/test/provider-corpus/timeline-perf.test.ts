@@ -199,22 +199,24 @@ function measureCorpusThread(
   const corpusThread = loadCorpusThread(threadId);
   const loaded = loadCorpusThreadIntoDb(corpusThread);
   try {
-    const samples = sample((): InterleavedSample => ({
-      calibrationMs: runCalibrationWorkload(),
-      latest: buildRouteTimelinePage({
-        db: loaded.db,
-        page: latestTimelinePage(),
-        registry,
-        thread: loaded.thread,
-        variant: "default",
+    const samples = sample(
+      (): InterleavedSample => ({
+        calibrationMs: runCalibrationWorkload(),
+        latest: buildRouteTimelinePage({
+          db: loaded.db,
+          page: latestTimelinePage(),
+          registry,
+          thread: loaded.thread,
+          variant: "default",
+        }),
+        walk: buildAllRouteTimelinePages({
+          db: loaded.db,
+          registry,
+          thread: loaded.thread,
+          variant: "default",
+        }),
       }),
-      walk: buildAllRouteTimelinePages({
-        db: loaded.db,
-        registry,
-        thread: loaded.thread,
-        variant: "default",
-      }),
-    }));
+    );
     const latestSamples = samples.map((entry) => entry.latest);
     const walkSamples = samples.map((entry) => entry.walk);
     const latestStageP50Ms: Record<string, number> = {};

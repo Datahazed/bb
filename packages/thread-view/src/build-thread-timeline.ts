@@ -1346,10 +1346,6 @@ function toProjectionOptions(
   };
 }
 
-/**
- * Projects the thread in slices, awaiting `cooperative.yield` between them,
- * and assembles the same result as buildThreadTimelineFromEvents.
- */
 export async function buildThreadTimelineFromEventsCooperatively(
   args: BuildThreadTimelineFromEventsArgs,
   cooperative: CooperativeProjectionOptions,
@@ -1365,7 +1361,10 @@ export async function buildThreadTimelineFromEventsCooperatively(
 export function buildThreadTimelineFromEvents(
   args: BuildThreadTimelineFromEventsArgs,
 ): ThreadTimelineFromEventsResult {
-  const projection = buildEventProjection(args.events, toProjectionOptions(args));
+  const projection = buildEventProjection(
+    args.events,
+    toProjectionOptions(args),
+  );
   return assembleThreadTimeline(args, projection);
 }
 
@@ -1373,7 +1372,6 @@ function assembleThreadTimeline(
   args: BuildThreadTimelineFromEventsArgs,
   projection: EventProjection,
 ): ThreadTimelineFromEventsResult {
-
   const rows = [
     ...buildTimelineRows(projection, {
       includeNestedRows: args.options.includeNestedRows,
@@ -1471,10 +1469,6 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   };
 }
 
-/**
- * Projects one server-selected detail page. Unlike exact-range hydration, a
- * page need not coincide with the source bounds of a summary row.
- */
 export function buildThreadTimelineTurnDetailPageFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): TimelineRow[] {
@@ -1483,8 +1477,6 @@ export function buildThreadTimelineTurnDetailPageFromEvents(
     row.kind === "turn" ? (row.children ?? []) : [],
   );
   if (nestedRows.some((row) => row.kind === "turn")) {
-    // Terminal assistant replies and human steers are root-owned siblings of
-    // a completed summary, not children of the expanded "Worked for…" row.
     return turnChildren;
   }
   return nestedRows.filter((row) => !isRootOwnedHumanSteerRow(row));

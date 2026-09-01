@@ -80,7 +80,6 @@ function backgroundTaskData(status: "pending" | "completed"): string {
 }
 
 interface SeedOptions {
-  /** Emit an assistant message before this item in the last turn. */
   assistantBeforeItem?: number;
   backgroundTask?: "open" | "completed";
   delegateLastTurn?: boolean;
@@ -797,7 +796,6 @@ describe("in-turn timeline windows", () => {
       ),
     ).toBe(true);
   });
-
 });
 
 describe("timeline segment anchors", () => {

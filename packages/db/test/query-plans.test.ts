@@ -695,7 +695,9 @@ describe("slow query index plans", () => {
     const scanDebugLogs = logger.debugLogs.filter(
       (debugLog) =>
         debugLog.fields.operation === "all" &&
-        debugLog.fields.sql.startsWith("SELECT id, created_at, thread_id FROM events") &&
+        debugLog.fields.sql.startsWith(
+          "SELECT id, created_at, thread_id FROM events",
+        ) &&
         debugLog.fields.sql.includes("ORDER BY created_at, id") &&
         debugLog.fields.bindingArgumentCount === 6,
     );
@@ -889,9 +891,10 @@ describe("slow query index plans", () => {
   it("drops redundant events indexes after creating their consolidated replacement", () => {
     const { db } = setup();
     const indexRows = db.$client
-      .prepare<[], IndexNameRow>(
-        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'events'",
-      )
+      .prepare<
+        [],
+        IndexNameRow
+      >("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'events'")
       .all();
     const indexNames = indexRows.map((row) => row.name);
 

@@ -107,7 +107,6 @@ function parseServerBindHostEnvValue(args: EnvVarParseArgs): ServerBindHost {
   return parseServerBindHost(args.value);
 }
 
-
 function parseRequiredUrlEnvValue(args: EnvVarParseArgs): string {
   return validateRequiredUrl(args.name, args.value);
 }

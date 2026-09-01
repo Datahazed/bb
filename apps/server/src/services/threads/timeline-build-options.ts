@@ -26,11 +26,6 @@ export function resolveIncludeProviderUnhandledOperations(
   );
 }
 
-/**
- * The exact options the timeline route uses for a default summary page, so
- * a projection built ahead of time (warmup, refresh on settle) is keyed
- * identically and the route finds it.
- */
 export function resolveSummaryTimelineBuildOptions(
   deps: TimelineBuildOptionDeps,
   thread: Thread,

@@ -89,7 +89,6 @@ import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
-
 function validateFilePath(filePath: string): void {
   if (
     filePath.startsWith("/") ||
@@ -309,6 +308,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES = 128;
 
   get(routes.timeline, async (context, query) => {
+    await deps.providerRegistry.whenRegistrationsSettled();
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";

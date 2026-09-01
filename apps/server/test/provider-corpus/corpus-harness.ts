@@ -181,7 +181,10 @@ function routeBuildOptions(args: BuildRouteTimelinePageArgs) {
 
 function finishRouteTimelinePage(
   includeNestedRows: boolean,
-  built: { profile: ThreadTimelineBuildProfile; response: ThreadTimelineResponse },
+  built: {
+    profile: ThreadTimelineBuildProfile;
+    response: ThreadTimelineResponse;
+  },
 ): BuiltTimelinePage {
   const truncated = truncateTimelineResponseOutputs(
     built.response,
@@ -205,7 +208,6 @@ export function buildRouteTimelinePage(
   );
 }
 
-/** The route's cooperative (yielding) build; must equal buildRouteTimelinePage. */
 export async function buildRouteTimelinePageCooperatively(
   args: BuildRouteTimelinePageArgs,
 ): Promise<BuiltTimelinePage> {

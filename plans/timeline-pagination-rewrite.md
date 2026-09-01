@@ -61,54 +61,95 @@ windows beat the memoized build, that is a gate failure and the PR does not
 land; the durable-projection follow-up (below) slots in behind the same seam
 without changing the pagination model.
 
-## Outcome (measured 2026-08-31, 1,132-thread production copy)
+## Outcome (measured 2026-08-31/09-01, 1,132-thread production copy)
 
 Correctness: recombination gate 1,132/1,132 across segment limits
 {1, 2, 3, 8, 20} (main: 21 failing, 54 unreferenceable). Row diff vs main:
 995 threads byte-identical, every change on the other 137 classified into
 named fix classes; full corpus gate green (2,319 tests).
 
-Performance (live servers, same machine/DB copy, Connect stripped):
+Performance (live servers, same machine/DB copy, Connect stripped; branch
+measured after a restart with persisted projections and startup warmup):
 
-| path | main | branch, first build ever | branch, after restart (persisted) |
+| path | main | branch (persisted projections + startup warmup) |
+|---|---:|---:|
+| first request per thread (cold) p50 | 15.4 ms | 8.1 ms |
+| first request per thread (cold) p95 | 47.1 ms | 23.4 ms |
+| first request per thread (cold) p99 | 100.7 ms | 34.4 ms |
+| first request per thread (cold) max | 349.1 ms | 120.6 ms |
+| repeat request (warm) p50 | 2.7 ms | 2.2 ms |
+| repeat request (warm) p95 | 8.0 ms | 7.1 ms |
+| repeat request (warm) p99 | 33.4 ms | 12.4 ms |
+| repeat request (warm) max | 718.0 ms | 19.7 ms |
+| full older-page walk p50 | 15.9 ms | 8.3 ms |
+| full older-page walk p95 | 103.8 ms | 24.1 ms |
+| full older-page walk p99 | 349.1 ms | 39.7 ms |
+| full older-page walk max | 4605.2 ms | 293.6 ms |
+
+| stress thread | events | main cold | branch (persisted + warmup) |
 |---|---:|---:|---:|
-| cold p50 / p95 / p99 / max | 15.4 / 47.1 / 100.7 / 349 ms | 10.3 / 49.2 / 147 / 1,126 ms | 7.4 / 18.1 / 36.9 / 317 ms |
-| warm p50 / p95 / p99 / max | 2.7 / 8.0 / 33.4 / 718 ms | 2.3 / 3.7 / 9.0 / 31 ms | 2.2 / 3.7 / 9.5 / 84 ms |
-| full walk p50 / p95 / p99 / max | 15.9 / 104 / 349 / 4,605 ms | 10.3 / 49 / 153 / 1,181 ms | 7.6 / 19 / 44 / 317 ms |
-| 64k-event stress thread, cold | 41 ms | 1,082 ms | 11 ms |
+| `thr_cdfq9maj8q` | 63,853 | 41 ms | 14 ms |
+| `thr_gcuc46ug4j` | 42,033 | 144 ms | 6 ms |
+| `thr_m9gz6riv9t` | 32,384 | 9 ms | 6 ms |
+| `thr_59j74ttj6b` | 31,716 | 52 ms | 6 ms |
 
-Every steady-state and post-restart path beats main; the only cost above
-main is each large thread's first-ever build (paid once, then persisted).
-Mechanisms: canonical-projection cache (tip id + event count), persisted
-projections for settled threads ≥1,000 relevant rows (app-version keyed,
-per-thread sweep invalidation), and a cost-proportional refresh throttle for
-streaming rebuilds. The in-memory fold checkpoint from the original plan was
-not built: the projection is non-causal (request→acceptance lookahead), so
-true incrementality is the durable-reducer follow-up, and the throttle bounds
-the event loop until then.
+Every path beats main, including the worst thread. Mechanisms:
+canonical-projection cache (tip id + event count), persisted projections for
+settled threads with ≥1,000 stored events (app-version + options key,
+tip identity as columns), startup warmup after provider registrations
+settle, re-projection when a thread settles, background rebuild after
+in-place sweeps, and a cost-proportional refresh throttle for streaming
+rebuilds. The in-memory fold checkpoint from the original plan was not
+built: the projection is non-causal, so true incrementality is the
+durable-reducer follow-up, and the throttle bounds the event loop until then.
 
 ## Cold-build revision (after the "unacceptable" review)
 
 Measured on the 64k-event thread: SQL read 3.4 s of 83 MB when the OS cache
-is cold (0.3 s at a 2k output cap, but previews need the true tail and total
-length, so a lower cap is not byte-identical), decode 0.3 s, projection
-0.6 s of which the phase‑1 fold is 85–95%; grouping/normalize/rows ≤60 ms.
+is cold, decode 0.3 s, projection 0.6 s of which the phase‑1 fold is 85–95%.
 A deep read of the projection showed it is pervasively non-local (later
 events rewrite earlier messages by callId, thread-scoped lifecycle merges,
 delegations absorb later turns via a never-cleared provider-thread link,
-compaction flips at 1,000 deltas), so freezing a prefix is unsound without
-~20 conditions real subagent threads never satisfy; true incrementality is
-the reducer rewrite, still the follow-up.
+compaction flips at 1,000 deltas), so freezing a prefix is unsound; true
+incrementality is the reducer rewrite, still the follow-up.
 
 What ships instead: the fold body is a per-event function with a
 cooperative driver (`buildThreadTimelineFromEventsCooperatively`), verified
 byte-identical to the synchronous build on real threads and by the corpus
-gate; the route builds cooperatively (chunked read/decode, yields every 500
-events, in-flight dedupe, tip re-verification against suffix replacement),
-so no build blocks the loop beyond one slice; threads ≥1,000 events are
-projected at startup (largest first) and re-projected when they settle, so
-their first open is served from the persisted projection. The projection
-table became `thread_timeline_checkpoints` with the tip identity as columns.
+gate; the route builds cooperatively (250-row read/decode chunks, yields
+every 500 events, in-flight dedupe, tip re-verification against suffix
+replacement), so no build blocks the loop beyond one slice; threads with
+≥1,000 events are projected at startup (largest first) and re-projected
+when they settle, so their first open is served from the persisted
+projection. The projection table became `thread_timeline_checkpoints`.
+
+Three defects found only by the live checks, all fixed:
+
+- Startup warmup ran before provider plugins registered, so it keyed every
+  projection on a null provider name; the route (registry populated) missed
+  all of them and rebuilt on the request path, then warmup rebuilt again on
+  the next start. Warmup now starts after `markRegistrationsSettled()`, and
+  the route awaits `whenRegistrationsSettled()` so a request during the
+  first seconds after a restart cannot build or persist under an unsettled
+  key. The persisted lookup is what caught it: the debug trace showed the
+  warmup-written key `[..., "null", null, ...]` against the route's
+  `[..., "{plan…}", "Claude Code", ...]`.
+- Candidate discovery was one `GROUP BY thread_id` over the whole events
+  table: 1.56 s synchronous at startup. It is now a per-thread indexed probe
+  (`max(sequence) ≥ 1,000`, then exact count only for those), yielding every
+  10 threads.
+- The completed-output truncation sweep invalidated every large thread it
+  touched, so the next open paid a full build. Retention truncation only
+  changes output previews, so the sweep now keeps serving the existing
+  projection and rebuilds it in the background (`rebuildThreadTimelines`,
+  forced past the freshness check); nothing pays on the request path.
+
+Residual: a request for a large thread that lands during the startup
+warmup window, before warmup reaches it, starts (or joins) the cooperative
+build itself — measured 4.2 s wall for the 64k-event thread while the loop
+stayed responsive (ping p99 58 ms). On the production copy the whole warmup
+takes ~30 s on a cold start and ~1 s on later restarts (all 253 projections
+fresh).
 
 ## Design principle
 
