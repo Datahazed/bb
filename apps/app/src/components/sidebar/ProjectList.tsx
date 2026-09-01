@@ -1405,6 +1405,7 @@ function ProjectModeSections({
       content: (
         <ProjectThreadTree
           projectId={PERSONAL_PROJECT_ID}
+          rootDepth={0}
           threadListState={getProjectThreadListState({
             status,
             threads: personalThreads,
@@ -1734,6 +1735,7 @@ export function MachineModeSections({
       collapsedThreads: nonPinnedThreads,
       content: (
         <ProjectThreadTree
+          rootDepth={0}
           threadListState={allThreadsListState}
           compareThreads={compareThreads}
           variant="section"
@@ -1785,6 +1787,7 @@ export function MachineModeSections({
             consumeClickSuppression={consumeClickSuppression}
           >
             <ProjectThreadTree
+              rootDepth={1}
               threadListState={section.threadListState}
               compareThreads={compareThreads}
               variant="section"
