@@ -49,7 +49,6 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
-import { SidebarTopRegionCustomizeMenu } from "./SidebarTopRegionCustomizeMenu";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -207,6 +206,7 @@ export function AppSidebar({
       isCreatingProject={quickCreateProject.isCreating}
     />
   );
+
   const body = (
     <>
       {showTopReserve ? (
@@ -218,21 +218,15 @@ export function AppSidebar({
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
           )}
         >
-          <div
+          <SidebarHistoryNavigationControls
+            onNavigate={closeOnMobile}
             className={cn(
-              "flex items-center gap-1 group-data-[collapsible=icon]:hidden",
+              "group-data-[collapsible=icon]:hidden",
               usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
             )}
-          >
-            <SidebarHistoryNavigationControls onNavigate={closeOnMobile} />
-            <SidebarTopRegionCustomizeMenu />
-          </div>
+          />
         </div>
-      ) : (
-        <div className="flex h-8 shrink-0 items-center justify-end px-2 group-data-[collapsible=icon]:hidden">
-          <SidebarTopRegionCustomizeMenu />
-        </div>
-      )}
+      ) : null}
       <SidebarNavigationRegion
         onNavigate={closeOnMobile}
         splitEnabled
@@ -240,11 +234,6 @@ export function AppSidebar({
         newThreadSplit={newThreadSplit}
         onNewChat={handleNewChat}
         onSearchThreads={closeOnMobile}
-      />
-      <div
-        aria-hidden="true"
-        data-sidebar-navigation-divider="threads"
-        className="mx-2 h-px shrink-0 bg-sidebar-border"
       />
       <SidebarContent>
         <PluginThreadList

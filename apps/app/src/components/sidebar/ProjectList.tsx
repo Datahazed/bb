@@ -157,23 +157,15 @@ interface ProjectListProps {
   isCreatingProject?: boolean;
 }
 
-interface ProjectListNewThreadActionProps {
+interface ProjectListActionButtonsProps {
   splitEnabled?: boolean;
   newThreadSplit?: {
     onPointerDown?: PointerEventHandler<HTMLElement>;
     openInSplit(): void;
   };
   onNewChat?: () => void;
-}
-
-interface ProjectListSearchThreadsActionProps {
   onSearchThreads?: () => void;
 }
-
-interface ProjectListActionButtonsProps
-  extends
-    ProjectListNewThreadActionProps,
-    ProjectListSearchThreadsActionProps {}
 
 interface ProjectListShellProps {
   children: ReactNode;
@@ -219,6 +211,11 @@ export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
+);
+
+const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
+  "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
@@ -757,103 +754,79 @@ function ProjectListNavigationLoadingRow({
   );
 }
 
-export function ProjectListNewThreadAction({
-  splitEnabled = false,
-  newThreadSplit,
-  onNewChat,
-}: ProjectListNewThreadActionProps) {
-  const isNewChatDisabled = !onNewChat;
-  const newThreadShortcut = useAppCommandShortcut("thread.new");
-  const newThreadSplitIndicator = usePaneContentSplitIndicator(
-    { kind: "new-thread" },
-    splitEnabled,
-  );
-
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-      onPointerDown={newThreadSplit?.onPointerDown}
-      onClick={(event) => {
-        if (event.metaKey || event.ctrlKey) {
-          newThreadSplit?.openInSplit();
-          return;
-        }
-        onNewChat?.();
-      }}
-      disabled={isNewChatDisabled}
-      aria-label={
-        newThreadShortcut
-          ? `New thread (${newThreadShortcut.label})`
-          : "New thread"
-      }
-      aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
-    >
-      <Icon name="MessageSquarePlus" />
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-left">New thread</span>
-        {newThreadSplitIndicator.miniMap ? (
-          <SplitPaneMiniMap
-            slots={newThreadSplitIndicator.miniMap}
-            label="New thread — open in split"
-          />
-        ) : null}
-        <AppCommandShortcutHint shortcut={newThreadShortcut} />
-      </span>
-    </Button>
-  );
-}
-
-export function ProjectListSearchThreadsAction({
-  onSearchThreads,
-}: ProjectListSearchThreadsActionProps) {
-  const commandRunner = useAppCommandRunner();
-  const threadSearchShortcut = useAppCommandShortcut("thread.search");
-
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-      onClick={(event) => {
-        onSearchThreads?.();
-        commandRunner.dispatch("thread.search", event.currentTarget);
-      }}
-      aria-label={
-        threadSearchShortcut
-          ? `Search threads (${threadSearchShortcut.label})`
-          : "Search threads"
-      }
-      aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
-    >
-      <Icon name="Search" />
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-left">
-          Search threads
-        </span>
-        <AppCommandShortcutHint shortcut={threadSearchShortcut} />
-      </span>
-    </Button>
-  );
-}
-
 export function ProjectListActionButtons({
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
   onSearchThreads,
 }: ProjectListActionButtonsProps) {
+  const commandRunner = useAppCommandRunner();
+  const isNewChatDisabled = !onNewChat;
+  const newThreadShortcut = useAppCommandShortcut("thread.new");
+  const threadSearchShortcut = useAppCommandShortcut("thread.search");
+  const newThreadSplitIndicator = usePaneContentSplitIndicator(
+    { kind: "new-thread" },
+    splitEnabled,
+  );
+
   return (
     <div className="space-y-1">
-      <ProjectListNewThreadAction
-        splitEnabled={splitEnabled}
-        newThreadSplit={newThreadSplit}
-        onNewChat={onNewChat}
-      />
-      <ProjectListSearchThreadsAction onSearchThreads={onSearchThreads} />
+      <div className="flex min-w-0 items-center gap-0.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
+          onPointerDown={newThreadSplit?.onPointerDown}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey) {
+              newThreadSplit?.openInSplit();
+              return;
+            }
+            onNewChat?.();
+          }}
+          disabled={isNewChatDisabled}
+          aria-label={
+            newThreadShortcut
+              ? `New thread (${newThreadShortcut.label})`
+              : "New thread"
+          }
+          aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+        >
+          <Icon name="MessageSquarePlus" />
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="min-w-0 truncate text-left">New thread</span>
+            {newThreadSplitIndicator.miniMap ? (
+              <SplitPaneMiniMap
+                slots={newThreadSplitIndicator.miniMap}
+                label="New thread — open in split"
+              />
+            ) : null}
+            <AppCommandShortcutHint shortcut={newThreadShortcut} />
+          </span>
+        </Button>
+        <span className="flex shrink-0 items-center gap-1">
+          <AppCommandShortcutHint shortcut={threadSearchShortcut} />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label={
+              threadSearchShortcut
+                ? `Search threads (${threadSearchShortcut.label})`
+                : "Search threads"
+            }
+            aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
+            className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+            onClick={(event) => {
+              onSearchThreads?.();
+              commandRunner.dispatch("thread.search", event.currentTarget);
+            }}
+          >
+            <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+          </Button>
+        </span>
+      </div>
     </div>
   );
 }

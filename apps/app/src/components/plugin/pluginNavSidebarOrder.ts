@@ -10,16 +10,19 @@ export function getPluginNavPanelKey(panel: PluginNavPanelIdentity): string {
 interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
   panels: readonly TPanel[];
   storedOrder: readonly string[];
+  hiddenKeys: readonly string[];
 }
 
 interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
-  ordered: TPanel[];
+  visible: TPanel[];
+  hidden: TPanel[];
   normalizedOrder: string[];
 }
 
 export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
   panels,
   storedOrder,
+  hiddenKeys,
 }: ArrangePluginNavPanelsArgs<TPanel>): ArrangedPluginNavPanels<TPanel> {
   const byKey = new Map(
     panels.map((panel) => [getPluginNavPanelKey(panel), panel]),
@@ -42,7 +45,15 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
     ordered.push(panel);
   }
 
-  return { ordered, normalizedOrder };
+  const hiddenSet = new Set(hiddenKeys);
+  const visible: TPanel[] = [];
+  const hidden: TPanel[] = [];
+  for (const panel of ordered) {
+    if (hiddenSet.has(getPluginNavPanelKey(panel))) hidden.push(panel);
+    else visible.push(panel);
+  }
+
+  return { visible, hidden, normalizedOrder };
 }
 
 interface ReorderPluginNavPanelsArgs {
@@ -73,26 +84,28 @@ export function reorderPluginNavPanels({
   );
 }
 
-export function migrateLegacyHiddenPluginNavPanelOrder(
+export function seedLeadingNavPanelKeys(
   order: readonly string[],
-  hiddenKeys: readonly string[],
+  leadingKeys: readonly string[],
 ): string[] {
-  const uniqueOrder = [
-    ...new Set([...order, ...hiddenKeys].filter((key) => key.length > 0)),
-  ];
-  const hidden = new Set(hiddenKeys);
-  return [
-    ...uniqueOrder.filter((key) => !hidden.has(key)),
-    ...uniqueOrder.filter((key) => hidden.has(key)),
-  ];
+  const next = [...order];
+  if (next.length === 0) return next;
+  const missing = leadingKeys.filter((key) => !next.includes(key));
+  return missing.length === 0 ? next : [...missing, ...next];
 }
 
-export function movePluginNavPanelToTop(
-  order: readonly string[],
+export function hidePluginNavPanel(
+  hiddenKeys: readonly string[],
   key: string,
 ): string[] {
-  if (order[0] === key) return [...order];
-  return [key, ...order.filter((candidate) => candidate !== key)];
+  return hiddenKeys.includes(key) ? [...hiddenKeys] : [...hiddenKeys, key];
+}
+
+export function showPluginNavPanel(
+  hiddenKeys: readonly string[],
+  key: string,
+): string[] {
+  return hiddenKeys.filter((hiddenKey) => hiddenKey !== key);
 }
 
 export function havePluginNavPanelOrdersDiverged(

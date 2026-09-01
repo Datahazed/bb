@@ -1336,7 +1336,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
   }
 
-  it("keeps Automations out of the traditional plugin rows", () => {
+  it("keeps the Automations row in the nav list", () => {
     registerAutomationsPanel();
 
     render(
@@ -1345,9 +1345,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Automations" }),
-    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
   });
 
   it("renders a sidebar entry that routes to the plugin panel", () => {

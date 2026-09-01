@@ -1,86 +1,19 @@
 import { atomWithStorage } from "jotai/utils";
-import {
-  createJsonLocalStorage,
-  type SyncStorage,
-} from "@/lib/browser-storage";
-import { AUTOMATIONS_PLUGIN_ID } from "@/lib/route-paths";
-import { migrateLegacyHiddenPluginNavPanelOrder } from "./pluginNavSidebarOrder";
+import { createJsonLocalStorage } from "@/lib/browser-storage";
 
 const PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY = "bb.sidebar.pluginPanelOrder";
 const HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY = "bb.sidebar.hiddenPluginPanels";
 
-function normalizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [
-    ...new Set(
-      value.filter((item): item is string => typeof item === "string"),
-    ),
-  ];
-}
-
-function isAutomationsPanelKey(key: string): boolean {
-  return key.startsWith(`${AUTOMATIONS_PLUGIN_ID}/`);
-}
-
-function preserveLegacyAutomationsHiddenKeys(
-  storage: SyncStorage<unknown>,
-  hiddenKeys: readonly string[],
-): void {
-  const automationsKeys = hiddenKeys.filter(isAutomationsPanelKey);
-  if (automationsKeys.length === 0) {
-    storage.removeItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY);
-  } else {
-    storage.setItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY, automationsKeys);
-  }
-}
-
-function createPluginNavPanelOrderStorage(): SyncStorage<string[]> {
-  const storage = createJsonLocalStorage<unknown>();
-  return {
-    getItem(key, initialValue) {
-      const order = normalizeStringArray(storage.getItem(key, initialValue));
-      const legacyHidden = normalizeStringArray(
-        storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY, []),
-      );
-      const traditionalHidden = legacyHidden.filter(
-        (panelKey) => !isAutomationsPanelKey(panelKey),
-      );
-      if (traditionalHidden.length === 0) return order;
-
-      const migrated = migrateLegacyHiddenPluginNavPanelOrder(
-        order,
-        traditionalHidden,
-      );
-      storage.setItem(key, migrated);
-      preserveLegacyAutomationsHiddenKeys(storage, legacyHidden);
-      return migrated;
-    },
-    setItem(key, value) {
-      storage.setItem(key, normalizeStringArray(value));
-      const legacyHidden = normalizeStringArray(
-        storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY, []),
-      );
-      preserveLegacyAutomationsHiddenKeys(storage, legacyHidden);
-    },
-    removeItem(key) {
-      storage.removeItem(key);
-      const legacyHidden = normalizeStringArray(
-        storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY, []),
-      );
-      preserveLegacyAutomationsHiddenKeys(storage, legacyHidden);
-    },
-    subscribe: (key, callback, initialValue) =>
-      storage.subscribe?.(
-        key,
-        (value) => callback(normalizeStringArray(value)),
-        initialValue,
-      ),
-  };
-}
-
 export const pluginNavPanelOrderAtom = atomWithStorage<string[]>(
   PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY,
   [],
-  createPluginNavPanelOrderStorage(),
+  createJsonLocalStorage<string[]>(),
+  { getOnInit: true },
+);
+
+export const hiddenPluginNavPanelsAtom = atomWithStorage<string[]>(
+  HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
+  [],
+  createJsonLocalStorage<string[]>(),
   { getOnInit: true },
 );

@@ -221,6 +221,17 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
+The "Worktree branch prefix" field in Settings → General sets the text bb puts
+in front of every branch name it creates for a managed worktree or a new
+checkout branch. It defaults to `bb/`, which produces
+`bb/fix-login-flow-thr_ab12cd34ef`. Change it to `sawyer/` to group your branches
+under your own namespace, or clear the field to create
+`fix-login-flow-thr_ab12cd34ef` with no prefix. bb rejects a prefix that cannot
+start a valid git branch name, such as one with a space or a leading `-`, and
+the prefix is at most 64 characters. The prefix applies to branches bb creates
+after you change it; it does not rename an existing branch or worktree. Set it
+with `bb settings general managedBranchPrefix <prefix>`.
+
 Settings → Providers lists every registered agent provider in picker order.
 Move a provider up or down to change the order and choose the default for new
 threads. Both are persisted preferences: `providerOrder` is the list of ids
@@ -233,9 +244,12 @@ provider new threads use when neither the caller nor the project chose one
 
 Each provider's own options live on its plugin: Codex memory and native
 subagents under the Codex provider plugin, Claude Code memory, native
-subagents and the Workflow tool under the Claude Code provider plugin. Read
-and set them like any plugin setting, for example
-`bb plugin config provider-claude-code set workflowsDisabled true`.
+subagents, the Workflow tool, and opt-in idle process release under the Claude
+Code provider plugin. Idle process release closes a quiescent Claude process
+after 30 seconds while keeping its bb thread resumable; it defaults off during
+its bake period and applies on the next start, resume, or turn command. Read and
+set provider options like any plugin setting, for example
+`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a
