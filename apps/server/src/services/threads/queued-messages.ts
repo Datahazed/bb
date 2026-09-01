@@ -6,6 +6,7 @@ import {
   getQueuedThreadMessage,
   getEnvironment,
   getThread,
+  hasUnresumedManualThreadStop,
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
@@ -237,13 +238,15 @@ interface QueuedMessageAutoSendRequestArgs {
 }
 
 function isQueuedMessageAutoSendCandidate(
+  db: DbQueryConnection,
   thread: Thread | null,
 ): thread is Thread {
   return (
     thread !== null &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
-    thread.status !== "stopping"
+    thread.status !== "stopping" &&
+    !hasUnresumedManualThreadStop(db, { threadId: thread.id })
   );
 }
 
@@ -605,7 +608,12 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  if (!isQueuedMessageAutoSendCandidate(getThread(deps.db, args.threadId))) {
+  if (
+    !isQueuedMessageAutoSendCandidate(
+      deps.db,
+      getThread(deps.db, args.threadId),
+    )
+  ) {
     return false;
   }
 
@@ -620,7 +628,7 @@ export async function sendNextQueuedMessageIfPresent(
 
   const thread = getThread(deps.db, args.threadId);
   if (
-    !isQueuedMessageAutoSendCandidate(thread) ||
+    !isQueuedMessageAutoSendCandidate(deps.db, thread) ||
     isManualCompactionActive(deps, thread)
   ) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);

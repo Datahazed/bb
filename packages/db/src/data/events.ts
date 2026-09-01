@@ -1097,6 +1097,10 @@ export interface GetLatestThreadInterruptedReasonArgs {
   threadId: string;
 }
 
+export interface HasUnresumedManualThreadStopArgs {
+  threadId: string;
+}
+
 export interface ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs {
   sequenceCutoff: number;
   threadId: string;
@@ -1899,6 +1903,42 @@ export function getLatestThreadInterruptedReason(
     return null;
   }
   return systemThreadInterruptedReasonSchema.parse(row.reason);
+}
+
+export function hasUnresumedManualThreadStop(
+  db: DbQueryConnection,
+  args: HasUnresumedManualThreadStopArgs,
+): boolean {
+  const latestManualStop = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "system/thread/interrupted"),
+        sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!latestManualStop) {
+    return false;
+  }
+
+  const newerTurnRequest = db
+    .select({ id: events.id })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+        gt(events.sequence, latestManualStop.sequence),
+      ),
+    )
+    .limit(1)
+    .get();
+  return newerTurnRequest === undefined;
 }
 
 export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
