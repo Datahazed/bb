@@ -71,6 +71,10 @@ Making your repo work with bb:
   For files that customize agent instructions and skills (AGENTS.md,
   .bb/AGENTS.md, .bb/skills/), run `bb guide agent-configuration`.
 
+  bb environment list [--project <id>]    List environments that are not destroyed
+  bb environment delete <id>              Record an environment as destroyed after its
+                                          workspace is gone; refused while live threads
+                                          reference it
   bb environment show <id>                Show environment details (path, branch, status)
 
   bb environment status <id>              Show workspace status

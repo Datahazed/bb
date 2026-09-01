@@ -306,6 +306,43 @@ export function registerEnvironmentCommands(
     .description("Inspect and operate on first-class environments");
 
   environment
+    .command("list")
+    .description("List environments that are not destroyed")
+    .option("--project <id>", "Only environments in this project")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (opts: { project?: string; json?: boolean }) => {
+          const sdk = createCliBbSdk(getUrl());
+          const rows = await sdk.environments.list(
+            opts.project ? { projectId: opts.project } : {},
+          );
+          if (outputJson(opts, rows)) return;
+          for (const env of rows) {
+            console.log(
+              `${env.id}  ${env.status}  ${env.workspaceProvisionType}  ${env.path ?? "-"}`,
+            );
+          }
+        },
+      ),
+    );
+
+  environment
+    .command("delete <id>")
+    .description(
+      "Record an environment as destroyed after its workspace is gone; refused while live threads reference it",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: { json?: boolean }) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.environments.delete({ environmentId: id });
+        if (outputJson(opts, result)) return;
+        console.log(`Environment ${id} recorded as destroyed.`);
+      }),
+    );
+
+  environment
     .command("show <id>")
     .description("Show environment details")
     .option("--json", "Print machine-readable JSON output")

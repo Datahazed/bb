@@ -8,10 +8,13 @@ import {
   makeQueueEntry,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "./server.js";
 
 type ThreadRow = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["list"]>>[number];
+type EnvironmentRow = Awaited<
+  ReturnType<BbPluginApi["sdk"]["environments"]["get"]>
+>;
 
 const CONFIGURATION = {
   hostId: "host-1",
@@ -20,10 +23,14 @@ const CONFIGURATION = {
 
 function provisionContext(
   configuration: JsonValue,
-  threadId = "thread-1",
+  thread: { id?: string; title?: string | null } = {},
 ): PluginEnvironmentProvisionContext {
   return {
-    thread: makeThreadResponse({ id: threadId, projectId: "project-1" }),
+    thread: makeThreadResponse({
+      id: thread.id ?? "thread-1",
+      projectId: "project-1",
+      title: thread.title ?? null,
+    }),
     project: {
       id: "project-1",
       kind: "standard",
@@ -54,6 +61,42 @@ function projectWithSource() {
     ],
   };
 }
+
+function makeEnvironmentRow(
+  overrides: Partial<EnvironmentRow> = {},
+): EnvironmentRow {
+  return {
+    id: "env-1",
+    name: null,
+    projectId: "project-1",
+    hostId: "host-1",
+    path: "/wt/repo",
+    managed: false,
+    isGitRepo: true,
+    isWorktree: true,
+    workspaceProvisionType: "unmanaged",
+    branchName: "bb/thread-1",
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: null,
+    status: "ready",
+    createdAt: 0,
+    updatedAt: 0,
+    ...overrides,
+  };
+}
+
+function createBranchNames(
+  host: ReturnType<typeof createFakePluginHost>,
+): unknown[] {
+  return host.harness.experimental_hostRpcCalls
+    .filter((call) => call.method === "create")
+    .map((call) => (call.input as { branchName: string }).branchName);
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("worktree server entry", () => {
   it("rejects a configuration without a machine or base branch", async () => {
@@ -116,6 +159,7 @@ describe("worktree server entry", () => {
         threadId: "thread-1",
         sourcePath: "/checkouts/repo",
         baseBranch: { kind: "named", name: "main" },
+        branchName: "bb/thread-1",
         setupScript: "scripts/setup.sh",
       },
     });
@@ -136,6 +180,106 @@ describe("worktree server entry", () => {
     await host.harness.dispose();
   });
 
+  it("names the branch from the thread title, kebab-cased and capped", async () => {
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: { projects: { get: async () => projectWithSource() } },
+      experimental_callHostRpc: () => ({ path: "/hosts/worktrees/thread-1/repo" }),
+    });
+    await plugin(host.bb);
+    const target =
+      host.harness.registrations.environmentTargets.get("worktree");
+
+    await target!.provision(
+      provisionContext(CONFIGURATION, {
+        title: "  Fix the Login Flow!! (again) — and make it stick this time, please ",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(host.harness.recheckCount).toBe(1);
+    });
+    expect(createBranchNames(host)).toEqual([
+      "bb/fix-the-login-flow-again-and-make-it-sti",
+    ]);
+    await host.harness.dispose();
+  });
+
+  it("retries once with a thread-id suffix when the branch already exists", async () => {
+    let createCalls = 0;
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: { projects: { get: async () => projectWithSource() } },
+      experimental_callHostRpc: ({ method }) => {
+        if (method !== "create") return null;
+        createCalls += 1;
+        if (createCalls === 1) {
+          throw new Error(
+            "worktree-branch-exists: branch bb/fix-login-flow already exists in /checkouts/repo",
+          );
+        }
+        return { path: "/hosts/worktrees/thread-abcd/repo" };
+      },
+    });
+    await plugin(host.bb);
+    const target =
+      host.harness.registrations.environmentTargets.get("worktree");
+
+    await target!.provision(
+      provisionContext(CONFIGURATION, {
+        id: "thread-abcd",
+        title: "Fix Login Flow",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(host.harness.recheckCount).toBe(1);
+    });
+    expect(createBranchNames(host)).toEqual([
+      "bb/fix-login-flow",
+      "bb/fix-login-flow-abcd",
+    ]);
+    await expect(
+      target!.provision(
+        provisionContext(CONFIGURATION, {
+          id: "thread-abcd",
+          title: "Fix Login Flow",
+        }),
+      ),
+    ).resolves.toMatchObject({ action: "ready" });
+    await host.harness.dispose();
+  });
+
+  it("surfaces the failure when the suffixed branch also exists", async () => {
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: { projects: { get: async () => projectWithSource() } },
+      experimental_callHostRpc: ({ method }) => {
+        if (method !== "create") return null;
+        throw new Error("worktree-branch-exists: branch already exists");
+      },
+    });
+    await plugin(host.bb);
+    const target =
+      host.harness.registrations.environmentTargets.get("worktree");
+
+    await target!.provision(
+      provisionContext(CONFIGURATION, {
+        id: "thread-abcd",
+        title: "Fix Login Flow",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(host.harness.recheckCount).toBe(1);
+    });
+    expect(createBranchNames(host)).toEqual([
+      "bb/fix-login-flow",
+      "bb/fix-login-flow-abcd",
+    ]);
+    await expect(
+      host.bb.storage.kv.get("launch:thread-abcd"),
+    ).resolves.toMatchObject({ phase: "failed" });
+    await host.harness.dispose();
+  });
+
   it("restarts a stale creating launch left behind by a server restart", async () => {
     const host = createFakePluginHost({
       pluginId: "worktree",
@@ -146,6 +290,7 @@ describe("worktree server entry", () => {
     await host.bb.storage.kv.set("launch:thread-1", {
       phase: "creating",
       progress: "Creating worktree…",
+      branchName: "bb/recorded-name",
     });
     const target =
       host.harness.registrations.environmentTargets.get("worktree");
@@ -156,7 +301,7 @@ describe("worktree server entry", () => {
     await vi.waitFor(() => {
       expect(host.harness.recheckCount).toBe(1);
     });
-    expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
+    expect(createBranchNames(host)).toEqual(["bb/recorded-name"]);
     await expect(
       target!.provision(provisionContext(CONFIGURATION)),
     ).resolves.toMatchObject({ action: "ready" });
@@ -179,6 +324,7 @@ describe("worktree server entry", () => {
     await vi.waitFor(() => {
       expect(host.harness.recheckCount).toBe(1);
     });
+    expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
     const launch = await host.bb.storage.kv.get<{
       phase: string;
       failedAt: number;
@@ -215,7 +361,9 @@ describe("worktree server entry", () => {
     await host.harness.dispose();
   });
 
-  it("tears the worktree down only when the last live thread on its environment goes", async () => {
+  it("writes a retire record on archive and tears down only after the grace window", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: 1_000_000 });
+    const environment = makeEnvironmentRow();
     const liveThreads: Partial<ThreadRow>[] = [
       { id: "thread-2", environmentId: "env-1" },
     ];
@@ -223,7 +371,9 @@ describe("worktree server entry", () => {
       pluginId: "worktree",
       sdk: {
         environments: {
-          get: async () => ({ id: "env-1", hostId: "host-1", path: "/wt/repo" }),
+          get: async () => environment,
+          list: async () => [environment],
+          delete: async () => ({ ok: true }),
         },
         threads: { list: async () => liveThreads },
       },
@@ -242,10 +392,24 @@ describe("worktree server entry", () => {
     });
 
     await host.harness.emitThreadEvent("thread.archived", { thread: archived });
-    expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
+    await expect(host.bb.storage.kv.get("retire:env-1")).resolves.toBeUndefined();
 
     liveThreads.length = 0;
     await host.harness.emitThreadEvent("thread.archived", { thread: archived });
+    expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
+    await expect(host.bb.storage.kv.get("retire:env-1")).resolves.toMatchObject({
+      at: 1_000_000,
+      environmentId: "env-1",
+      hostId: "host-1",
+      path: "/wt/repo",
+      projectId: "project-1",
+    });
+
+    await host.harness.runSchedule("retire-sweep");
+    expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
+
+    vi.setSystemTime(1_000_000 + 6 * 60_000);
+    await host.harness.runSchedule("retire-sweep");
     expect(host.harness.experimental_hostRpcCalls).toEqual([
       expect.objectContaining({
         method: "teardown",
@@ -253,21 +417,172 @@ describe("worktree server entry", () => {
         input: { path: "/wt/repo", teardownScript: "scripts/teardown.sh" },
       }),
     ]);
+    expect(host.harness.sdk.callsTo("environments.delete")).toEqual([
+      [{ environmentId: "env-1" }],
+    ]);
+    await expect(host.bb.storage.kv.get("retire:env-1")).resolves.toBeUndefined();
     await expect(
       host.bb.storage.kv.get("worktree:host-1:/wt/repo"),
     ).resolves.toBeUndefined();
-
-    await host.harness.emitThreadEvent("thread.deleted", { thread: archived });
-    expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
     await host.harness.dispose();
   });
 
-  it("leaves environments it did not create alone", async () => {
+  it("drops the retire record without a teardown when a thread comes back", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: 1_000_000 });
+    const environment = makeEnvironmentRow();
     const host = createFakePluginHost({
       pluginId: "worktree",
       sdk: {
         environments: {
-          get: async () => ({ id: "env-9", hostId: "host-1", path: "/existing" }),
+          get: async () => environment,
+          list: async () => [environment],
+        },
+        threads: {
+          list: async () => [{ id: "thread-2", environmentId: "env-1" }],
+        },
+      },
+      experimental_callHostRpc: () => null,
+    });
+    await plugin(host.bb);
+    await host.bb.storage.kv.set("worktree:host-1:/wt/repo", {
+      hostId: "host-1",
+      path: "/wt/repo",
+    });
+    await host.bb.storage.kv.set("retire:env-1", {
+      at: 1_000_000 - 6 * 60_000,
+      environmentId: "env-1",
+      hostId: "host-1",
+      path: "/wt/repo",
+      projectId: "project-1",
+    });
+
+    await host.harness.runSchedule("retire-sweep");
+    expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
+    await expect(host.bb.storage.kv.get("retire:env-1")).resolves.toBeUndefined();
+    await expect(
+      host.bb.storage.kv.get("worktree:host-1:/wt/repo"),
+    ).resolves.toMatchObject({ path: "/wt/repo" });
+    await host.harness.dispose();
+  });
+
+  it("drops the retire record when the environment row is gone", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: 1_000_000 });
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: {
+        environments: {
+          get: async () => {
+            throw new Error("environment_not_found");
+          },
+          list: async () => [],
+        },
+        threads: { list: async () => [] },
+      },
+      experimental_callHostRpc: () => null,
+    });
+    await plugin(host.bb);
+    await host.bb.storage.kv.set("retire:env-1", {
+      at: 1_000_000 - 6 * 60_000,
+      environmentId: "env-1",
+      hostId: "host-1",
+      path: "/wt/repo",
+      projectId: "project-1",
+    });
+
+    await host.harness.runSchedule("retire-sweep");
+    expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
+    await expect(host.bb.storage.kv.get("retire:env-1")).resolves.toBeUndefined();
+    await host.harness.dispose();
+  });
+
+  it("tears down immediately when the last thread is deleted", async () => {
+    const environment = makeEnvironmentRow();
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: {
+        environments: {
+          get: async () => environment,
+          delete: async () => ({ ok: true }),
+        },
+        threads: { list: async () => [] },
+      },
+      experimental_callHostRpc: () => null,
+    });
+    await plugin(host.bb);
+    await host.bb.storage.kv.set("worktree:host-1:/wt/repo", {
+      hostId: "host-1",
+      path: "/wt/repo",
+    });
+
+    await host.harness.emitThreadEvent("thread.deleted", {
+      thread: makeThreadResponse({
+        id: "thread-1",
+        projectId: "project-1",
+        environmentId: "env-1",
+      }),
+    });
+    expect(host.harness.experimental_hostRpcCalls).toEqual([
+      expect.objectContaining({ method: "teardown", hostId: "host-1" }),
+    ]);
+    expect(host.harness.sdk.callsTo("environments.delete")).toEqual([
+      [{ environmentId: "env-1" }],
+    ]);
+    await expect(
+      host.bb.storage.kv.get("worktree:host-1:/wt/repo"),
+    ).resolves.toBeUndefined();
+    await host.harness.dispose();
+  });
+
+  it("keeps the ownership record when finalization is refused", async () => {
+    const environment = makeEnvironmentRow();
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: {
+        environments: {
+          get: async () => environment,
+          delete: async () => {
+            throw new Error("409 environment_has_live_threads");
+          },
+        },
+        threads: { list: async () => [] },
+      },
+      experimental_callHostRpc: () => null,
+    });
+    await plugin(host.bb);
+    await host.bb.storage.kv.set("worktree:host-1:/wt/repo", {
+      hostId: "host-1",
+      path: "/wt/repo",
+    });
+
+    await host.harness.emitThreadEvent("thread.deleted", {
+      thread: makeThreadResponse({
+        id: "thread-1",
+        projectId: "project-1",
+        environmentId: "env-1",
+      }),
+    });
+    expect(host.harness.experimental_hostRpcCalls).toEqual([
+      expect.objectContaining({ method: "teardown" }),
+    ]);
+    await expect(
+      host.bb.storage.kv.get("worktree:host-1:/wt/repo"),
+    ).resolves.toMatchObject({ path: "/wt/repo" });
+    await host.harness.dispose();
+  });
+
+  it("adopts a core-managed worktree without an ownership record", async () => {
+    const environment = makeEnvironmentRow({
+      id: "env-managed",
+      path: "/core/worktrees/thread-1/repo",
+      managed: true,
+      workspaceProvisionType: "managed-worktree",
+    });
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: {
+        environments: {
+          get: async () => environment,
+          delete: async () => ({ ok: true }),
         },
         threads: { list: async () => [] },
       },
@@ -275,13 +590,125 @@ describe("worktree server entry", () => {
     });
     await plugin(host.bb);
 
-    await host.harness.emitThreadEvent("thread.archived", {
-      thread: makeThreadResponse({ id: "thread-1", environmentId: "env-9" }),
+    await host.harness.emitThreadEvent("thread.deleted", {
+      thread: makeThreadResponse({
+        id: "thread-1",
+        projectId: "project-1",
+        environmentId: "env-managed",
+      }),
     });
+    expect(host.harness.experimental_hostRpcCalls).toEqual([
+      expect.objectContaining({
+        method: "teardown",
+        input: expect.objectContaining({ path: "/core/worktrees/thread-1/repo" }),
+      }),
+    ]);
+    expect(host.harness.sdk.callsTo("environments.delete")).toEqual([
+      [{ environmentId: "env-managed" }],
+    ]);
+    await host.harness.dispose();
+  });
+
+  it("leaves unmanaged checkouts and personal workspaces alone", async () => {
+    const rows = new Map<string, EnvironmentRow>([
+      ["env-checkout", makeEnvironmentRow({ id: "env-checkout", path: "/existing" })],
+      [
+        "env-personal",
+        makeEnvironmentRow({
+          id: "env-personal",
+          path: "/personal",
+          managed: true,
+          workspaceProvisionType: "personal",
+        }),
+      ],
+    ]);
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: {
+        environments: {
+          get: async ({ environmentId }: { environmentId: string }) =>
+            rows.get(environmentId),
+        },
+        threads: { list: async () => [] },
+      },
+      experimental_callHostRpc: () => null,
+    });
+    await plugin(host.bb);
+
+    for (const environmentId of ["env-checkout", "env-personal"]) {
+      await host.harness.emitThreadEvent("thread.deleted", {
+        thread: makeThreadResponse({ id: "thread-1", environmentId }),
+      });
+      await host.harness.emitThreadEvent("thread.archived", {
+        thread: makeThreadResponse({ id: "thread-1", environmentId }),
+      });
+    }
     await host.harness.emitThreadEvent("thread.archived", {
       thread: makeThreadResponse({ id: "thread-1", environmentId: null }),
     });
     expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
+    expect(await host.bb.storage.kv.list("retire:")).toEqual([]);
+    await host.harness.dispose();
+  });
+
+  it("sweeps orphaned managed worktrees into retirement and tears them down after grace", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: 1_000_000 });
+    const orphan = makeEnvironmentRow({
+      id: "env-orphan",
+      path: "/core/worktrees/thread-9/repo",
+      managed: true,
+      workspaceProvisionType: "managed-worktree",
+    });
+    const checkout = makeEnvironmentRow({ id: "env-checkout", path: "/existing" });
+    const personal = makeEnvironmentRow({
+      id: "env-personal",
+      path: "/personal",
+      managed: true,
+      workspaceProvisionType: "personal",
+    });
+    const busy = makeEnvironmentRow({
+      id: "env-busy",
+      path: "/core/worktrees/thread-8/repo",
+      managed: true,
+      workspaceProvisionType: "managed-worktree",
+    });
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: {
+        environments: {
+          list: async () => [orphan, checkout, personal, busy],
+          get: async ({ environmentId }: { environmentId: string }) => {
+            if (environmentId !== "env-orphan") throw new Error("unexpected get");
+            return orphan;
+          },
+          delete: async () => ({ ok: true }),
+        },
+        threads: {
+          list: async () => [{ id: "thread-8", environmentId: "env-busy" }],
+        },
+      },
+      experimental_callHostRpc: () => null,
+    });
+    await plugin(host.bb);
+
+    await host.harness.runSchedule("retire-sweep");
+    expect(await host.bb.storage.kv.list("retire:")).toEqual(["retire:env-orphan"]);
+    expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
+
+    vi.setSystemTime(1_000_000 + 6 * 60_000);
+    await host.harness.runSchedule("retire-sweep");
+    expect(host.harness.experimental_hostRpcCalls).toEqual([
+      expect.objectContaining({
+        method: "teardown",
+        input: expect.objectContaining({ path: "/core/worktrees/thread-9/repo" }),
+      }),
+    ]);
+    expect(host.harness.sdk.callsTo("environments.delete")).toEqual([
+      [{ environmentId: "env-orphan" }],
+    ]);
+    await expect(
+      host.bb.storage.kv.get("retire:env-orphan"),
+    ).resolves.toBeUndefined();
     await host.harness.dispose();
   });
 
