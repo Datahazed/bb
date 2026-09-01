@@ -635,3 +635,28 @@ draft handoff (gist items 1, 3–6). Local checkout and existing-worktree as
 targets (they do not provision). `availability` on targets: a plugin
 declares its target when configured and answers `reject` otherwise. A
 "thread viewed" event for resume-on-open.
+
+## Implementation notes (2026-09-01, PR 1)
+
+Built as planned, with these deliberate deviations to keep the branch safe:
+
+- The picker's per-host "New worktree" rows switch to the `worktree/worktree`
+  target only when that target is registered; unregistered (plugin disabled)
+  they behave exactly as before. Root compose's default-environment
+  resolution, fork seeds, and `bb thread spawn --new-environment worktree`
+  still produce `host/managed-worktree` args, which remain accepted input.
+  Making the target the only producer — and then deleting core's managed
+  worktree provisioning — is the follow-up.
+- The worktree plugin provisions to
+  `<hostDataDir>/plugins/worktree/worktrees/<threadId>/<repo>` on branch
+  `bb/<threadId>` and records an ordinary unmanaged environment, so
+  reprovision/retire do not exist for plugin-created worktrees yet.
+  `createWorktree` is idempotent on the existing path+branch, which is what
+  makes restart recovery a simple re-kick.
+- `message.cancelled` fires from the queued-message delete route (the user's
+  Delete); rows consumed by dispatch or removed with their thread do not fire
+  it.
+- The API landed as `bb.experimental_environments` (property prefixed, per
+  the AGENTS.md experimental rule) rather than the plan's
+  `bb.environments.experimental_*` spelling.
+- `plugins/docker-sandbox` is PR 2, unchanged.
