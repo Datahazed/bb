@@ -282,6 +282,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               label={environmentTypeLabel ?? "Worktree"}
               name={environmentLabel}
               compactName={environmentCompactLabel}
+              connected={showOfflineAsPrimaryIcon ? false : undefined}
             />
           )}
         </div>
