@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultAppSettings,
@@ -87,7 +87,17 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
   }));
 }
 
-const testState = vi.hoisted(() => ({ calls: [] as string[] }));
+const testState = vi.hoisted(() => ({
+  calls: [] as string[],
+  filesAvailable: false,
+  plugins: [] as Array<{
+    enabled: boolean;
+    hasSettings: boolean;
+    icon: string | null;
+    id: string;
+    name: string | null;
+  }>,
+}));
 const modeState = vi.hoisted(() => ({
   activeRecents: [] as ThreadListEntry[],
   archivedRecents: [] as ThreadListEntry[],
@@ -164,6 +174,21 @@ vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => null,
 }));
 
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({
+    accessState: testState.filesAvailable
+      ? "permission-required"
+      : "unavailable",
+  }),
+}));
+
+vi.mock("@/lib/app-query-client", () => ({
+  appQueryClient: {
+    fetchQuery: () => Promise.resolve(testState.plugins),
+  },
+}));
+
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => false,
 }));
@@ -229,6 +254,11 @@ function Handler({ command }: { command: AppCommandId }) {
   return null;
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
+}
+
 function makeThread(
   id: string,
   overrides: Partial<ThreadListEntry> = {},
@@ -285,6 +315,7 @@ function renderPalette({ onSplit }: { onSplit?: () => void } = {}) {
         <Handler command="panel.toggle" />
         <Handler command="terminal.open" />
         <CommandPalette threadId={null} projectId={null} onSplit={onSplit} />
+        <LocationProbe />
       </AppCommandProvider>
     </MemoryRouter>,
   );
@@ -329,8 +360,11 @@ const selectedOption = () =>
 afterEach(() => {
   cleanup();
   removePluginSlotRegistrations("linear");
+  removePluginSlotRegistrations("automations");
   resetPluginLogoStoreForTest();
   testState.calls.length = 0;
+  testState.filesAvailable = false;
+  testState.plugins.length = 0;
   modeState.activeRecents = [];
   modeState.archivedRecents = [];
   modeState.drafts = [];
@@ -1129,6 +1163,113 @@ describe("CommandPalette", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     scrollIntoView.mockRestore();
+  });
+
+  it("opens a specific settings page", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), {
+      target: { value: "keyboard settings" },
+    });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Keyboard settings"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/keyboard",
+      ),
+    );
+  });
+
+  it("only includes Files settings when local helper access is available", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), {
+      target: { value: "files settings" },
+    });
+    await waitFor(() => expect(screen.queryAllByRole("option")).toHaveLength(0));
+
+    fireEvent.keyDown(searchField(), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    testState.filesAvailable = true;
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+    fireEvent.change(searchField(), {
+      target: { value: "files settings" },
+    });
+
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Files settings"),
+    );
+  });
+
+  it("opens an installed plugin's settings page", async () => {
+    testState.plugins.push({
+      enabled: true,
+      hasSettings: true,
+      icon: null,
+      id: "linear",
+      name: "Linear",
+    });
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), {
+      target: { value: "linear settings" },
+    });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Linear settings"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/plugins/linear",
+      ),
+    );
+  });
+
+  it("opens a plugin page", async () => {
+    setPluginSlotRegistrations("automations", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "automations",
+          title: "Automations",
+          icon: "Calendar",
+          path: "automations",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      commandPaletteActions: [],
+    });
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: "automations" } });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Automations"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/automations/automations",
+      ),
+    );
   });
 
   it("lists a plugin's commandPaletteAction and runs it", async () => {
