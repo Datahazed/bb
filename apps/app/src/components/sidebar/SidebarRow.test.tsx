@@ -7,6 +7,7 @@ import {
   SidebarRow,
   SidebarRowAccessory,
   SidebarRowActions,
+  SidebarRowBody,
   SidebarRowContent,
   SidebarRowDisclosureRail,
   SidebarRowIdentityRail,
@@ -57,9 +58,11 @@ describe("SidebarRow", () => {
     const { container } = render(
       <SidebarRow anatomy="tree" depth={3}>
         <SidebarRowStatusRail />
-        <SidebarRowIdentityRail>Icon</SidebarRowIdentityRail>
-        <SidebarRowContent>Nested thread</SidebarRowContent>
-        <SidebarRowAccessory>Meta</SidebarRowAccessory>
+        <SidebarRowBody>
+          <SidebarRowIdentityRail>Icon</SidebarRowIdentityRail>
+          <SidebarRowContent>Nested thread</SidebarRowContent>
+          <SidebarRowAccessory>Meta</SidebarRowAccessory>
+        </SidebarRowBody>
         <SidebarRowActions>Actions</SidebarRowActions>
         <SidebarRowDisclosureRail />
       </SidebarRow>,
@@ -70,6 +73,7 @@ describe("SidebarRow", () => {
     const content = container.querySelector(
       '[data-sidebar-row-slot="content"]',
     );
+    const body = container.querySelector('[data-sidebar-row-slot="body"]');
     const disclosure = container.querySelector(
       '[data-sidebar-row-slot="disclosure"]',
     );
@@ -77,14 +81,65 @@ describe("SidebarRow", () => {
     expect(row?.getAttribute("data-sidebar-row-anatomy")).toBe("tree");
     expect(row?.getAttribute("data-sidebar-row-depth")).toBe("3");
     expect(row?.classList.contains("relative")).toBe(false);
+    expect(row?.className).toContain(
+      "[grid-template-areas:'status_body_actions_disclosure']",
+    );
+    expect(row?.className).toContain("[--sidebar-row-depth-step:0.75rem]");
     expect(status?.childElementCount).toBe(0);
     expect(status?.classList.contains("[grid-area:status]")).toBe(true);
     expect(status?.className).not.toContain("translate");
+    expect(body?.classList.contains("[grid-area:body]")).toBe(true);
+    expect(body?.className).toContain("pl-[var(--sidebar-row-body-inset)]");
     expect(content?.classList.contains("[grid-area:content]")).toBe(true);
     expect(disclosure?.childElementCount).toBe(0);
     expect(disclosure?.classList.contains("[grid-area:disclosure]")).toBe(
       true,
     );
+    expect(disclosure?.classList.contains("justify-center")).toBe(true);
+  });
+
+  it("does not move the fixed tree rails when optional row content changes", () => {
+    const { container } = render(
+      <>
+        <SidebarRow anatomy="tree" data-testid="plain-row">
+          <SidebarRowStatusRail />
+          <SidebarRowBody>
+            <SidebarRowContent>Plain thread</SidebarRowContent>
+          </SidebarRowBody>
+        </SidebarRow>
+        <SidebarRow anatomy="tree" data-testid="collapsible-row">
+          <SidebarRowStatusRail />
+          <SidebarRowBody>
+            <SidebarRowIdentityRail>Icon</SidebarRowIdentityRail>
+            <SidebarRowContent>Parent thread</SidebarRowContent>
+          </SidebarRowBody>
+          <SidebarRowActions>Actions</SidebarRowActions>
+          <SidebarRowDisclosureRail>Disclosure</SidebarRowDisclosureRail>
+        </SidebarRow>
+      </>,
+    );
+
+    const plainRow = screen.getByTestId("plain-row");
+    const collapsibleRow = screen.getByTestId("collapsible-row");
+    const plainStatus = plainRow.querySelector(
+      '[data-sidebar-row-slot="status"]',
+    );
+    const collapsibleStatus = collapsibleRow.querySelector(
+      '[data-sidebar-row-slot="status"]',
+    );
+    const disclosure = collapsibleRow.querySelector(
+      '[data-sidebar-row-slot="disclosure"]',
+    );
+
+    expect(plainRow.className).toContain(
+      "[grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]",
+    );
+    expect(collapsibleRow.className).toContain(
+      "[grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]",
+    );
+    expect(plainStatus?.className).toBe(collapsibleStatus?.className);
+    expect(disclosure?.classList.contains("justify-center")).toBe(true);
+    expect(container.querySelectorAll("[data-sidebar-row]")).toHaveLength(2);
   });
 
   it("keeps recipe and density choices orthogonal to anatomy", () => {
@@ -108,7 +163,9 @@ describe("SidebarRow", () => {
     rerender(
       <SidebarRow anatomy="tree" density="standard" variant="item">
         <SidebarRowStatusRail />
-        <SidebarRowContent>Thread</SidebarRowContent>
+        <SidebarRowBody>
+          <SidebarRowContent>Thread</SidebarRowContent>
+        </SidebarRowBody>
       </SidebarRow>,
     );
 

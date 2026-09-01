@@ -46,7 +46,7 @@ describe("SidebarSectionRow", () => {
     });
     const icon = result.container.querySelector('[data-icon="ListView"]');
     const label = screen.getByText("Nested work");
-    const row = label.parentElement?.parentElement as HTMLElement | null;
+    const row = label.closest("[data-sidebar-row]") as HTMLElement | null;
     const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
     const newThread = screen.getByRole("button", {
       name: "New thread in Nested work",

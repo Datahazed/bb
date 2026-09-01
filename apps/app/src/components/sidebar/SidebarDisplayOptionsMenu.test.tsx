@@ -48,7 +48,21 @@ function openMenu(name: RegExp) {
 describe("sidebar thread-list menus", () => {
   it("separates organization from filtering and uses the approved labels", async () => {
     const store = renderMenus();
-    openMenu(/^Organize:/);
+    const projectViewTrigger = screen.getByRole("button", {
+      name: "View: Projects",
+    });
+    expect(
+      projectViewTrigger.querySelector('[data-icon="Folder"]'),
+    ).not.toBeNull();
+    expect(
+      projectViewTrigger.querySelector('[data-icon="ChevronDown"]'),
+    ).not.toBeNull();
+    fireEvent.focus(projectViewTrigger);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "View: Projects",
+    );
+    fireEvent.blur(projectViewTrigger);
+    openMenu(/^View: Projects$/);
 
     const group = await screen.findByRole("group", { name: "Organize" });
     expect(
@@ -69,6 +83,20 @@ describe("sidebar thread-list menus", () => {
     await waitFor(() =>
       expect(screen.queryByRole("group", { name: "Organize" })).toBeNull(),
     );
+    const customViewTrigger = screen.getByRole("button", {
+      name: "View: Custom",
+    });
+    expect(
+      customViewTrigger.querySelector('[data-icon="Section"]'),
+    ).not.toBeNull();
+
+    act(() => store.set(sidebarOrganizationModeAtom, "machine"));
+    const machineViewTrigger = screen.getByRole("button", {
+      name: "View: Machines",
+    });
+    expect(
+      machineViewTrigger.querySelector('[data-icon="Laptop"]'),
+    ).not.toBeNull();
   });
 
   it("orders status above sort, keeps changes open, and toggles sort direction", async () => {

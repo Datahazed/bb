@@ -137,6 +137,7 @@ import { SectionThreadDndProvider } from "./SectionThreadDndContext";
 import {
   SidebarRow,
   SidebarRowActions,
+  SidebarRowBody,
   SidebarRowContent,
   SidebarRowDisclosureRail,
   SidebarRowIdentityRail,
@@ -955,21 +956,23 @@ function EnvironmentThreadGroupHeader({
           ) : null}
         </SidebarItemStatusSlot>
       </SidebarRowStatusRail>
-      <SidebarRowIdentityRail
-        className="pointer-events-none relative z-10 text-subtle-foreground/75"
-        aria-hidden="true"
-      >
-        <Icon
-          name={iconName}
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
+      <SidebarRowBody>
+        <SidebarRowIdentityRail
+          className="pointer-events-none relative z-10 text-subtle-foreground/75"
           aria-hidden="true"
-        />
-      </SidebarRowIdentityRail>
-      <SidebarRowContent className="pointer-events-none relative z-10 flex items-center text-left text-subtle-foreground/80">
-        <span className="min-w-0 truncate">
-          <span>{displayName}</span>
-        </span>
-      </SidebarRowContent>
+        >
+          <Icon
+            name={iconName}
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+            aria-hidden="true"
+          />
+        </SidebarRowIdentityRail>
+        <SidebarRowContent className="pointer-events-none relative z-10 flex items-center text-left text-subtle-foreground/80">
+          <span className="min-w-0 truncate">
+            <span>{displayName}</span>
+          </span>
+        </SidebarRowContent>
+      </SidebarRowBody>
       <SidebarRowActions
         data-sidebar-collapsible-trailing-controls=""
         className={cn(
@@ -1004,7 +1007,6 @@ function EnvironmentThreadGroupHeader({
           expandLabel={`Expand ${displayName} threads`}
           collapseLabel={`Collapse ${displayName} threads`}
           onToggle={() => onToggleCollapsed(environmentId)}
-          revealOnHover
         />
       </SidebarRowDisclosureRail>
     </>
@@ -1294,9 +1296,11 @@ function SectionThreadDragOverlay({ thread }: { thread: ThreadListEntry }) {
         data-sidebar-section-drag-overlay="true"
         className="pointer-events-none bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
       >
-        <SidebarRowContent className="truncate">
-          {getThreadDisplayTitle(thread)}
-        </SidebarRowContent>
+        <SidebarRowBody>
+          <SidebarRowContent className="truncate">
+            {getThreadDisplayTitle(thread)}
+          </SidebarRowContent>
+        </SidebarRowBody>
       </div>
     </SidebarRow>
   );

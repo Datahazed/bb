@@ -82,6 +82,7 @@ import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 import {
   SidebarRow,
   SidebarRowActions,
+  SidebarRowBody,
   SidebarRowContent,
   SidebarRowDisclosureRail,
   SidebarRowStatusRail,
@@ -740,41 +741,43 @@ function ThreadRowComponent({
           )}
         </SidebarItemStatusSlot>
       </SidebarRowStatusRail>
-      <SidebarRowContent className="flex items-center gap-1.5">
-        {isEditing ? (
-          <span className="relative z-10 min-w-0 flex-1 overflow-visible">
-            {editor}
-          </span>
-        ) : (
-          <span
-            className="min-w-0 truncate"
-            title={labelTitle}
-            onDoubleClick={startTitleEditing}
-          >
-            <ThreadTitleMentions title={threadTitle} />
-          </span>
-        )}
-        {crossProjectLabel !== null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                data-sidebar-thread-cross-project=""
-                role="img"
-                aria-label={crossProjectLabel}
-                className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground/75"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  rowLinkRef.current?.click();
-                }}
-              >
-                <Icon name="FolderExport" className="size-3.5" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
-          </Tooltip>
-        ) : null}
-      </SidebarRowContent>
+      <SidebarRowBody>
+        <SidebarRowContent className="flex items-center gap-1.5">
+          {isEditing ? (
+            <span className="relative z-10 min-w-0 flex-1 overflow-visible">
+              {editor}
+            </span>
+          ) : (
+            <span
+              className="min-w-0 truncate"
+              title={labelTitle}
+              onDoubleClick={startTitleEditing}
+            >
+              <ThreadTitleMentions title={threadTitle} />
+            </span>
+          )}
+          {crossProjectLabel !== null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  data-sidebar-thread-cross-project=""
+                  role="img"
+                  aria-label={crossProjectLabel}
+                  className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground/75"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    rowLinkRef.current?.click();
+                  }}
+                >
+                  <Icon name="FolderExport" className="size-3.5" aria-hidden />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </SidebarRowContent>
+      </SidebarRowBody>
       <SidebarRowActions
         data-sidebar-thread-trailing-controls=""
         className="relative flex shrink-0 items-center"
@@ -826,7 +829,6 @@ function ThreadRowComponent({
             expandLabel={`Expand ${labelTitle} threads`}
             collapseLabel={`Collapse ${labelTitle} threads`}
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover
           />
         </SidebarRowDisclosureRail>
       ) : null}

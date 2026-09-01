@@ -48,6 +48,7 @@ import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 import {
   SidebarRow,
   SidebarRowActions,
+  SidebarRowBody,
   SidebarRowContent,
   SidebarRowDisclosureRail,
   SidebarRowStatusRail,
@@ -159,9 +160,11 @@ function SidebarSectionRowComponent({
           {showRollupIndicator ? renderRollupIndicator() : null}
         </SidebarItemStatusSlot>
       </SidebarRowStatusRail>
-      <SidebarRowContent className="relative z-10 flex items-center text-left">
-        <span className="min-w-0 truncate">{name}</span>
-      </SidebarRowContent>
+      <SidebarRowBody>
+        <SidebarRowContent className="relative z-10 flex items-center text-left">
+          <span className="min-w-0 truncate">{name}</span>
+        </SidebarRowContent>
+      </SidebarRowBody>
       {hasActions ? (
         <SidebarRowActions
           data-sidebar-collapsible-trailing-controls=""

@@ -595,12 +595,29 @@ function ProjectListThreadsSectionActions({
 }
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
-  { label: "By project", mode: "project" },
-  { label: "By machine", mode: "machine" },
-  { label: "Custom", mode: "manual" },
+  {
+    iconName: "Folder",
+    label: "By project",
+    mode: "project",
+    triggerLabel: "Projects",
+  },
+  {
+    iconName: "Laptop",
+    label: "By machine",
+    mode: "machine",
+    triggerLabel: "Machines",
+  },
+  {
+    iconName: "Section",
+    label: "Custom",
+    mode: "manual",
+    triggerLabel: "Custom",
+  },
 ] as const satisfies readonly {
+  iconName: IconName;
   label: string;
   mode: SidebarOrganizationMode;
+  triggerLabel: string;
 }[];
 
 const SIDEBAR_SORT_OPTIONS = [
@@ -631,12 +648,14 @@ function SidebarDisplayMenuTrigger({
   fillIcon = false,
   iconName,
   pressed,
+  showChevron = false,
   tooltip,
 }: {
   ariaLabel: string;
   fillIcon?: boolean;
   iconName: IconName;
   pressed?: boolean;
+  showChevron?: boolean;
   tooltip: string;
 }) {
   return (
@@ -657,15 +676,26 @@ function SidebarDisplayMenuTrigger({
               "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
               LIST_HOVER_TRANSITION,
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              showChevron && "gap-0",
             )}
           >
             <Icon
               name={iconName}
               className={cn(
-                COARSE_POINTER_ICON_SIZE_CLASS,
+                showChevron
+                  ? "!size-3.5 max-md:pointer-coarse:!size-5"
+                  : COARSE_POINTER_ICON_SIZE_CLASS,
                 fillIcon && "[&_path]:fill-current",
               )}
+              aria-hidden="true"
             />
+            {showChevron ? (
+              <Icon
+                name="ChevronDown"
+                className="!size-2.5 max-md:pointer-coarse:!size-3"
+                aria-hidden="true"
+              />
+            ) : null}
           </Button>
         </DropdownMenuTrigger>
       </TooltipTrigger>
@@ -683,16 +713,19 @@ export function SidebarOrganizeMenu({
   const [organizationMode, setOrganizationMode] = useAtom(
     sidebarOrganizationModeAtom,
   );
-  const selectedLabel =
-    SIDEBAR_ORGANIZE_OPTIONS.find((option) => option.mode === organizationMode)
-      ?.label ?? "Custom";
+  const selectedOption =
+    SIDEBAR_ORGANIZE_OPTIONS.find(
+      (option) => option.mode === organizationMode,
+    ) ?? SIDEBAR_ORGANIZE_OPTIONS[2];
+  const currentViewLabel = `View: ${selectedOption.triggerLabel}`;
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
-        ariaLabel={`Organize: ${selectedLabel}`}
-        iconName="Layers"
-        tooltip="Organize"
+        ariaLabel={currentViewLabel}
+        iconName={selectedOption.iconName}
+        showChevron
+        tooltip={currentViewLabel}
       />
       <DropdownMenuContent
         align="end"
