@@ -193,6 +193,15 @@ describe("ProjectRow interactions", () => {
           environmentBranchName: "feat/sidebar-depth",
           environmentWorkspaceDisplayKind: "managed-worktree",
         }),
+        makeThread({
+          id: "thr_worktree_sibling",
+          title: "Worktree sibling",
+          titleFallback: "Worktree sibling",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentBranchName: "feat/sidebar-depth",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
       ],
     });
 

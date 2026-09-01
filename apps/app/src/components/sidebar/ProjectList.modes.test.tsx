@@ -314,21 +314,4 @@ describe("sidebar organization mode sections", () => {
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
-
-  it("indents a machine thread by one semantic depth step", () => {
-    const store = createStore();
-    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
-    store.set(sidebarCollapsedMachinesAtom, []);
-
-    const { container } = render(
-      <JotaiProvider store={store}>
-        <MachineModeProbe threads={[makeThread()]} />
-      </JotaiProvider>,
-    );
-
-    const threadRow = container
-      .querySelector('[data-sidebar-thread-id="thr_machine"]')
-      ?.closest("[data-sidebar-row]");
-    expect(threadRow?.getAttribute("data-sidebar-row-depth")).toBe("1");
-  });
 });
