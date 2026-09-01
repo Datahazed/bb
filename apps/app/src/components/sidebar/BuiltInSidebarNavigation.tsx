@@ -102,12 +102,14 @@ export function BuiltInSidebarNavigation({
         />
       ),
   } as const;
-  const visibleRegions = normalizeSidebarRegionOrder(regionOrder).flatMap(
-    (id) =>
-      id === "threads" || regions[id] === null
-        ? []
-        : ([[id, regions[id]]] as const),
-  );
+  const visibleRegions: Array<
+    readonly ["bb-controls" | "plugins", ReactNode]
+  > = [];
+  for (const id of normalizeSidebarRegionOrder(regionOrder)) {
+    if (id === "threads") continue;
+    const region = regions[id];
+    if (region !== null) visibleRegions.push([id, region]);
+  }
 
   return (
     <div className="contents" data-testid="built-in-sidebar-navigation">
