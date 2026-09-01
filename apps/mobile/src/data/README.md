@@ -144,8 +144,24 @@ Conventions:
   builders and mutations over the XHR multipart poster, and the typeahead
   queries (plugin contributions + mention search via raw fetch, environment /
   thread-storage paths, project commands).
-- `notifications/` (push registration policy) arrives with the push-notifications
-  PR.
+- `notifications/` is the push layer's policy, pure and vitest-tested; the RN
+  glue (expo-notifications, MMKV, navigation) lives in `src/notifications`.
+  `push-registration.ts`: `decidePushSync` (toggle × EAS project id × OS
+  permission × existing record → skip / unregister / fetch-token),
+  `shouldReregister` (token / platform / server change, daily refresh),
+  `syncPushRegistration` (never throws; removes the stale row before a
+  re-register), `unregisterPushRegistration` (by profile id: the record keeps
+  the server URL, so a removed profile can still be cleaned up),
+  `enablePushForProfile` (asks the OS once), `describePushStatus`.
+  `push-registration-controller.ts` coalesces concurrent syncs per profile
+  and reconciles removed profiles / token rolls. `push-store.ts` is the
+  injected-storage store (MMKV `bb.preferences` in the app, a Map in tests).
+  `push-subscriptions-api.ts` wraps `sdk.notifications.pushSubscriptions`
+  keyed by server URL (not by profile client, which may be disposed).
+  `push-notification-target.ts` parses a payload's `data` and picks the
+  profile (server hint → single profile → probe active first).
+  `app-badge.ts` counts unread finished root threads + pending interactions
+  from the sidebar bootstrap.
 - `hosts/` (Phase 7 additions) backs Settings → Machines and → Updates on
   top of the list/directory queries: `useHostProviderCliStatus` /
   `useHostsProviderCliStatus` (`GET /hosts/:id/provider-clis/status`,

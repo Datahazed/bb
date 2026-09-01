@@ -1,0 +1,98 @@
+import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
+import type {
+  PushNotificationsModule,
+  PushPermissionState,
+  PushPlatform,
+} from "@/data/notifications";
+
+/**
+ * EAS project id from the app config (`extra.eas.projectId`, written by
+ * `eas init` / EAS Build). Without it `getExpoPushTokenAsync` cannot mint a
+ * token, so a dev-client built with plain `expo run:ios` reports push as
+ * unavailable instead of throwing.
+ */
+export function getEasProjectId(): string | null {
+  const extra: unknown = Constants.expoConfig?.extra;
+  if (typeof extra === "object" && extra !== null && "eas" in extra) {
+    const eas: unknown = (extra as { eas?: unknown }).eas;
+    if (typeof eas === "object" && eas !== null && "projectId" in eas) {
+      const projectId: unknown = (eas as { projectId?: unknown }).projectId;
+      if (typeof projectId === "string" && projectId.length > 0) {
+        return projectId;
+      }
+    }
+  }
+  const easConfigId = Constants.easConfig?.projectId;
+  return typeof easConfigId === "string" && easConfigId.length > 0
+    ? easConfigId
+    : null;
+}
+
+function toPermissionState(
+  status: Notifications.NotificationPermissionsStatus,
+): PushPermissionState {
+  if (
+    status.granted ||
+    status.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+  ) {
+    return "granted";
+  }
+  // `canAskAgain` is false once the user answered the system prompt (iOS
+  // never re-prompts); `undetermined` means the prompt has not been shown.
+  return status.status === "undetermined" || status.canAskAgain
+    ? "undetermined"
+    : "denied";
+}
+
+function currentPlatform(): PushPlatform {
+  return Platform.OS === "android" ? "android" : "ios";
+}
+
+export const ANDROID_DEFAULT_CHANNEL_ID = "threads";
+
+/** expo-notifications behind the injectable contract the data layer uses. */
+export function createExpoPushModule(): PushNotificationsModule {
+  return {
+    projectId: getEasProjectId(),
+    platform: currentPlatform(),
+    async getPermission() {
+      return toPermissionState(await Notifications.getPermissionsAsync());
+    },
+    async requestPermission() {
+      return toPermissionState(
+        await Notifications.requestPermissionsAsync({
+          ios: { allowAlert: true, allowBadge: true, allowSound: true },
+        }),
+      );
+    },
+    async getExpoPushToken(projectId) {
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync(
+          ANDROID_DEFAULT_CHANNEL_ID,
+          {
+            name: "Threads",
+            importance: Notifications.AndroidImportance.MAX,
+          },
+        );
+      }
+      const token = await Notifications.getExpoPushTokenAsync({ projectId });
+      return token.data;
+    },
+    addTokenListener(listener) {
+      const subscription = Notifications.addPushTokenListener(() => listener());
+      return () => subscription.remove();
+    },
+    setBadgeCount(count) {
+      return Notifications.setBadgeCountAsync(count).then(() => undefined);
+    },
+  };
+}
+
+let instance: PushNotificationsModule | null = null;
+
+export function getPushNotificationsModule(): PushNotificationsModule {
+  instance ??= createExpoPushModule();
+  return instance;
+}
