@@ -9,7 +9,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import {  isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
@@ -129,25 +129,6 @@ function sourceTokens(source: string): SourceToken[] {
   return tokens;
 }
 
-function sourceImportSpecifiers(source: string): string[] {
-  const tokens = sourceTokens(source);
-  const specifiers: string[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (token?.kind !== "string") continue;
-    const previous = tokens[index - 1]?.value;
-    const callee = previous === "(" ? tokens[index - 2]?.value : undefined;
-    if (
-      previous === "from" ||
-      previous === "import" ||
-      callee === "import" ||
-      callee === "require"
-    ) {
-      specifiers.push(token.value);
-    }
-  }
-  return specifiers;
-}
 
 function importedRuntimeNames(source: string, specifier: string): string[] {
   const tokens = sourceTokens(source);
@@ -256,43 +237,12 @@ async function unresolvedHostSdkError(args: {
   return `"${PLUGIN_SDK_HOST_FALLBACK_SPECIFIER}" could not be resolved from ${packageDir}: ${args.esbuildErrors.map((error) => error.text).join("; ")}`;
 }
 
+const BB_WORKSPACE_RESOLVE_PASS = { bbWorkspaceResolvePass: true };
+
 function privateBbImportError(specifier: string): string {
-  return `host entries cannot import private BB workspace package "${specifier}"; use @get-bb/plugin-sdk, Node APIs, or a regular plugin dependency`;
+  return `host entries can only import "@bb/*" workspace packages that resolve for this plugin (their source is bundled into the artifact); "${specifier}" did not resolve — use @get-bb/plugin-sdk, Node APIs, or a declared dependency`;
 }
 
-async function owningPackageName(
-  filePath: string,
-  cache: Map<string, string | null>,
-): Promise<string | null> {
-  let directory = dirname(filePath);
-  const visited: string[] = [];
-  while (true) {
-    const cached = cache.get(directory);
-    if (cached !== undefined || cache.has(directory)) {
-      for (const entry of visited) cache.set(entry, cached ?? null);
-      return cached ?? null;
-    }
-    visited.push(directory);
-    try {
-      const parsed: unknown = JSON.parse(
-        await readFile(join(directory, "package.json"), "utf8"),
-      );
-      const name =
-        isRecord(parsed) && typeof parsed.name === "string"
-          ? parsed.name
-          : null;
-      for (const entry of visited) cache.set(entry, name);
-      return name;
-    } catch {
-      const parent = dirname(directory);
-      if (parent === directory) {
-        for (const entry of visited) cache.set(entry, null);
-        return null;
-      }
-      directory = parent;
-    }
-  }
-}
 
 async function readPluginHostConfig(rootDir: string): Promise<{
   hostEntry: string;
@@ -386,7 +336,6 @@ export async function buildPluginHost(
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");
-    const packageNameByDirectory = new Map<string, string | null>();
     await esbuild.build({
       entryPoints: [hostEntry],
       outfile: stagedJsPath,
@@ -463,52 +412,26 @@ export async function buildPluginHost(
         {
           name: "reject-private-bb-host-imports",
           setup(build) {
-            build.onResolve({ filter: /^@bb(?:\/|$)/ }, (args) => ({
-              errors: [{ text: privateBbImportError(args.path) }],
-            }));
-            build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async (args) => {
-              const owner = await owningPackageName(
-                args.path,
-                packageNameByDirectory,
-              );
-              if (owner === "@bb" || owner?.startsWith("@bb/")) {
-                return {
-                  errors: [{ text: privateBbImportError(owner) }],
-                };
-              }
-              const source = await readFile(args.path, "utf8");
-              for (const specifier of sourceImportSpecifiers(source)) {
-                if (specifier === "@bb" || specifier.startsWith("@bb/")) {
-                  return {
-                    errors: [{ text: privateBbImportError(specifier) }],
-                  };
+            build.onResolve(
+              { filter: /^@bb(?:\/|$)/ },
+              async (args) => {
+                if (args.pluginData === BB_WORKSPACE_RESOLVE_PASS) {
+                  return undefined;
                 }
-                if (!specifier.startsWith(".") && !isAbsolute(specifier)) {
-                  continue;
-                }
-                const resolvedImport = await build.resolve(specifier, {
-                  importer: args.path,
-                  kind: "import-statement",
-                  resolveDir: dirname(args.path),
+                const resolved = await build.resolve(args.path, {
+                  importer: args.importer,
+                  kind: args.kind,
+                  resolveDir: args.resolveDir,
+                  pluginData: BB_WORKSPACE_RESOLVE_PASS,
                 });
-                if (resolvedImport.errors.length > 0 || !resolvedImport.path) {
-                  continue;
-                }
-                const importedOwner = await owningPackageName(
-                  resolvedImport.path,
-                  packageNameByDirectory,
-                );
-                if (
-                  importedOwner === "@bb" ||
-                  importedOwner?.startsWith("@bb/")
-                ) {
+                if (resolved.errors.length > 0 || !resolved.path) {
                   return {
-                    errors: [{ text: privateBbImportError(importedOwner) }],
+                    errors: [{ text: privateBbImportError(args.path) }],
                   };
                 }
-              }
-              return undefined;
-            });
+                return { path: resolved.path };
+              },
+            );
           },
         },
       ],

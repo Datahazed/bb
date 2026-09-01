@@ -195,7 +195,7 @@ describe("plugin host build", () => {
     ).rejects.toThrow(/escapes the plugin directory/u);
   });
 
-  it("rejects private BB workspace imports from host entries", async () => {
+  it("rejects an unresolvable @bb workspace import from a host entry", async () => {
     const dir = await mkdtemp(join(process.cwd(), ".host-build-private-test-"));
     tempDirs.push(dir);
     await writeFile(
@@ -219,16 +219,62 @@ describe("plugin host build", () => {
     );
     await writeFile(
       join(dir, "host.ts"),
-      'import value from "./helper.js";\nexport default value;\n',
-    );
-    await writeFile(
-      join(dir, "helper.ts"),
-      'import type { JsonValue } from "@bb/domain";\nexport default function helper(value: JsonValue) { return value; }\n',
+      'import helper from "@bb/definitely-not-installed";\nexport default helper;\n',
     );
 
     await expect(
       buildPluginHost(dir, "0.9.0-test", await testToolchain()),
-    ).rejects.toThrow(/cannot import private BB workspace package/u);
+    ).rejects.toThrow(/did not resolve/u);
+  });
+
+  it("bundles a resolvable @bb workspace dependency into the host artifact", async () => {
+    const dir = await mkdtemp(join(process.cwd(), ".host-build-workspace-test-"));
+    tempDirs.push(dir);
+    const packageDir = join(dir, "node_modules", "@bb", "workspace-fixture");
+    await mkdir(packageDir, { recursive: true });
+    await writeFile(
+      join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "@bb/workspace-fixture",
+        type: "module",
+        main: "./index.js",
+      }),
+    );
+    await writeFile(
+      join(packageDir, "index.js"),
+      'export const marker = "bb-workspace-fixture-bundled";\n',
+    );
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-host-workspace-fixture",
+        version: "1.0.0",
+        engines: { bb: ">=0.0" },
+        bb: {
+          name: "Workspace dependency fixture",
+          description: "Bundles a resolvable workspace package.",
+          branding: { icon: "Cpu" },
+          server: "./server.ts",
+          host: "./host.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "host.ts"),
+      'import { marker } from "@bb/workspace-fixture";\nexport default marker;\n',
+    );
+
+    const artifact = await buildPluginHost(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+    const bundled = await readFile(artifact.jsPath, "utf8");
+    expect(bundled).toContain("bb-workspace-fixture-bundled");
   });
 
   it("bundles the published bridge surface without stubbing it", async () => {
@@ -351,50 +397,6 @@ describe("plugin host build", () => {
         `"@get-bb/plugin-sdk/host" is installed for this plugin but its dist is not built: run the SDK build (${join(sdkDir, "dist", "host.js")} is missing); a host entry that imports experimental_nativeRootsHostContract needs the built SDK`,
       );
     });
-  });
-
-  it("rejects relative type imports into private BB workspace packages", async () => {
-    const parent = await mkdtemp(join(tmpdir(), "bb-host-relative-private-"));
-    tempDirs.push(parent);
-    const dir = join(parent, "plugin");
-    const privatePackage = join(parent, "private-package");
-    await mkdir(dir, { recursive: true });
-    await mkdir(privatePackage, { recursive: true });
-    await writeFile(
-      join(privatePackage, "package.json"),
-      JSON.stringify({ name: "@bb/private-fixture", type: "module" }),
-    );
-    await writeFile(
-      join(privatePackage, "index.ts"),
-      "export type PrivateValue = string;\n",
-    );
-    await writeFile(
-      join(dir, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-relative-private-fixture",
-        version: "1.0.0",
-        engines: { bb: ">=0.0" },
-        bb: {
-          name: "Relative private import fixture",
-          description: "Invalid relative host dependency.",
-          branding: { icon: "Cpu" },
-          server: "./server.ts",
-          host: "./host.ts",
-        },
-      }),
-    );
-    await writeFile(
-      join(dir, "server.ts"),
-      "export default function plugin() {}\n",
-    );
-    await writeFile(
-      join(dir, "host.ts"),
-      'import type { PrivateValue } from "../private-package/index.js";\nconst value: PrivateValue = "nope";\nexport default value;\n',
-    );
-
-    await expect(
-      buildPluginHost(dir, "0.9.0-test", await testToolchain()),
-    ).rejects.toThrow(/@bb\/private-fixture/u);
   });
 
   it("allows private package names in comments and diagnostic strings", async () => {

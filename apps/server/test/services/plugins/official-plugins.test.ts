@@ -100,6 +100,7 @@ describe("official plugin registry invariants", () => {
       github: "Developer tools",
       "inline-vis": "Interface",
       "keep-awake": "Host access",
+      worktree: "Host access",
       memory: "Context & knowledge",
       "monaco-editor": "Interface",
       "pdf-preview": "Interface",
