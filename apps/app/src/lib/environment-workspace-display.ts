@@ -11,10 +11,24 @@ interface EnvironmentWorkspaceSummaryDisplayArgs {
   hostName?: string;
 }
 
+interface EnvironmentContextDisplay {
+  customName: string | null;
+  lifecycleLabel: string | null;
+  machineName: string | undefined;
+  resourceIcon: IconName;
+  typeLabel: EnvironmentWorkspaceTypeLabel;
+}
+
 export interface EnvironmentWorkspaceSummaryDisplay {
   label: string | undefined;
   icon: IconName;
   typeLabel: EnvironmentWorkspaceTypeLabel | undefined;
+}
+
+export interface EnvironmentWorkspaceInfoDisplay {
+  icon: IconName;
+  label: "Environment";
+  title: string;
 }
 
 interface WorktreeMachineComposerVisibilityArgs {
@@ -40,22 +54,66 @@ export function getEnvironmentWorkspaceSummaryDisplay({
   environmentName,
   hostName,
 }: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentWorkspaceSummaryDisplay {
-  if (display.lifecycle === "provisioning") {
+  const context = getEnvironmentContextDisplay({
+    display,
+    environmentName,
+    hostName,
+  });
+
+  if (context.lifecycleLabel === "Provisioning") {
     return {
-      label: "Provisioning",
+      label: context.lifecycleLabel,
       icon: "Loading",
-      typeLabel: getEnvironmentWorkspaceTypeLabel(display.workspaceDisplayKind),
+      typeLabel: context.typeLabel,
     };
   }
 
   const environmentSummaryLabel =
-    display.mode === "direct" || environmentName === null
-      ? hostName
-      : environmentName;
+    context.typeLabel === "Machine" || context.customName === null
+      ? context.machineName
+      : context.customName;
 
   return {
     label: environmentSummaryLabel,
-    icon: getEnvironmentWorkspaceLabelIconName(display.workspaceDisplayKind),
+    icon: context.resourceIcon,
+    typeLabel: context.typeLabel,
+  };
+}
+
+export function getEnvironmentWorkspaceInfoDisplay({
+  display,
+  environmentName,
+}: Omit<
+  EnvironmentWorkspaceSummaryDisplayArgs,
+  "hostName"
+>): EnvironmentWorkspaceInfoDisplay | null {
+  const context = getEnvironmentContextDisplay({
+    display,
+    environmentName,
+  });
+  if (context.typeLabel !== "Worktree") return null;
+
+  return {
+    icon: context.resourceIcon,
+    label: "Environment",
+    title: [context.typeLabel, context.customName, context.lifecycleLabel]
+      .filter((value) => Boolean(value))
+      .join(" · "),
+  };
+}
+
+function getEnvironmentContextDisplay({
+  display,
+  environmentName,
+  hostName,
+}: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentContextDisplay {
+  return {
+    customName: environmentName,
+    lifecycleLabel: display.lifecycle === null ? null : display.modeLabel,
+    machineName: hostName,
+    resourceIcon: getEnvironmentWorkspaceLabelIconName(
+      display.workspaceDisplayKind,
+    ),
     typeLabel: getEnvironmentWorkspaceTypeLabel(display.workspaceDisplayKind),
   };
 }

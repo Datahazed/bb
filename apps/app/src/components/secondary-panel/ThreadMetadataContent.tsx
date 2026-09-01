@@ -25,7 +25,7 @@ import {
 } from "@bb/core-ui";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import { getEnvironmentWorkspaceInfoDisplay } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -282,44 +282,31 @@ export function EnvironmentRow({
     environmentId: environment?.id ?? "",
   });
   if (!environment) return null;
-  const isWorktree = isWorktreeEnvironment(environment);
-  if (!isWorktree) return null;
-  const worktreeTitle = environment.name;
   const display = formatEnvironmentDisplay({
     environment,
     host: environmentDisplayHost,
   });
+  const environmentInfo = getEnvironmentWorkspaceInfoDisplay({
+    display,
+    environmentName: environment.name,
+  });
+  if (!environmentInfo) return null;
   const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
-  const lifecycleTitle =
-    display.lifecycle === "provisioning"
-      ? "Provisioning"
-      : display.lifecycle === "destroying"
-        ? "Destroying"
-        : display.lifecycle === "destroyed"
-          ? "Destroyed"
-          : null;
-  const environmentTitle = ["Worktree", worktreeTitle, lifecycleTitle]
-    .filter((value) => Boolean(value))
-    .join(" · ");
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel
-          icon={getEnvironmentWorkspaceLabelIconName(
-            display.workspaceDisplayKind,
-          )}
-        >
-          Environment
+        <DetailRowIconLabel icon={environmentInfo.icon}>
+          {environmentInfo.label}
         </DetailRowIconLabel>
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
       <DetailValueTooltip
-        accessibleLabel={`Environment: ${environmentTitle}`}
-        measurementKey={environmentTitle}
-        tooltip={environmentTitle}
+        accessibleLabel={`${environmentInfo.label}: ${environmentInfo.title}`}
+        measurementKey={environmentInfo.title}
+        tooltip={environmentInfo.title}
       >
-        {environmentTitle}
+        {environmentInfo.title}
       </DetailValueTooltip>
       {showCreateThreadButton ? (
         <Tooltip>

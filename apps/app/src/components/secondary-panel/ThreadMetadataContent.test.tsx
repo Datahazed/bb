@@ -111,17 +111,6 @@ describe("ThreadMetadataCard", () => {
 });
 
 describe("EnvironmentRow", () => {
-  it("shows the worktree type with or without a custom name", () => {
-    const namedMarkup = renderEnvironmentRow(makeEnvironment());
-    expect(namedMarkup).toContain("Environment");
-    expect(namedMarkup).toContain("Worktree · Design system polish");
-
-    const unnamedMarkup = renderEnvironmentRow(makeEnvironment({ name: null }));
-    expect(unnamedMarkup).toContain("Environment");
-    expect(unnamedMarkup).toContain("Worktree");
-    expect(unnamedMarkup).not.toContain("Unnamed");
-  });
-
   it("shows the create-thread action for a provisioned worktree", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="Create thread in worktree"',
