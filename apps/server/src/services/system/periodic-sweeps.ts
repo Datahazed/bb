@@ -26,7 +26,7 @@ import {
   shouldRunIncrementalVacuum,
   sweepManagedEnvironments,
   threads,
-  deleteAllThreadTimelineProjectionRecords,
+  deleteThreadTimelineProjectionRecords,
   truncateCompletedEventItemOutputs,
 } from "@bb/db";
 import type {
@@ -37,7 +37,7 @@ import {
   recoverOrphanedEnvironmentDestroyRequests,
   runEnvironmentCleanupAdvance,
 } from "../environments/environment-cleanup-internal.js";
-import { clearTimelineProjectionCache } from "../threads/timeline-projection-cache.js";
+import { clearTimelineProjectionCacheForThreads } from "../threads/timeline-projection-cache.js";
 import {
   isCommandTimeoutError,
   isHostUnavailableError,
@@ -469,14 +469,14 @@ function runCompletedEventOutputTruncationSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
 ): void {
-  truncateCompletedEventItemOutputs(deps.db, {
+  const result = truncateCompletedEventItemOutputs(deps.db, {
     createdBefore: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
     limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
     truncatedAt: now,
   });
-  // In-place event mutation is invisible to tip-keyed projection caching.
-  clearTimelineProjectionCache();
-  deleteAllThreadTimelineProjectionRecords(deps.db);
+  // In-place event rewrites are invisible to tip-keyed projection caching.
+  clearTimelineProjectionCacheForThreads(result.threadIds);
+  deleteThreadTimelineProjectionRecords(deps.db, result.threadIds);
 }
 
 function runClosedSessionPruneSweep(

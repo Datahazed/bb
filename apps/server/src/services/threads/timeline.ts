@@ -156,8 +156,13 @@ export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 export const THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
 
-/** Builds below this size are cheap enough to redo on every cold start. */
-const PERSISTED_PROJECTION_MIN_EVENT_ROWS = 3_000;
+/**
+ * Builds below this size are cheap enough to redo on every cold start. The
+ * count is timeline-relevant rows after type exclusion, so it runs well
+ * below raw event counts; on the 2026-08-31 production copy 190 of 1,132
+ * threads clear it, all of the ones whose cold build exceeded 100 ms.
+ */
+const PERSISTED_PROJECTION_MIN_EVENT_ROWS = 1_000;
 
 type ThreadTimelineBuildProfileStage =
   | "event-query"

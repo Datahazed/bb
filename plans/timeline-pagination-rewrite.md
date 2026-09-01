@@ -324,6 +324,22 @@ independently converged on this plan's architecture. What it contributes:
   in `~/.bb/thread-storage/thr_pdnbzyfnxd/`, and the three stress fixtures
   now in the perf-budget table.
 
+## Prod-copy safety (2026-08-31 incident)
+
+Servers started against copied production databases (this thread's latency
+audits, and the previous thread's `pr2419-*` copies) carried the Connect
+plugin's `plugin_kv` credential and dialed `wss://ymichael.getbb.app` as the
+production bb, hijacking the tunnel - the "Connect credentials being reused"
+incident. Remediation done: every such server killed by PID (not `pkill -f`,
+which only matches the pnpm wrapper), the Connect credential stripped and the
+plugin disabled in all 13 affected `~/.bb-dev` copies (final scan: zero
+credentialed dev dirs), the procedure documented in docs/debugging-and-qa.md,
+and all subsequent audits run on neutralized copies with the log checked for
+zero `tunnel connecting` lines. Follow-up worth its own change: make the
+Connect plugin refuse a credential whose paired data dir/host identity does
+not match the running instance, so a copied database can never impersonate
+its origin.
+
 ## Open questions (not blockers)
 
 - **Giant active turns** still return all their work rows inline on the

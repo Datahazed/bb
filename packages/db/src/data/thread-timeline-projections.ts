@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { threadTimelineProjections } from "../schema.js";
 
@@ -40,12 +40,17 @@ export function upsertThreadTimelineProjectionRecord(
 }
 
 /**
- * Sweeps that mutate stored events in place cannot invalidate through the
- * tip-keyed projection key, so they drop every persisted projection.
+ * Sweeps that rewrite stored events in place cannot invalidate through the
+ * tip-keyed projection key, so they drop the affected threads' rows.
  */
-export function deleteAllThreadTimelineProjectionRecords(
+export function deleteThreadTimelineProjectionRecords(
   db: DbConnection,
-): number {
-  const result = db.run(sql`DELETE FROM thread_timeline_projections`);
-  return result.changes;
+  threadIds: readonly string[],
+): void {
+  if (threadIds.length === 0) {
+    return;
+  }
+  db.delete(threadTimelineProjections)
+    .where(inArray(threadTimelineProjections.threadId, [...threadIds]))
+    .run();
 }

@@ -59,6 +59,7 @@ interface CompletedEventOutputScanCursor {
 interface CompletedEventOutputScanRow {
   created_at: number;
   id: string;
+  thread_id: string;
 }
 
 interface TruncateCompletedEventItemOutputPathArgs
@@ -106,6 +107,8 @@ export interface TruncateCompletedEventItemOutputsResult {
   toolCallResults: number;
   webFetchResultTexts: number;
   webSearchResultTexts: number;
+  /** Threads whose stored events this batch rewrote in place. */
+  threadIds: string[];
 }
 
 export function pruneClosedSessions(
@@ -173,7 +176,7 @@ function listCompletedEventOutputScanRows(
   return db.$client
     .prepare<CompletedEventOutputScanParameters, CompletedEventOutputScanRow>(
       `
-        SELECT id, created_at
+        SELECT id, created_at, thread_id
         FROM events
         WHERE type = ?
           AND item_kind = ?
@@ -282,10 +285,15 @@ function advanceCompletedEventOutputScanCursor(
     .run();
 }
 
+interface TruncateCompletedEventItemOutputPathResult {
+  threadIds: string[];
+  truncated: number;
+}
+
 function truncateCompletedEventItemOutputPath(
   db: DbConnection,
   args: TruncateCompletedEventItemOutputPathArgs,
-): number {
+): TruncateCompletedEventItemOutputPathResult {
   const rows = listCompletedEventOutputScanRows(db, args);
   const truncated = updateCompletedEventOutputScanRows(db, {
     itemKind: args.itemKind,
@@ -303,34 +311,50 @@ function truncateCompletedEventItemOutputPath(
       updatedAt: args.truncatedAt,
     });
   }
-  return truncated;
+  return {
+    threadIds:
+      truncated === 0 ? [] : [...new Set(rows.map((row) => row.thread_id))],
+    truncated,
+  };
 }
 
 export function truncateCompletedEventItemOutputs(
   db: DbConnection,
   args: TruncateCompletedEventItemOutputsArgs,
 ): TruncateCompletedEventItemOutputsResult {
+  const commandExecutionOutputs = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "commandExecution",
+    outputPath: "aggregatedOutput",
+  });
+  const toolCallResults = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "toolCall",
+    outputPath: "result",
+  });
+  const webFetchResultTexts = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "webFetch",
+    outputPath: "resultText",
+  });
+  const webSearchResultTexts = truncateCompletedEventItemOutputPath(db, {
+    ...args,
+    itemKind: "webSearch",
+    outputPath: "resultText",
+  });
   return {
-    commandExecutionOutputs: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "commandExecution",
-      outputPath: "aggregatedOutput",
-    }),
-    toolCallResults: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "toolCall",
-      outputPath: "result",
-    }),
-    webFetchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webFetch",
-      outputPath: "resultText",
-    }),
-    webSearchResultTexts: truncateCompletedEventItemOutputPath(db, {
-      ...args,
-      itemKind: "webSearch",
-      outputPath: "resultText",
-    }),
+    commandExecutionOutputs: commandExecutionOutputs.truncated,
+    toolCallResults: toolCallResults.truncated,
+    webFetchResultTexts: webFetchResultTexts.truncated,
+    webSearchResultTexts: webSearchResultTexts.truncated,
+    threadIds: [
+      ...new Set([
+        ...commandExecutionOutputs.threadIds,
+        ...toolCallResults.threadIds,
+        ...webFetchResultTexts.threadIds,
+        ...webSearchResultTexts.threadIds,
+      ]),
+    ],
   };
 }
 

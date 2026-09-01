@@ -8,7 +8,7 @@ import {
   pruneTokenUsageEventsBeforeSequence,
   pruneThreadEventsBeforeSequence,
 } from "@bb/db";
-import { clearTimelineProjectionCache } from "../threads/timeline-projection-cache.js";
+import { clearTimelineProjectionCacheForThreads } from "../threads/timeline-projection-cache.js";
 import type { ThreadEventType } from "@bb/domain";
 import { roundDurationMs } from "../lib/duration.js";
 import type { AppDeps } from "../../types.js";
@@ -172,11 +172,10 @@ export function pruneThreadEventHistory(
       removedBackgroundTaskProgressEvents >
     0
   ) {
-    // Pruning removes stored events without touching the newest one, which
-    // tip-keyed projection caching cannot see. The event count in the key
-    // protects the persisted rows, so only the in-memory cache needs
-    // clearing here.
-    clearTimelineProjectionCache();
+    // Pruning removes stored events below an unchanged tip; the event count
+    // in the projection key already invalidates persisted rows, and the
+    // in-memory entries for this thread are dropped here.
+    clearTimelineProjectionCacheForThreads([args.threadId]);
   }
 
   return {

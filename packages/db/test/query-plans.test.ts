@@ -695,7 +695,7 @@ describe("slow query index plans", () => {
     const scanDebugLogs = logger.debugLogs.filter(
       (debugLog) =>
         debugLog.fields.operation === "all" &&
-        debugLog.fields.sql.startsWith("SELECT id, created_at FROM events") &&
+        debugLog.fields.sql.startsWith("SELECT id, created_at, thread_id FROM events") &&
         debugLog.fields.sql.includes("ORDER BY created_at, id") &&
         debugLog.fields.bindingArgumentCount === 6,
     );

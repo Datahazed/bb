@@ -80,10 +80,20 @@ export function setCachedTimelineProjection(
 }
 
 /**
- * Appends and suffix replacement invalidate naturally through the tip-id
- * key. Sweeps that mutate stored events in place (completed-output
- * truncation, delta/usage pruning) must call this instead.
+ * Appends, suffix replacement, and pruning invalidate naturally through the
+ * tip-id + event-count key. Sweeps that rewrite stored events in place
+ * (completed-output truncation) must clear the affected threads instead.
  */
-export function clearTimelineProjectionCache(): void {
-  entries.clear();
+export function clearTimelineProjectionCacheForThreads(
+  threadIds: readonly string[],
+): void {
+  if (threadIds.length === 0) {
+    return;
+  }
+  const prefixes = threadIds.map((threadId) => JSON.stringify([threadId]).slice(0, -1) + ",");
+  for (const key of [...entries.keys()]) {
+    if (prefixes.some((prefix) => key.startsWith(prefix))) {
+      entries.delete(key);
+    }
+  }
 }

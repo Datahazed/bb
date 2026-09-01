@@ -221,6 +221,7 @@ describe("truncateCompletedEventItemOutputs", () => {
       toolCallResults: 1,
       webFetchResultTexts: 1,
       webSearchResultTexts: 1,
+      threadIds: [thread.id],
     });
 
     const commandData = JSON.parse(
@@ -332,6 +333,7 @@ describe("truncateCompletedEventItemOutputs", () => {
       toolCallResults: 0,
       webFetchResultTexts: 0,
       webSearchResultTexts: 0,
+      threadIds: [],
     });
   });
 

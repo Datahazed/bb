@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -18,7 +18,7 @@ import {
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
 import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
-import { clearTimelineProjectionCache } from "../../../src/services/threads/timeline-projection-cache.js";
+import { clearTimelineProjectionCacheForThreads } from "../../../src/services/threads/timeline-projection-cache.js";
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -144,9 +144,6 @@ const buildOptions = {
 };
 
 describe("persisted timeline projections", () => {
-  beforeEach(() => {
-    clearTimelineProjectionCache();
-  });
 
   it("persists an expensive idle build and serves it after a restart", () => {
     const { db, thread } = setup();
@@ -176,7 +173,7 @@ describe("persisted timeline projections", () => {
       projectionKey: record!.projectionKey,
       threadId: thread.id,
     });
-    clearTimelineProjectionCache();
+    clearTimelineProjectionCacheForThreads([thread.id]);
 
     const reserved = buildThreadTimeline(db, thread, {
       ...buildOptions,
@@ -187,7 +184,7 @@ describe("persisted timeline projections", () => {
     );
 
     // A different release ignores the stale record and rebuilds fresh.
-    clearTimelineProjectionCache();
+    clearTimelineProjectionCacheForThreads([thread.id]);
     const rebuilt = buildThreadTimeline(db, thread, {
       ...buildOptions,
       appVersion: "1.2.4",
