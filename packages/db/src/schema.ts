@@ -620,6 +620,17 @@ export const threadConversationOutlines = sqliteTable(
   },
 );
 
+export const threadTimelineProjections = sqliteTable(
+  "thread_timeline_projections",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    projectionKey: text("projection_key").notNull(),
+    payloadJson: text("payload_json").notNull(),
+  },
+);
+
 export const threadDynamicContextFileStates = sqliteTable(
   "thread_dynamic_context_file_states",
   {

@@ -27,6 +27,13 @@ export {
 export type { ThreadConversationOutlineRecord } from "./thread-conversation-outlines.js";
 
 export {
+  deleteAllThreadTimelineProjectionRecords,
+  getThreadTimelineProjectionRecord,
+  upsertThreadTimelineProjectionRecord,
+} from "./thread-timeline-projections.js";
+export type { ThreadTimelineProjectionRecord } from "./thread-timeline-projections.js";
+
+export {
   createThreadSection,
   deleteThreadSection,
   getThreadSectionById,

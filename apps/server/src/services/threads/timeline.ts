@@ -30,6 +30,8 @@ import {
   getEnvironment,
   getLatestStoredEventTip,
   getThreadConversationOutlineRecord,
+  getThreadTimelineProjectionRecord,
+  upsertThreadTimelineProjectionRecord,
   listContextWindowUsageRows,
   listStoredThreadTimelineEventRows,
   listStoredConversationOutlineEventRows,
@@ -68,6 +70,7 @@ import {
   buildTimelineProjectionCacheKey,
   getCachedTimelineProjection,
   setCachedTimelineProjection,
+  type CachedTimelineProjection,
 } from "./timeline-projection-cache.js";
 import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "./timeline-output-truncation.js";
 
@@ -115,6 +118,12 @@ interface ResolveTurnSummaryDetailsSourceRangeArgs {
 }
 
 interface BuildThreadTimelineOptions {
+  /**
+   * Identifies the running release for persisted-projection reuse. When
+   * omitted, projections are never persisted or read back - deliberate for
+   * tests and corpus harnesses, whose builds must not depend on prior runs.
+   */
+  appVersion?: string;
   includeProviderUnhandledOperations: boolean;
   includeNestedRows?: boolean;
   maxInlineOutputChars: InlineOutputCharLimit;
@@ -146,6 +155,9 @@ export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 export const THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
+
+/** Builds below this size are cheap enough to redo on every cold start. */
+const PERSISTED_PROJECTION_MIN_EVENT_ROWS = 3_000;
 
 type ThreadTimelineBuildProfileStage =
   | "event-query"
@@ -915,8 +927,23 @@ function buildThreadTimelineInternal(
           tipEventId: tip.id,
           workspaceRoot,
         });
-  const cached =
+  const persistedKey =
+    cacheKey === null || options.appVersion === undefined
+      ? null
+      : `${options.appVersion}|${cacheKey}`;
+  let cached =
     cacheKey === null ? undefined : getCachedTimelineProjection(cacheKey);
+  if (cached === undefined && cacheKey !== null && persistedKey !== null) {
+    const persisted = getThreadTimelineProjectionRecord(db, thread.id);
+    if (persisted?.projectionKey === persistedKey) {
+      try {
+        cached = JSON.parse(persisted.payloadJson) as CachedTimelineProjection;
+        setCachedTimelineProjection(cacheKey, cached);
+      } catch {
+        cached = undefined;
+      }
+    }
+  }
   let timeline;
   if (cached !== undefined) {
     timeline = cached.timeline;
@@ -1021,11 +1048,26 @@ function buildThreadTimelineInternal(
       profile.projectedRowCount = timeline.rows.length;
     }
     if (cacheKey !== null) {
-      setCachedTimelineProjection(cacheKey, {
+      const entry = {
         eventDataBytes,
         eventRowCount: rawEventRows.length,
         timeline,
-      });
+      };
+      setCachedTimelineProjection(cacheKey, entry);
+      // Persist projections that are expensive to rebuild so a restart does
+      // not re-pay the cold build; cheap threads just rebuild. Only settled
+      // threads are written - an active tip changes every poll.
+      if (
+        persistedKey !== null &&
+        rawEventRows.length >= PERSISTED_PROJECTION_MIN_EVENT_ROWS &&
+        (thread.status === "idle" || thread.status === "error")
+      ) {
+        upsertThreadTimelineProjectionRecord(db, {
+          payloadJson: JSON.stringify(entry),
+          projectionKey: persistedKey,
+          threadId: thread.id,
+        });
+      }
     }
   }
   const paginatedTimeline = measureThreadTimelineStage(

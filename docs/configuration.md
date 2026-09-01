@@ -669,6 +669,16 @@ The head-state banners (goal, pending todos, running workflows, background
 commands) come from the same full projection, so pagination cannot drop them
 mid-session.
 
+Cost is kept marginal by memoizing the canonical projection per thread (keyed
+by the newest event's id and the thread's event count, so appends, message
+edits, and pruning all invalidate it), and by persisting the projection of
+large settled threads (3,000+ events) so a server restart does not re-pay
+their cold build. Persisted projections are keyed by the app version and
+rebuilt after upgrades. While a large thread is streaming, rebuilds are
+rate-limited in proportion to their measured cost (at most ten seconds of
+staleness), so one expensive thread cannot monopolize the server's event
+loop; small threads always refresh immediately.
+
 Timeline builds slower than 150ms log `Thread timeline build blocked the event
 loop` with a per-stage breakdown, and event-loop stalls over 500ms log `Event
 loop stalled`. Both log at `info`, so they are visible in `~/.bb/logs/` without

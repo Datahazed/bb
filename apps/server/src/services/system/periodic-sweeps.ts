@@ -26,6 +26,7 @@ import {
   shouldRunIncrementalVacuum,
   sweepManagedEnvironments,
   threads,
+  deleteAllThreadTimelineProjectionRecords,
   truncateCompletedEventItemOutputs,
 } from "@bb/db";
 import type {
@@ -475,6 +476,7 @@ function runCompletedEventOutputTruncationSweep(
   });
   // In-place event mutation is invisible to tip-keyed projection caching.
   clearTimelineProjectionCache();
+  deleteAllThreadTimelineProjectionRecords(deps.db);
 }
 
 function runClosedSessionPruneSweep(

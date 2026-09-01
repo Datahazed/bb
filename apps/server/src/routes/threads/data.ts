@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createTimelineRefreshThrottle } from "../../services/threads/timeline-refresh-throttle.js";
 import {
   getAppSettings,
   getLatestThreadSequence,
@@ -300,6 +301,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const routes = publicApiRoutes.threads;
   const timelineCache = createThreadTimelineCache();
   const timelineLatestRowsCache = createTimelineLatestRowsCache();
+  const timelineRefreshThrottle = createTimelineRefreshThrottle();
   const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({
     logger: deps.logger,
   });
@@ -332,42 +334,52 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       summaryOnly,
       includeProviderUnhandledOperations,
     };
-    const full = timelineCache.getOrBuild(
-      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
-      () => {
-        const { profile, response } = buildThreadTimelineWithProfile(
-          deps.db,
-          thread,
-          {
-            includeProviderUnhandledOperations,
-            includeNestedRows,
-            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-            maxSeq,
-            page,
-            providerDisplayName,
-            planCommand: resolveProviderPlanCommand(
-              deps.providerRegistry,
-              thread.providerId,
-            ),
-            summaryOnly,
-          },
-        );
-        slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        const truncated = truncateTimelineResponseOutputs(
-          response,
-          DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-        );
-        return includeNestedRows
-          ? truncated
-          : previewTimelineResponseOutputs(truncated);
-      },
-    );
+    const paramsKeyForThrottle = buildThreadTimelineParamsKey(keyArgs);
+    const full =
+      timelineRefreshThrottle.getStale(paramsKeyForThrottle) ??
+      timelineCache.getOrBuild(
+        buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
+        () => {
+          const { profile, response } = buildThreadTimelineWithProfile(
+            deps.db,
+            thread,
+            {
+              appVersion: deps.config.appVersion,
+              includeProviderUnhandledOperations,
+              includeNestedRows,
+              maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+              maxSeq,
+              page,
+              providerDisplayName,
+              planCommand: resolveProviderPlanCommand(
+                deps.providerRegistry,
+                thread.providerId,
+              ),
+              summaryOnly,
+            },
+          );
+          slowTimelineBuildLogger.log({ profile, threadId: thread.id });
+          const truncated = truncateTimelineResponseOutputs(
+            response,
+            DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+          );
+          const responseToServe = includeNestedRows
+            ? truncated
+            : previewTimelineResponseOutputs(truncated);
+          timelineRefreshThrottle.record(
+            paramsKeyForThrottle,
+            responseToServe,
+            profile.totalDurationMs,
+          );
+          return responseToServe;
+        },
+      );
 
     const afterSequence = parseOptionalInteger(
       query.afterSequence,
       "afterSequence",
     );
-    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
+    const paramsKey = paramsKeyForThrottle;
     const previous =
       afterSequence === undefined
         ? undefined

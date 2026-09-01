@@ -173,7 +173,9 @@ export function pruneThreadEventHistory(
     0
   ) {
     // Pruning removes stored events without touching the newest one, which
-    // tip-keyed projection caching cannot see.
+    // tip-keyed projection caching cannot see. The event count in the key
+    // protects the persisted rows, so only the in-memory cache needs
+    // clearing here.
     clearTimelineProjectionCache();
   }
 
