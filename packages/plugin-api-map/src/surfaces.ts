@@ -518,6 +518,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "wire",
           "thread-events",
           "dispatch-hook",
+          "environment-targets",
           "host-workers",
         ],
       },

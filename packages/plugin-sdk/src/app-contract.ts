@@ -1319,6 +1319,44 @@ export interface PluginTimelineRendererRegistration {
   component: ComponentType<PluginTimelineRendererProps>;
 }
 
+/**
+ * Props passed to an `experimental_environmentTargetConfiguration` component —
+ * the control the New Thread environment picker renders beside this plugin's
+ * selected environment target.
+ */
+export interface PluginEnvironmentTargetConfigurationProps {
+  /** Project selected in the composer; null in projectless compose. */
+  projectId: string | null;
+  /**
+   * The configuration that will be submitted with the thread: the target's
+   * `defaultConfiguration` (with `hostId` pre-filled for a host-scoped
+   * target) until `onChange` replaces it, and null after `onChange(null)`
+   * marked the configuration incomplete.
+   */
+  value: JsonValue | null;
+  /**
+   * Replace the configuration that will be submitted. Passing null marks the
+   * configuration incomplete, which disables submit with
+   * "Configure <target title>" until a later call supplies a value.
+   */
+  onChange(next: JsonValue | null): void;
+}
+
+/**
+ * Supply the configuration control for one of this plugin's environment
+ * targets (registered server-side via
+ * `bb.experimental_environments.registerTarget`). The New Thread environment
+ * picker renders the component beside the picker while that target is
+ * selected, and submits the component's latest `onChange` value as the
+ * target's configuration. Without a registration the target's declared
+ * `defaultConfiguration` is submitted unchanged.
+ */
+export interface PluginEnvironmentTargetConfigurationRegistration {
+  /** The plugin-local environment target id; letters, digits, `-`, `_`. */
+  targetId: string;
+  component: ComponentType<PluginEnvironmentTargetConfigurationProps>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -1401,6 +1439,15 @@ export interface PluginAppSlots {
    */
   experimental_timelineRenderer(
     registration: PluginTimelineRendererRegistration,
+  ): void;
+  /**
+   * Supply the configuration control the New Thread environment picker
+   * renders beside one of this plugin's selected environment targets (see
+   * {@link PluginEnvironmentTargetConfigurationRegistration}). Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_environmentTargetConfiguration(
+    registration: PluginEnvironmentTargetConfigurationRegistration,
   ): void;
 }
 
@@ -1849,6 +1896,32 @@ export interface ExperimentalProviderModelPickerProps {
   className?: string;
 }
 
+/**
+ * Props of the host-owned `experimental_BranchPicker` component — bb's branch
+ * picker bundled with its branch-options loading for the given host and
+ * project, the control bb's own New Thread composer renders as "Branch from".
+ * The host owns fetching, searching, and refreshing the branch list; the
+ * caller owns only the selection.
+ */
+export interface ExperimentalBranchPickerProps {
+  /**
+   * The enrolled machine whose project checkout supplies the branch list.
+   * Null renders the picker disabled with no options.
+   */
+  hostId: string | null;
+  /** The project whose source on `hostId` is listed; null disables loading. */
+  projectId: string | null;
+  /**
+   * The selected branch name, or null when no branch is chosen (the host
+   * shows its placeholder and the consumer falls back to its own default).
+   */
+  value: string | null;
+  /** Called with the picked branch name, or null when the pick is cleared. */
+  onChange(next: string | null): void;
+  /** Render the current selection without allowing changes. */
+  disabled?: boolean;
+}
+
 /** Props of BB's controlled, host-resolved permission-mode picker. */
 export interface ExperimentalPermissionModePickerProps {
   /** Provider whose supported modes determine the available choices. */
@@ -2286,6 +2359,13 @@ export interface PluginSdkApp {
    * see docs/api_to_audit.md.
    */
   experimental_PermissionModePicker: ComponentType<ExperimentalPermissionModePickerProps>;
+  /**
+   * BB's branch picker with its branch-options loading for one host and
+   * project (see {@link ExperimentalBranchPickerProps}) — the same control
+   * the New Thread composer renders as "Branch from". Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_BranchPicker: ComponentType<ExperimentalBranchPickerProps>;
   /**
    * The host-owned source viewer (see {@link SourceCodeProps}). Renders
    * supplied source text with BB's syntax highlighting, gutters, and live code

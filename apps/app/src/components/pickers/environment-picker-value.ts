@@ -11,11 +11,33 @@ interface ParsedReuseEnvironmentValue {
   environmentId: string | null;
 }
 
+interface ParsedTargetEnvironmentValue {
+  type: "target";
+  pluginId: string;
+  targetId: string;
+}
+
 export const REUSE_VALUE_WITHOUT_ENVIRONMENT = "reuse";
+
+export const WORKTREE_TARGET_PLUGIN_ID = "worktree";
+export const WORKTREE_TARGET_ID = "worktree";
+
+export function isWorktreeEnvironmentTarget(target: {
+  pluginId: string;
+  targetId: string;
+}): boolean {
+  return (
+    target.pluginId === WORKTREE_TARGET_PLUGIN_ID &&
+    target.targetId === WORKTREE_TARGET_ID
+  );
+}
+
+const TARGET_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 
 export type ParsedEnvironmentValue =
   | ParsedHostEnvironmentValue
   | ParsedReuseEnvironmentValue
+  | ParsedTargetEnvironmentValue
   | null;
 
 export function encodeHostValue(
@@ -27,6 +49,22 @@ export function encodeHostValue(
 
 export function encodeReuseValue(environmentId: string): string {
   return `reuse:${environmentId}`;
+}
+
+export function encodeTargetValue(pluginId: string, targetId: string): string {
+  return `target:${pluginId}/${targetId}`;
+}
+
+function parseTargetValue(value: string): ParsedTargetEnvironmentValue | null {
+  const identity = value.slice("target:".length);
+  const separator = identity.lastIndexOf("/");
+  if (separator <= 0) return null;
+  const pluginId = identity.slice(0, separator);
+  const targetId = identity.slice(separator + 1);
+  if (pluginId.includes("/") || !TARGET_ID_PATTERN.test(targetId)) {
+    return null;
+  }
+  return { type: "target", pluginId, targetId };
 }
 
 export function parseEnvironmentValue(value: string): ParsedEnvironmentValue {
@@ -46,6 +84,9 @@ export function parseEnvironmentValue(value: string): ParsedEnvironmentValue {
     if (environmentId.length > 0) {
       return { type: "reuse", environmentId };
     }
+  }
+  if (value.startsWith("target:")) {
+    return parseTargetValue(value);
   }
   return null;
 }

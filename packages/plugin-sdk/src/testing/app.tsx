@@ -66,8 +66,10 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type ExperimentalBranchPickerProps,
   type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
+  type PluginEnvironmentTargetConfigurationRegistration,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -603,6 +605,38 @@ function TestProviderModelPicker({
   );
 }
 
+/**
+ * Stand-in for the host-owned branch picker: a plain text input carrying the
+ * routing identity as data attributes, so a plugin's configuration control can
+ * be driven in tests without the host's branch loading.
+ */
+function TestBranchPicker({
+  hostId,
+  projectId,
+  value,
+  onChange,
+  disabled,
+}: ExperimentalBranchPickerProps) {
+  const inert = hostId === null || disabled === true;
+  return (
+    <div
+      data-testid="bb-branch-picker"
+      data-host-id={hostId ?? ""}
+      data-project-id={projectId ?? ""}
+      data-disabled={inert ? "true" : "false"}
+    >
+      <input
+        aria-label="Branch from"
+        disabled={inert}
+        value={value ?? ""}
+        onChange={(event) =>
+          onChange(event.target.value.length === 0 ? null : event.target.value)
+        }
+      />
+    </div>
+  );
+}
+
 function TestPermissionModePicker({
   providerId,
   value,
@@ -806,6 +840,7 @@ const testPluginSdkApp = {
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_ProviderModelPicker: TestProviderModelPicker,
   experimental_PermissionModePicker: TestPermissionModePicker,
+  experimental_BranchPicker: TestBranchPicker,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
@@ -911,6 +946,7 @@ export interface CapturedPluginApp {
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  environmentTargetConfigurations: PluginEnvironmentTargetConfigurationRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 

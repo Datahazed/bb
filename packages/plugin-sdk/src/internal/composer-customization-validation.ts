@@ -66,6 +66,23 @@ export function requireSlotId(kind: string, value: unknown): string {
 }
 
 /**
+ * Environment target ids follow the same character rules as slot ids, but
+ * they name a target this plugin registered server-side via
+ * `bb.experimental_environments.registerTarget`, not a per-plugin slot.
+ */
+export function requireEnvironmentTargetId(
+  kind: string,
+  value: unknown,
+): string {
+  if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
+    throw new Error(
+      `${kind}: "targetId" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
  * Provider ids follow the same character rules as slot ids, but they name a
  * provider the host knows (`codex`, `acp-cursor`), not a per-plugin slot.
  */

@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import type { Host, ProjectSource } from "@bb/domain";
+import type { SystemEnvironmentTarget } from "@bb/server-contract";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -32,6 +34,8 @@ import {
 } from "@bb/shared-ui/option-display";
 import {
   encodeHostValue,
+  encodeTargetValue,
+  isWorktreeEnvironmentTarget,
   parseEnvironmentValue,
   REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "./environment-picker-value";
@@ -63,6 +67,19 @@ export interface EnvironmentPickerUIProps {
   modal?: boolean;
   machines?: EnvironmentPickerMachines | null;
   onRequestMachineSetup?: (host: Host) => void;
+  targets?: readonly SystemEnvironmentTarget[];
+  selectedTargetHostId?: string | null;
+  onSelectTarget?: (
+    target: SystemEnvironmentTarget,
+    hostId: string | null,
+  ) => void;
+}
+
+function targetValueSelected(
+  value: string,
+  target: SystemEnvironmentTarget,
+): boolean {
+  return value === encodeTargetValue(target.pluginId, target.targetId);
 }
 
 export function EnvironmentPickerUI({
@@ -80,9 +97,30 @@ export function EnvironmentPickerUI({
   modal,
   machines,
   onRequestMachineSetup,
+  targets = [],
+  selectedTargetHostId = null,
+  onSelectTarget,
 }: EnvironmentPickerUIProps) {
   const hostId = host?.id ?? null;
   const isMachineMenu = (machines?.hosts.length ?? 0) > 1;
+  const worktreeTarget = useMemo(
+    () =>
+      targets.find(
+        (target) => target.hostScoped && isWorktreeEnvironmentTarget(target),
+      ),
+    [targets],
+  );
+  const hostScopedTargets = useMemo(
+    () =>
+      targets.filter(
+        (target) => target.hostScoped && !isWorktreeEnvironmentTarget(target),
+      ),
+    [targets],
+  );
+  const globalTargets = useMemo(
+    () => targets.filter((target) => !target.hostScoped),
+    [targets],
+  );
   const hostConnected = host?.status === "connected";
   const hasSource = useMemo(
     () =>
@@ -109,14 +147,44 @@ export function EnvironmentPickerUI({
   const parsed = useMemo(() => parseEnvironmentValue(value), [value]);
 
   const selectedMachineName = useMemo(() => {
-    if (!isMachineMenu || !machines || parsed?.type !== "host") return null;
+    if (!isMachineMenu || !machines) return null;
+    const machineHostId =
+      parsed?.type === "host"
+        ? parsed.hostId
+        : parsed?.type === "target"
+          ? selectedTargetHostId
+          : null;
+    if (machineHostId === null) return null;
     return (
-      machines.hosts.find((machineHost) => machineHost.id === parsed.hostId)
+      machines.hosts.find((machineHost) => machineHost.id === machineHostId)
         ?.name ?? null
     );
-  }, [isMachineMenu, machines, parsed]);
+  }, [isMachineMenu, machines, parsed, selectedTargetHostId]);
+
+  const selectedTarget = useMemo(
+    () =>
+      parsed?.type === "target"
+        ? targets.find(
+            (target) =>
+              target.pluginId === parsed.pluginId &&
+              target.targetId === parsed.targetId,
+          )
+        : undefined,
+    [parsed, targets],
+  );
 
   const selected = useMemo((): SelectedEnvironment => {
+    if (selectedTarget !== undefined) {
+      const showsHost =
+        selectedTarget.hostScoped && selectedMachineName !== null;
+      return {
+        modeLabel: showsHost
+          ? `${selectedMachineName} · ${selectedTarget.title}`
+          : selectedTarget.title,
+        compactModeLabel: selectedTarget.title,
+        icon: pluginIconName(selectedTarget.icon),
+      };
+    }
     if (hostUnavailableReason !== null) {
       return {
         modeLabel: selectedMachineName
@@ -140,6 +208,13 @@ export function EnvironmentPickerUI({
         icon: getEnvironmentWorkspaceLabelIconName("managed-worktree"),
       };
     }
+    if (parsed.type === "target") {
+      return {
+        modeLabel: "Environment",
+        compactModeLabel: "Env",
+        icon: "Laptop" as const,
+      };
+    }
     const modeLabel = parsed.mode === "worktree" ? "New worktree" : localLabel;
     const compactModeLabel =
       parsed.mode === "worktree" ? "Worktree" : isLocal ? "Local" : "Remote";
@@ -160,6 +235,7 @@ export function EnvironmentPickerUI({
     hostUnavailableReason,
     host,
     selectedMachineName,
+    selectedTarget,
   ]);
 
   return (
@@ -217,13 +293,23 @@ export function EnvironmentPickerUI({
           <MachineGroupedEnvironmentOptions
             machines={machines}
             sources={sources}
-            selectedHostId={parsed?.type === "host" ? parsed.hostId : hostId}
+            selectedHostId={
+              parsed?.type === "host"
+                ? parsed.hostId
+                : parsed?.type === "target"
+                  ? selectedTargetHostId
+                  : hostId
+            }
             worktreeDisabledReason={worktreeDisabledReason ?? null}
             reuseDisabledReason={reuseDisabledReason}
             selectedType={parsed?.type}
             value={value}
             onChange={onChange}
             onRequestMachineSetup={onRequestMachineSetup}
+            worktreeTarget={worktreeTarget}
+            hostScopedTargets={hostScopedTargets}
+            selectedTargetHostId={selectedTargetHostId}
+            onSelectTarget={onSelectTarget}
           />
         ) : (
           <EnvironmentOptionsSection
@@ -237,8 +323,28 @@ export function EnvironmentPickerUI({
             selectedType={parsed?.type}
             value={value}
             onChange={onChange}
+            worktreeTarget={worktreeTarget}
+            hostScopedTargets={hostScopedTargets}
+            selectedTargetHostId={selectedTargetHostId}
+            onSelectTarget={onSelectTarget}
           />
         )}
+        {globalTargets.length > 0 && onSelectTarget !== undefined ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              {globalTargets.map((target) => (
+                <EnvironmentMenuItem
+                  key={`${target.pluginId}/${target.targetId}`}
+                  label={target.title}
+                  icon={pluginIconName(target.icon)}
+                  selected={targetValueSelected(value, target)}
+                  onSelect={() => onSelectTarget(target, null)}
+                />
+              ))}
+            </DropdownMenuGroup>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -257,6 +363,12 @@ interface EnvironmentOptionsSectionProps {
     | undefined;
   value: string;
   onChange: (value: string) => void;
+  worktreeTarget: SystemEnvironmentTarget | undefined;
+  hostScopedTargets: readonly SystemEnvironmentTarget[];
+  selectedTargetHostId: string | null;
+  onSelectTarget:
+    | ((target: SystemEnvironmentTarget, hostId: string | null) => void)
+    | undefined;
 }
 
 function EnvironmentOptionsSection({
@@ -270,6 +382,10 @@ function EnvironmentOptionsSection({
   selectedType,
   value,
   onChange,
+  worktreeTarget,
+  hostScopedTargets,
+  selectedTargetHostId,
+  onSelectTarget,
 }: EnvironmentOptionsSectionProps) {
   const localValue = hostId ? encodeHostValue(hostId, "local") : null;
   const worktreeValue = hostId ? encodeHostValue(hostId, "worktree") : null;
@@ -277,6 +393,10 @@ function EnvironmentOptionsSection({
   const workspaceDisabledDescription = workspaceDisabledReason ?? undefined;
   const worktreeDisabled = worktreeDisabledReason !== null;
   const worktreeDisabledDescription = worktreeDisabledReason ?? undefined;
+  const worktreeTargetRow =
+    worktreeTarget !== undefined && onSelectTarget !== undefined
+      ? worktreeTarget
+      : undefined;
 
   return (
     <DropdownMenuGroup>
@@ -304,16 +424,48 @@ function EnvironmentOptionsSection({
               if (localValue !== null) onChange(localValue);
             }}
           />
-          <EnvironmentMenuItem
-            label="New worktree"
-            description={worktreeDisabledDescription}
-            icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
-            selected={worktreeValue !== null && value === worktreeValue}
-            disabled={worktreeDisabled || worktreeValue === null}
-            onSelect={() => {
-              if (worktreeValue !== null) onChange(worktreeValue);
-            }}
-          />
+          {worktreeTargetRow !== undefined ? (
+            <EnvironmentMenuItem
+              label={worktreeTargetRow.title}
+              description={worktreeDisabledDescription}
+              icon={pluginIconName(worktreeTargetRow.icon)}
+              selected={
+                targetValueSelected(value, worktreeTargetRow) &&
+                selectedTargetHostId === hostId
+              }
+              disabled={workspaceDisabled || worktreeDisabled || hostId === null}
+              onSelect={() => {
+                if (hostId !== null) onSelectTarget?.(worktreeTargetRow, hostId);
+              }}
+            />
+          ) : (
+            <EnvironmentMenuItem
+              label="New worktree"
+              description={worktreeDisabledDescription}
+              icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
+              selected={worktreeValue !== null && value === worktreeValue}
+              disabled={worktreeDisabled || worktreeValue === null}
+              onSelect={() => {
+                if (worktreeValue !== null) onChange(worktreeValue);
+              }}
+            />
+          )}
+          {onSelectTarget !== undefined && hostId !== null
+            ? hostScopedTargets.map((target) => (
+                <EnvironmentMenuItem
+                  key={`${target.pluginId}/${target.targetId}`}
+                  label={target.title}
+                  description={workspaceDisabledDescription}
+                  icon={pluginIconName(target.icon)}
+                  selected={
+                    targetValueSelected(value, target) &&
+                    selectedTargetHostId === hostId
+                  }
+                  disabled={workspaceDisabled}
+                  onSelect={() => onSelectTarget(target, hostId)}
+                />
+              ))
+            : null}
           <EnvironmentMenuItem
             label="Existing worktree"
             description={reuseDisabledReason ?? undefined}
@@ -343,6 +495,12 @@ interface MachineGroupedEnvironmentOptionsProps {
   value: string;
   onChange: (value: string) => void;
   onRequestMachineSetup: ((host: Host) => void) | undefined;
+  worktreeTarget: SystemEnvironmentTarget | undefined;
+  hostScopedTargets: readonly SystemEnvironmentTarget[];
+  selectedTargetHostId: string | null;
+  onSelectTarget:
+    | ((target: SystemEnvironmentTarget, hostId: string | null) => void)
+    | undefined;
 }
 
 function MachineGroupedEnvironmentOptions({
@@ -355,6 +513,10 @@ function MachineGroupedEnvironmentOptions({
   value,
   onChange,
   onRequestMachineSetup,
+  worktreeTarget,
+  hostScopedTargets,
+  selectedTargetHostId,
+  onSelectTarget,
 }: MachineGroupedEnvironmentOptionsProps) {
   const now = Date.now();
   const orderedHosts = [...machines.hosts].sort(
@@ -379,6 +541,10 @@ function MachineGroupedEnvironmentOptions({
           value={value}
           onChange={onChange}
           onRequestMachineSetup={onRequestMachineSetup}
+          worktreeTarget={worktreeTarget}
+          hostScopedTargets={hostScopedTargets}
+          selectedTargetHostId={selectedTargetHostId}
+          onSelectTarget={onSelectTarget}
         />
       ))}
       <DropdownMenuSeparator />
@@ -405,6 +571,12 @@ interface MachineSectionProps {
   value: string;
   onChange: (value: string) => void;
   onRequestMachineSetup: ((host: Host) => void) | undefined;
+  worktreeTarget: SystemEnvironmentTarget | undefined;
+  hostScopedTargets: readonly SystemEnvironmentTarget[];
+  selectedTargetHostId: string | null;
+  onSelectTarget:
+    | ((target: SystemEnvironmentTarget, hostId: string | null) => void)
+    | undefined;
 }
 
 function MachineSection({
@@ -416,10 +588,18 @@ function MachineSection({
   value,
   onChange,
   onRequestMachineSetup,
+  worktreeTarget,
+  hostScopedTargets,
+  selectedTargetHostId,
+  onSelectTarget,
 }: MachineSectionProps) {
   const connected = host.status === "connected";
   const localValue = encodeHostValue(host.id, "local");
   const worktreeValue = encodeHostValue(host.id, "worktree");
+  const worktreeTargetRow =
+    worktreeTarget !== undefined && onSelectTarget !== undefined
+      ? worktreeTarget
+      : undefined;
   return (
     <DropdownMenuGroup>
       <DropdownMenuLabel className="text-muted-foreground">
@@ -451,16 +631,47 @@ function MachineSection({
             disabled={!connected}
             onSelect={() => onChange(localValue)}
           />
-          <EnvironmentMenuItem
-            label="New worktree"
-            description={
-              connected ? (worktreeDisabledReason ?? undefined) : undefined
-            }
-            icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
-            selected={value === worktreeValue}
-            disabled={!connected || worktreeDisabledReason !== null}
-            onSelect={() => onChange(worktreeValue)}
-          />
+          {worktreeTargetRow !== undefined ? (
+            <EnvironmentMenuItem
+              label={worktreeTargetRow.title}
+              description={
+                connected ? (worktreeDisabledReason ?? undefined) : undefined
+              }
+              icon={pluginIconName(worktreeTargetRow.icon)}
+              selected={
+                targetValueSelected(value, worktreeTargetRow) &&
+                selectedTargetHostId === host.id
+              }
+              disabled={!connected || worktreeDisabledReason !== null}
+              onSelect={() => onSelectTarget?.(worktreeTargetRow, host.id)}
+            />
+          ) : (
+            <EnvironmentMenuItem
+              label="New worktree"
+              description={
+                connected ? (worktreeDisabledReason ?? undefined) : undefined
+              }
+              icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
+              selected={value === worktreeValue}
+              disabled={!connected || worktreeDisabledReason !== null}
+              onSelect={() => onChange(worktreeValue)}
+            />
+          )}
+          {onSelectTarget !== undefined
+            ? hostScopedTargets.map((target) => (
+                <EnvironmentMenuItem
+                  key={`${target.pluginId}/${target.targetId}`}
+                  label={target.title}
+                  icon={pluginIconName(target.icon)}
+                  selected={
+                    targetValueSelected(value, target) &&
+                    selectedTargetHostId === host.id
+                  }
+                  disabled={!connected}
+                  onSelect={() => onSelectTarget(target, host.id)}
+                />
+              ))
+            : null}
         </>
       ) : onRequestMachineSetup && connected ? (
         <EnvironmentMenuItem

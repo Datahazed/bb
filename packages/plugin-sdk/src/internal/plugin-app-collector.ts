@@ -3,6 +3,7 @@ import type {
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
+  PluginEnvironmentTargetConfigurationRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginCommandPaletteActionRegistration,
@@ -25,6 +26,7 @@ import {
   collectComposerCustomization,
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
+  requireEnvironmentTargetId,
   requireMessageDirectiveId,
   requireNonEmptyString,
   requireOptionalString,
@@ -103,6 +105,7 @@ export interface CollectedPluginAppRegistrations {
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  environmentTargetConfigurations: PluginEnvironmentTargetConfigurationRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -137,6 +140,7 @@ export function collectPluginAppRegistrations(
     commandPaletteActions: [],
     providerIcons: [],
     timelineRenderers: [],
+    environmentTargetConfigurations: [],
     contentScripts: [],
   };
   const seenIds = {
@@ -159,6 +163,7 @@ export function collectPluginAppRegistrations(
     commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
+    environmentTargetConfiguration: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -552,6 +557,18 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
         collected.timelineRenderers.push({
           kind: itemKind,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_environmentTargetConfiguration(registration) {
+        const kind = "slots.experimental_environmentTargetConfiguration";
+        const targetId = requireEnvironmentTargetId(
+          kind,
+          registration?.targetId,
+        );
+        requireUniqueId(kind, seenIds.environmentTargetConfiguration, targetId);
+        collected.environmentTargetConfigurations.push({
+          targetId,
           component: requireComponent(kind, registration.component),
         });
       },

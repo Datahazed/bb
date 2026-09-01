@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
   PluginDiffRendererRegistration,
+  PluginEnvironmentTargetConfigurationRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
@@ -41,6 +42,7 @@ export interface PluginRegistrationSet {
   commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
   providerIcons?: readonly PluginProviderIconRegistration[];
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
+  environmentTargetConfigurations?: readonly PluginEnvironmentTargetConfigurationRegistration[];
 }
 
 interface PluginSlotBase {
@@ -86,6 +88,8 @@ interface PluginProviderIconSlot
   extends PluginProviderIconRegistration, PluginSlotBase {}
 export interface PluginTimelineRendererSlot
   extends PluginTimelineRendererRegistration, PluginSlotBase {}
+export interface PluginEnvironmentTargetConfigurationSlot
+  extends PluginEnvironmentTargetConfigurationRegistration, PluginSlotBase {}
 
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
@@ -107,6 +111,7 @@ export interface PluginSlotSnapshot {
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
   timelineRenderers: readonly PluginTimelineRendererSlot[];
+  environmentTargetConfigurations: readonly PluginEnvironmentTargetConfigurationSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -129,6 +134,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   commandPaletteActions: [],
   providerIcons: [],
   timelineRenderers: [],
+  environmentTargetConfigurations: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -158,6 +164,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "commandPaletteActions",
   "providerIcons",
   "timelineRenderers",
+  "environmentTargetConfigurations",
 ];
 
 type FlattenedPluginSlots = {
@@ -199,6 +206,7 @@ function flattenRegistrations(
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
     timelineRenderers: stamp(set.timelineRenderers),
+    environmentTargetConfigurations: stamp(set.environmentTargetConfigurations),
   };
 }
 

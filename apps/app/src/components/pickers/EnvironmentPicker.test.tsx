@@ -275,6 +275,98 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(screen.getByText("Worktree")).toBeTruthy();
   });
 
+  it("replaces per-host worktree rows with a registered worktree target and lists global targets once", () => {
+    const onChange = vi.fn();
+    const onSelectTarget = vi.fn();
+    const worktreeTarget = {
+      pluginId: "worktree",
+      targetId: "worktree",
+      title: "New worktree",
+      icon: "GitBranch",
+      hostScoped: true,
+      defaultConfiguration: null,
+    };
+    const sandboxTarget = {
+      pluginId: "docker-sandbox",
+      targetId: "container",
+      title: "Docker container",
+      icon: "Container",
+      hostScoped: false,
+      defaultConfiguration: { image: "img" },
+    };
+    render(
+      <EnvironmentPickerUI
+        value={`host:${thisMachine.id}:local`}
+        onChange={onChange}
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, studio],
+          localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
+        }}
+        targets={[worktreeTarget, sandboxTarget]}
+        selectedTargetHostId={null}
+        onSelectTarget={onSelectTarget}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    const worktreeItems = screen.getAllByRole("menuitem", {
+      name: /New worktree/u,
+    });
+    expect(worktreeItems).toHaveLength(2);
+    fireEvent.click(worktreeItems[1]!);
+    expect(onSelectTarget).toHaveBeenCalledWith(worktreeTarget, studio.id);
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    const sandboxItems = screen.getAllByRole("menuitem", {
+      name: /Docker container/u,
+    });
+    expect(sandboxItems).toHaveLength(1);
+    fireEvent.click(sandboxItems[0]!);
+    expect(onSelectTarget).toHaveBeenCalledWith(sandboxTarget, null);
+  });
+
+  it("names the selected machine and target title in the trigger label", () => {
+    render(
+      <EnvironmentPickerUI
+        value="target:worktree/worktree"
+        onChange={vi.fn()}
+        sources={machineSources}
+        host={studio}
+        isLocal={false}
+        machines={{
+          hosts: [thisMachine, studio],
+          localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
+        }}
+        targets={[
+          {
+            pluginId: "worktree",
+            targetId: "worktree",
+            title: "New worktree",
+            icon: "GitBranch",
+            hostScoped: true,
+            defaultConfiguration: null,
+          },
+        ]}
+        selectedTargetHostId={studio.id}
+        onSelectTarget={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    expect(screen.getByText("Mac Studio · New worktree")).toBeTruthy();
+  });
+
   it("keeps the single-host menu when only one host exists", () => {
     render(
       <EnvironmentPickerUI

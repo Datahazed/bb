@@ -5,6 +5,7 @@ import {
 } from "@bb/domain";
 import type {
   ProjectBranchesResponse,
+  SystemEnvironmentTarget,
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import {
@@ -17,6 +18,7 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
+  environmentTargets?: readonly SystemEnvironmentTarget[];
   isProjectless: boolean;
   knownHostIds: ReadonlySet<string>;
   primaryHostId: string | null;
@@ -110,6 +112,7 @@ export function resolveProjectSourceWorktreeDisabledReason(
 
 export function resolveRootComposeEffectiveEnvironmentValue({
   environmentSelectionValue,
+  environmentTargets,
   isProjectless,
   knownHostIds,
   primaryHostId,
@@ -164,6 +167,19 @@ export function resolveRootComposeEffectiveEnvironmentValue({
 
     return reuseThreadOptions.some(
       (option) => option.environmentId === parsedSelection.environmentId,
+    )
+      ? environmentSelectionValue
+      : fallbackHostValue;
+  }
+
+  if (parsedSelection?.type === "target") {
+    if (environmentTargets === undefined) {
+      return environmentSelectionValue;
+    }
+    return environmentTargets.some(
+      (target) =>
+        target.pluginId === parsedSelection.pluginId &&
+        target.targetId === parsedSelection.targetId,
     )
       ? environmentSelectionValue
       : fallbackHostValue;

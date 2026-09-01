@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
+import type { SystemEnvironmentTarget } from "@bb/server-contract";
 import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
@@ -48,6 +49,7 @@ import {
 import { MachinePickerUI } from "@/components/pickers/MachinePicker";
 import {
   encodeHostValue,
+  isWorktreeEnvironmentTarget,
   type ParsedEnvironmentValue,
   parseEnvironmentValue,
 } from "@/components/pickers/environment-picker-value";
@@ -86,6 +88,9 @@ export interface NewThreadEnvironmentConfig {
   reuseDisabled?: boolean;
   worktreeDisabledReason?: string | null;
   disabled?: boolean;
+  targets?: readonly SystemEnvironmentTarget[];
+  selectedTargetHostId?: string | null;
+  onSelectTarget?: EnvironmentPickerUIProps["onSelectTarget"];
 }
 
 export interface NewThreadBranchConfig {
@@ -137,6 +142,7 @@ export interface NewThreadModeConfig {
   branch: NewThreadBranchConfig;
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
+  targetConfigurationSlot?: ReactNode;
   banner?: ReactNode;
   header?: ReactNode;
 }
@@ -171,11 +177,16 @@ interface NewThreadPromptBoxUIProps {
 
 interface GetBranchPickerMenuKindArgs {
   parsedEnvironment: ParsedEnvironmentValue;
+  worktreeTargetSelected: boolean;
 }
 
 function getBranchPickerMenuKind({
   parsedEnvironment,
+  worktreeTargetSelected,
 }: GetBranchPickerMenuKindArgs): BranchPickerMenuKind | undefined {
+  if (worktreeTargetSelected) {
+    return "base";
+  }
   if (parsedEnvironment?.type !== "host") {
     return undefined;
   }
@@ -410,6 +421,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
               environment={modeConfig.environment}
               branch={modeConfig.branch}
               worktree={modeConfig.worktree}
+              targetConfigurationSlot={modeConfig.targetConfigurationSlot}
             />
           ) : (
             <ProjectlessMachineSlot environment={modeConfig.environment} />
@@ -435,20 +447,41 @@ interface ThreadEnvSlotProps {
   environment: NewThreadEnvironmentConfig;
   branch: NewThreadBranchConfig;
   worktree: NewThreadWorktreeConfig;
+  targetConfigurationSlot?: ReactNode;
 }
 
 export function ThreadEnvSlot({
   environment,
   branch,
   worktree,
+  targetConfigurationSlot,
 }: ThreadEnvSlotProps) {
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
     [environment.value],
   );
-  const branchMenuKind = getBranchPickerMenuKind({ parsedEnvironment });
+  const selectedTarget = useMemo(
+    () =>
+      parsedEnvironment?.type === "target"
+        ? environment.targets?.find(
+            (target) =>
+              target.pluginId === parsedEnvironment.pluginId &&
+              target.targetId === parsedEnvironment.targetId,
+          )
+        : undefined,
+    [environment.targets, parsedEnvironment],
+  );
+  const worktreeTargetSelected =
+    selectedTarget !== undefined &&
+    selectedTarget.hostScoped &&
+    isWorktreeEnvironmentTarget(selectedTarget);
+  const branchMenuKind = getBranchPickerMenuKind({
+    parsedEnvironment,
+    worktreeTargetSelected,
+  });
   const showBranchPicker =
-    parsedEnvironment?.type === "host" && branch.hidden !== true;
+    (parsedEnvironment?.type === "host" || worktreeTargetSelected) &&
+    branch.hidden !== true;
   const showWorktreePicker = parsedEnvironment?.type === "reuse";
   return (
     <>
@@ -463,6 +496,9 @@ export function ThreadEnvSlot({
         reuseDisabled={environment.reuseDisabled}
         worktreeDisabledReason={environment.worktreeDisabledReason}
         disabled={environment.disabled}
+        targets={environment.targets}
+        selectedTargetHostId={environment.selectedTargetHostId}
+        onSelectTarget={environment.onSelectTarget}
         className="shrink-0"
         muted
       />
@@ -503,6 +539,9 @@ export function ThreadEnvSlot({
           disabled={worktree.disabled}
         />
       ) : null}
+      {selectedTarget !== undefined && !worktreeTargetSelected
+        ? targetConfigurationSlot
+        : null}
     </>
   );
 }
@@ -562,6 +601,7 @@ interface NewThreadConnectedModeConfig {
   branch: NewThreadConnectedBranchConfig;
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
+  targetConfigurationSlot?: ReactNode;
   banner?: ReactNode;
   header?: ReactNode;
 }
@@ -589,9 +629,15 @@ export function NewThreadPromptBox({
   const parsedEnvironment = parseEnvironmentValue(
     threadConfig.environment.value,
   );
-  const selectedHost =
+  const selectedEnvironmentHostId =
     parsedEnvironment?.type === "host"
-      ? (hosts?.find((host) => host.id === parsedEnvironment.hostId) ??
+      ? parsedEnvironment.hostId
+      : parsedEnvironment?.type === "target"
+        ? (threadConfig.environment.selectedTargetHostId ?? null)
+        : null;
+  const selectedHost =
+    selectedEnvironmentHostId !== null
+      ? (hosts?.find((host) => host.id === selectedEnvironmentHostId) ??
         primaryHost)
       : primaryHost;
   const isLocalHost = selectedHost ? isLocalDaemonHost(selectedHost.id) : false;
@@ -629,6 +675,7 @@ export function NewThreadPromptBox({
         branch: uiBranch,
         worktree: threadConfig.worktree,
         permission: threadConfig.permission,
+        targetConfigurationSlot: threadConfig.targetConfigurationSlot,
         banner: threadConfig.banner,
         header: threadConfig.header,
       }}

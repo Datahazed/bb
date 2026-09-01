@@ -154,6 +154,7 @@ describe("resolveNewThreadProjectDefaultsState", () => {
 describe("resolveNewThreadSubmitDisabledReason", () => {
   const readyState = {
     branchMutationBlockerTitle: null,
+    environmentTargetConfigureTitle: null,
     isCopyingAttachments: false,
     isLoadingModels: false,
     isSubmitting: false,
@@ -203,6 +204,14 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
       "an incomplete environment selection",
       { submissionEnvironmentUnavailable: true },
       "Select an environment.",
+    ],
+    [
+      "an unconfigured environment target",
+      {
+        environmentTargetConfigureTitle: "Docker container",
+        submissionEnvironmentUnavailable: true,
+      },
+      "Configure Docker container",
     ],
     [
       "an unavailable worktree",

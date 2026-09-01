@@ -23,10 +23,15 @@ import {
 } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NewThreadRequest } from "@get-bb/plugin-sdk";
+import type { SystemEnvironmentTarget } from "@bb/server-contract";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
 } from "@/components/promptbox/NewThreadComposer";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import {
   encodeReuseValue,
   REUSE_VALUE_WITHOUT_ENVIRONMENT,
@@ -47,13 +52,24 @@ const mocks = vi.hoisted(() => ({
   sidebarNavigationReplayed: false,
   extraProjects: [] as Array<Record<string, unknown>>,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
+  environmentTargets: [] as unknown[],
 }));
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
-  NewThreadPromptBox: (props: Record<string, unknown>) => {
+  NewThreadPromptBox: (props: Record<string, any>) => {
     mocks.promptBoxProps.push(props);
-    return <div data-testid="new-thread-prompt-box" />;
+    return (
+      <div data-testid="new-thread-prompt-box">
+        {props.modeConfig?.targetConfigurationSlot ?? null}
+      </div>
+    );
   },
+}));
+
+vi.mock("@/hooks/queries/environment-target-queries", () => ({
+  useSystemEnvironmentTargets: () => ({
+    targets: mocks.environmentTargets,
+  }),
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -395,6 +411,8 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
+    mocks.environmentTargets = [];
+    resetPluginSlotStoreForTest();
     window.localStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
@@ -1123,5 +1141,191 @@ describe("PluginNewThreadComposer seeding", () => {
     });
     expect(latestPromptBoxProps().project.value).toBe("proj_1");
     expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
+  });
+});
+
+const SANDBOX_TARGET: SystemEnvironmentTarget = {
+  pluginId: "docker-sandbox",
+  targetId: "container",
+  title: "Docker container",
+  icon: "Container",
+  hostScoped: false,
+  defaultConfiguration: { image: "img-default" },
+};
+
+const WORKTREE_TARGET: SystemEnvironmentTarget = {
+  pluginId: "worktree",
+  targetId: "worktree",
+  title: "New worktree",
+  icon: "GitBranch",
+  hostScoped: true,
+  defaultConfiguration: null,
+};
+
+const EMPTY_SLOT_REGISTRATIONS = {
+  homepageSections: [],
+  settingsSections: [],
+  navPanels: [],
+  threadPanelActions: [],
+  sidebarFooterActions: [],
+  fileOpeners: [],
+  messageDirectives: [],
+};
+
+describe("NewThreadComposer environment targets", () => {
+  beforeEach(() => {
+    mocks.promptBoxProps.length = 0;
+    mocks.projectThreads = [];
+    mocks.sidebarNavigationSettled = true;
+    mocks.sidebarNavigationReplayed = false;
+    mocks.extraProjects = [];
+    mocks.environmentTargets = [];
+    resetPluginSlotStoreForTest();
+    window.localStorage.clear();
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "",
+      mentions: [],
+      attachments: [],
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderUnseeded(
+    onSubmit: (request: NewThreadRequest) => void,
+    draftKey: string,
+  ) {
+    return render(
+      <MemoryRouter>
+        <PluginNewThreadComposer
+          draftKey={draftKey}
+          defaultProjectId="proj_1"
+          initialPrompt="target the sandbox"
+          onSubmit={onSubmit}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  it("submits a plugin-target environment with the default configuration", async () => {
+    mocks.environmentTargets = [SANDBOX_TARGET];
+    const submitted: NewThreadRequest[] = [];
+    renderUnseeded((request) => {
+      submitted.push(request);
+    }, "target-default-config");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectTarget(
+        SANDBOX_TARGET,
+        null,
+      );
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "target:docker-sandbox/container",
+      );
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].environment).toEqual({
+      type: "plugin-target",
+      pluginId: "docker-sandbox",
+      targetId: "container",
+      configuration: { image: "img-default" },
+    });
+  });
+
+  it("blocks submit with Configure <title> after the slot marks configuration incomplete", async () => {
+    mocks.environmentTargets = [SANDBOX_TARGET];
+    setPluginSlotRegistrations("docker-sandbox", {
+      ...EMPTY_SLOT_REGISTRATIONS,
+      environmentTargetConfigurations: [
+        {
+          targetId: "container",
+          component: ({ onChange }) => (
+            <button
+              type="button"
+              data-testid="clear-target-config"
+              onClick={() => onChange(null)}
+            >
+              clear
+            </button>
+          ),
+        },
+      ],
+    });
+    const submitted: NewThreadRequest[] = [];
+    renderUnseeded((request) => {
+      submitted.push(request);
+    }, "target-incomplete-config");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectTarget(
+        SANDBOX_TARGET,
+        null,
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("clear-target-config")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("clear-target-config"));
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(true);
+    });
+    expect(latestPromptBoxProps().disabledReason).toBe(
+      "Configure Docker container",
+    );
+    await expect(submit()).resolves.toBeUndefined();
+    expect(submitted).toHaveLength(0);
+  });
+
+  it("submits the worktree target form with the row's host and base branch", async () => {
+    mocks.environmentTargets = [WORKTREE_TARGET];
+    const submitted: NewThreadRequest[] = [];
+    renderUnseeded((request) => {
+      submitted.push(request);
+    }, "worktree-target-row");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectTarget(
+        WORKTREE_TARGET,
+        "host_1",
+      );
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "target:worktree/worktree",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedTargetHostId,
+      ).toBe("host_1");
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].environment).toEqual({
+      type: "plugin-target",
+      pluginId: "worktree",
+      targetId: "worktree",
+      configuration: {
+        hostId: "host_1",
+        baseBranch: { kind: "named", name: "main" },
+      },
+    });
   });
 });
