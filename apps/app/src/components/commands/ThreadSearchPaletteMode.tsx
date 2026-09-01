@@ -33,7 +33,7 @@ import {
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
-import { PaletteShell } from "./PaletteShell";
+import { PALETTE_FOOTER_LABEL_CLASS, PaletteShell } from "./PaletteShell";
 
 export function ThreadSearchPaletteMode({
   onExit,
@@ -219,8 +219,7 @@ export function ThreadSearchPaletteMode({
       ? "Searching threads"
       : trimmedQuery.length === 1
         ? "Type at least 2 characters"
-        : (navigation.isLoading || archivedThreads.isLoading) &&
-            result.isRecent
+        : (navigation.isLoading || archivedThreads.isLoading) && result.isRecent
           ? "Loading recent threads"
           : result.isRecent
             ? "No recent threads"
@@ -315,7 +314,10 @@ function ThreadSearchScopeFilter({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Thread scope"
-        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-subtle-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+          PALETTE_FOOTER_LABEL_CLASS,
+        )}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -434,7 +436,10 @@ function ThreadSearchPaletteRow({
           />
         </span>
         <span
-          className="block min-w-0 truncate text-xs leading-4 text-subtle-foreground"
+          className={cn(
+            "block min-w-0 truncate text-xs leading-4",
+            PALETTE_FOOTER_LABEL_CLASS,
+          )}
           title={row.metadataText}
           data-palette-thread-metadata
         >

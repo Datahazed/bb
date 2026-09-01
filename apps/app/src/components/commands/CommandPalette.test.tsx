@@ -475,13 +475,14 @@ describe("CommandPalette", () => {
     const modeSelect = screen.getByRole("button", { name: "Threads search" });
     expectAttribute(modeSelect, "aria-pressed", "true");
     expect(modeSelect.querySelector('[data-icon="Search"]')).not.toBeNull();
+    expectClasses(modeSelect.parentElement, "border-border/70", "bg-background/70");
     expectAttribute(
       screen.getByRole("button", { name: "Return to commands" }),
       "data-tab-pill-close",
     );
-    expect(
-      screen.getByRole("button", { name: "Thread scope" }).textContent,
-    ).toContain("All");
+    const scope = screen.getByRole("button", { name: "Thread scope" });
+    expect(scope.textContent).toContain("All");
+    expectClasses(scope, "text-subtle-foreground", "opacity-70");
     expectText(screen.getByTestId("command-palette"), "Split");
     const footer = screen
       .getByTestId("command-palette")
@@ -804,6 +805,7 @@ describe("CommandPalette", () => {
       expectClasses(
         row.querySelector("[data-palette-thread-metadata]"),
         "text-subtle-foreground",
+        "opacity-70",
       );
     }
     expectClasses(
@@ -887,6 +889,7 @@ describe("CommandPalette", () => {
       expectClasses(
         row.querySelector("[data-palette-thread-metadata]"),
         "text-subtle-foreground",
+        "opacity-70",
       );
     }
     expect(results.querySelector("[data-palette-thread-state]")).toBeNull();
