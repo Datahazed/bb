@@ -37,6 +37,8 @@ import type {
   ThreadTabsResponse,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
+  TimelineTurnDetailsQuery,
+  TimelineTurnDetailsResponse,
   TimelineTurnSummaryDetailsResponse,
   ThreadOpenFile,
   ThreadOpenSplit,
@@ -147,6 +149,7 @@ export type ThreadDefaultExecutionOptionsResult = ResolvedThreadExecutionOptions
 export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
 export type ThreadTimelineTurnSummaryDetailsResult =
   TimelineTurnSummaryDetailsResponse;
+export type ThreadTimelineTurnDetailsResult = TimelineTurnDetailsResponse;
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
@@ -249,6 +252,11 @@ export interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
 }
 
 export interface ThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsQuery {
+  signal?: AbortSignal;
+  threadId: string;
+}
+
+export interface ThreadTimelineTurnDetailsArgs extends TimelineTurnDetailsQuery {
   signal?: AbortSignal;
   threadId: string;
 }
@@ -464,6 +472,9 @@ export interface ThreadsArea {
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
+  timelineTurnDetails(
+    args: ThreadTimelineTurnDetailsArgs,
+  ): Promise<ThreadTimelineTurnDetailsResult>;
   timelineTurnSummaryDetails(
     args: ThreadTimelineTurnSummaryDetailsArgs,
   ): Promise<ThreadTimelineTurnSummaryDetailsResult>;
@@ -1098,6 +1109,22 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           {
             param: { id: input.threadId },
             query: timelineQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async timelineTurnDetails(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].timeline["turn-details"].$get(
+          {
+            param: { id: input.threadId },
+            query: {
+              turnId: input.turnId,
+              sourceSeqStart: input.sourceSeqStart,
+              sourceSeqEnd: input.sourceSeqEnd,
+              ...(input.cursor ? { cursor: input.cursor } : {}),
+            },
           },
           ...signalRequestArgs(input.signal),
         ),

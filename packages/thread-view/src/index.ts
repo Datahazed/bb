@@ -51,6 +51,7 @@ export {
 export type { FileChangeAction } from "./file-change-summary.js";
 export {
   buildThreadTimelineFromEvents,
+  buildThreadTimelineTurnDetailPageFromEvents,
   buildThreadTimelineTurnDetailsFromEvents,
 } from "./build-thread-timeline.js";
 export type { ThreadTimelineFromEventsResult } from "./build-thread-timeline.js";

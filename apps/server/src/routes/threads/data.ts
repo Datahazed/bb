@@ -45,6 +45,7 @@ import { toThreadQueuedMessage } from "../../services/threads/thread-queued-mess
 import {
   buildThreadConversationOutlineProjectionKey,
   buildThreadTimelineWithProfile,
+  buildTimelineTurnDetailsPage,
   buildTimelineTurnSummaryDetails,
   loadThreadConversationOutline,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
@@ -440,6 +441,26 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         turnId: query.turnId,
         sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
         sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+      }),
+    );
+  });
+
+  get(routes.timelineTurnDetails, (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const includeProviderUnhandledOperations =
+      deps.config.isDevelopment ||
+      getAppSettings(deps.db).showUnhandledProviderEvents;
+    return context.json(
+      buildTimelineTurnDetailsPage(deps.db, thread, {
+        ...(query.cursor ? { cursor: query.cursor } : {}),
+        includeProviderUnhandledOperations,
+        providerDisplayName: resolveThreadProviderDisplayName(
+          deps,
+          thread.providerId,
+        ),
+        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+        turnId: query.turnId,
       }),
     );
   });

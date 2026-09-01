@@ -32,6 +32,7 @@ import {
   threadQueuedMessageListResponseSchema,
   threadStorageLocationResponseSchema,
   threadTimelineResponseSchema,
+  timelineTurnDetailsResponseSchema,
   threadWithIncludesResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
   uploadedPromptAttachmentSchema,
@@ -1067,6 +1068,18 @@ describe("public thread data routes", () => {
         expect(detailRow.workKind).toBe("tool");
         expect(detailRow.callId).toBe("tool-1");
       }
+
+      const pageResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+      );
+      expect(pageResponse.status).toBe(200);
+      const page = timelineTurnDetailsResponseSchema.parse(
+        await readJson(pageResponse),
+      );
+      expect(page.nextCursor).toBeNull();
+      expect(page.rows.map((row) => row.id)).toEqual(
+        toolDetails.rows.map((row) => row.id),
+      );
     });
   });
 
@@ -1790,6 +1803,16 @@ describe("public thread data routes", () => {
         `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
       );
       expect(detailsResponse.status).toBe(413);
+
+      const firstPageResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+      );
+      expect(firstPageResponse.status).toBe(200);
+      const firstPage = timelineTurnDetailsResponseSchema.parse(
+        await readJson(firstPageResponse),
+      );
+      expect(firstPage.rows.length).toBeGreaterThan(0);
+      expect(firstPage.nextCursor).not.toBeNull();
     });
   }, 10_000);
 

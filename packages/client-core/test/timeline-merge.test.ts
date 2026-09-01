@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   ThreadTimelineResponse,
   TimelineCommandWorkRow,
+  TimelineDelegationWorkRow,
   TimelinePaginationCursor,
   TimelineRow,
   TimelineTurnRow,
@@ -10,6 +11,7 @@ import type {
 import {
   mergeLoadedTimelineWithLatest,
   mergeLatestTimelineRows,
+  mergeTimelineTurnDetailPages,
   prependOlderTimelineRows,
   recoverLoadedTimelineAfterStaleCursor,
   type LoadedTimelineState,
@@ -101,6 +103,34 @@ function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
   };
 }
 
+function delegationRow(
+  id: string,
+  sequence: number,
+  childRows: TimelineRow[],
+): TimelineDelegationWorkRow {
+  return {
+    id,
+    threadId: "thread-1",
+    turnId: "turn-1",
+    sourceSeqStart: sequence,
+    sourceSeqEnd: sequence + 1,
+    startedAt: sequence,
+    createdAt: sequence,
+    kind: "work",
+    workKind: "delegation",
+    status: "completed",
+    callId: id,
+    toolName: "Agent",
+    childRef: null,
+    background: false,
+    subagentType: null,
+    description: "Delegated work",
+    output: "",
+    completedAt: sequence + 1,
+    childRows,
+  };
+}
+
 function makeTimelineResponse(
   rows: TimelineRow[],
   olderCursor: TimelinePaginationCursor | null,
@@ -183,7 +213,7 @@ describe("timeline page row merging", () => {
     ]);
   });
 
-  it("keeps distinct byte-budget slices of one finished turn", () => {
+  it("coalesces disjoint transport slices of one finished turn", () => {
     const olderCommands = [
       commandRow({ id: "command-1", sequence: 10 }),
       commandRow({ id: "command-2", sequence: 11 }),
@@ -193,13 +223,15 @@ describe("timeline page row merging", () => {
       commandRow({ id: "command-4", sequence: 21 }),
     ];
     const olderSlice = turnSummaryRow({
-      id: "turn-1:sequence-page:10",
+      id: "turn-1",
       sequence: 10,
+      endSequence: 11,
       children: olderCommands,
     });
     const latestSlice = turnSummaryRow({
-      id: "turn-1:sequence-page:20",
+      id: "turn-1",
       sequence: 20,
+      endSequence: 21,
       children: latestCommands,
     });
 
@@ -208,10 +240,17 @@ describe("timeline page row merging", () => {
       loadedRows: [latestSlice],
     });
 
-    expect(rows.map((row) => row.id)).toEqual([
-      "turn-1:sequence-page:10",
-      "turn-1:sequence-page:20",
-    ]);
+    expect(rows.map((row) => row.id)).toEqual(["turn-1"]);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        completedAt: 20,
+        createdAt: 10,
+        sourceSeqStart: 10,
+        sourceSeqEnd: 21,
+        startedAt: 10,
+        summaryCount: 2,
+      }),
+    );
     expect(
       rows.flatMap((row) =>
         row.kind === "turn" && row.children !== null
@@ -219,6 +258,37 @@ describe("timeline page row merging", () => {
           : [],
       ),
     ).toEqual(["command-1", "command-2", "command-3", "command-4"]);
+  });
+
+  it("merges a delegation shell repeated across forward detail pages", () => {
+    const rows = mergeTimelineTurnDetailPages([
+      [
+        delegationRow("delegation-1", 10, [
+          commandRow({ id: "command-1", sequence: 11 }),
+        ]),
+      ],
+      [
+        delegationRow("delegation-1", 20, [
+          commandRow({ id: "command-2", sequence: 21 }),
+        ]),
+      ],
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        id: "delegation-1",
+        sourceSeqStart: 10,
+        sourceSeqEnd: 21,
+      }),
+    );
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "work" && row.workKind === "delegation"
+          ? row.childRows.map((child) => child.id)
+          : [],
+      ),
+    ).toEqual(["command-1", "command-2"]);
   });
 
   it("replaces a byte-cut latest page while an unfinished turn grows", () => {

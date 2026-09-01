@@ -384,6 +384,7 @@ type ExpectedThreadsKey =
   | "storagePaths"
   | "tabs"
   | "timeline"
+  | "timelineTurnDetails"
   | "timelineTurnSummaryDetails"
   | "unarchive"
   | "unpin"

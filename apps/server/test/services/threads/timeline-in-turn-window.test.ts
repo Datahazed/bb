@@ -23,6 +23,7 @@ import type {
 } from "@bb/server-contract";
 import {
   buildThreadTimeline,
+  buildTimelineTurnDetailsPage,
   buildTimelineTurnSummaryDetails,
   buildThreadTimelineWithProfile,
 } from "../../../src/services/threads/timeline.js";
@@ -79,6 +80,8 @@ function backgroundTaskData(status: "pending" | "completed"): string {
 }
 
 interface SeedOptions {
+  /** Emit an assistant message before this item in the last turn. */
+  assistantBeforeItem?: number;
   backgroundTask?: "open" | "completed";
   delegateLastTurn?: boolean;
   completeLastTurn: boolean;
@@ -193,6 +196,24 @@ function seedTurns(
     );
     const deferred: number[] = [];
     for (let item = 0; item < items; item += 1) {
+      if (isLastTurn && options.assistantBeforeItem === item) {
+        const assistantItemId = `${turnId}-assistant`;
+        push({
+          type: "item/completed",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId: assistantItemId,
+          itemKind: "agentMessage",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "agentMessage",
+              id: assistantItemId,
+              text: "Intermediate update.",
+            },
+          }),
+        });
+      }
       const itemId = `${turnId}-item-${item}`;
       const command =
         options.commandChars === undefined
@@ -421,6 +442,26 @@ function buildNestedPage(
       ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
       : { kind: "latest", segmentLimit: 20 },
   });
+}
+
+function collectCommandCallIds(
+  rows: readonly TimelineRow[],
+  target: Set<string>,
+): number {
+  let count = 0;
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "command") {
+      target.add(row.callId);
+      count += 1;
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      count += collectCommandCallIds(row.childRows, target);
+    }
+    if (row.kind === "turn" && row.children !== null) {
+      count += collectCommandCallIds(row.children, target);
+    }
+  }
+  return count;
 }
 
 interface WalkResult {
@@ -1178,5 +1219,162 @@ describe("turn details for an item that finishes in a later turn", () => {
       ]);
       expect(details, turnId).toEqual(children);
     }
+  });
+});
+
+describe("paginated turn details", () => {
+  const OVERSIZED_ITEM_COUNT = 250;
+
+  it("returns full outputs when the completed turn fits the exact-range limit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [1],
+      outputChars: 50_000,
+    });
+
+    const detail = buildTimelineTurnDetailsPage(db, thread, {
+      includeProviderUnhandledOperations: false,
+      sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+      sourceSeqStart: 2,
+      turnId: "turn-1",
+    });
+    const command = detail.rows.find(
+      (row) => row.kind === "work" && row.workKind === "command",
+    );
+
+    expect(detail.nextCursor).toBeNull();
+    expect(command?.kind).toBe("work");
+    if (command?.kind !== "work" || command.workKind !== "command") {
+      throw new Error("expected a command row");
+    }
+    expect(command.output).toHaveLength(50_000);
+  });
+
+  it("returns one preview page when only capped outputs fit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [125],
+      outputChars: 40_000,
+    });
+
+    const detail = buildTimelineTurnDetailsPage(db, thread, {
+      includeProviderUnhandledOperations: false,
+      sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+      sourceSeqStart: 2,
+      turnId: "turn-1",
+    });
+    const commandOutputs = detail.rows.flatMap((row) =>
+      row.kind === "work" && row.workKind === "command" ? [row.output] : [],
+    );
+
+    expect(detail.nextCursor).toBeNull();
+    expect(commandOutputs).toHaveLength(125);
+    expect(
+      commandOutputs.every((output) =>
+        output.includes("more characters truncated"),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps paginated detail requests scoped to the requested work range", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [3],
+    });
+
+    const expandedCommandGroups = [
+      { sourceSeqStart: 4, sourceSeqEnd: 5 },
+      { sourceSeqStart: 6, sourceSeqEnd: 9 },
+    ].map((range) => {
+      const detail = buildTimelineTurnDetailsPage(db, thread, {
+        includeProviderUnhandledOperations: false,
+        ...range,
+        turnId: "turn-1",
+      });
+      expect(detail.nextCursor).toBeNull();
+      const commandIds = new Set<string>();
+      collectCommandCallIds(detail.rows, commandIds);
+      return [...commandIds];
+    });
+
+    expect(expandedCommandGroups).toEqual([
+      ["turn-1-item-0"],
+      ["turn-1-item-1", "turn-1-item-2"],
+    ]);
+  });
+
+  it("hydrates every command of an oversized turn across pages", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      assistantBeforeItem: 20,
+      commandChars: 25_000,
+      completeLastTurn: true,
+      itemsPerTurn: [OVERSIZED_ITEM_COUNT],
+    });
+    const sourceSeqEnd = getLatestThreadSequence(db, { threadId: thread.id });
+
+    expect(() =>
+      buildTimelineTurnSummaryDetails(db, thread, {
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd,
+        sourceSeqStart: 2,
+        turnId: "turn-1",
+      }),
+    ).toThrow("Timeline turn details exceed the safe response limit");
+
+    const expandedCommandCallIds = new Set<string>();
+    let expandedCommandRowCount = 0;
+    let detailCursor: string | undefined;
+    let firstDetailCursor: string | undefined;
+    let detailPages = 0;
+    do {
+      const detail = buildTimelineTurnDetailsPage(db, thread, {
+        ...(detailCursor ? { cursor: detailCursor } : {}),
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd,
+        sourceSeqStart: 2,
+        turnId: "turn-1",
+      });
+      detailPages += 1;
+      expandedCommandRowCount += collectCommandCallIds(
+        detail.rows,
+        expandedCommandCallIds,
+      );
+      detailCursor = detail.nextCursor ?? undefined;
+      firstDetailCursor ??= detailCursor;
+      expect(detailPages).toBeLessThan(10);
+    } while (detailCursor);
+
+    expect(detailPages).toBeGreaterThan(1);
+    expect(expandedCommandRowCount).toBe(OVERSIZED_ITEM_COUNT);
+    expect(expandedCommandCallIds.size).toBe(OVERSIZED_ITEM_COUNT);
+    expect(firstDetailCursor).toBeDefined();
+    if (!firstDetailCursor) throw new Error("expected a detail cursor");
+    expect(() =>
+      buildTimelineTurnDetailsPage(db, thread, {
+        cursor: firstDetailCursor,
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd,
+        sourceSeqStart: 3,
+        turnId: "turn-1",
+      }),
+    ).toThrow("Invalid turn details cursor");
+  }, 15_000);
+
+  it("refuses to paginate an unfinished turn", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [3] });
+
+    expect(() =>
+      buildTimelineTurnDetailsPage(db, thread, {
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+        sourceSeqStart: 2,
+        turnId: "turn-1",
+      }),
+    ).toThrow("Cannot paginate details for incomplete turn");
   });
 });

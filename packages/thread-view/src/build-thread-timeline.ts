@@ -1396,9 +1396,9 @@ export function buildThreadTimelineFromEvents(
   };
 }
 
-export function buildThreadTimelineTurnDetailsFromEvents(
+function buildThreadTimelineTurnDetailRows(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
-): ThreadTimelineTurnDetailsFromEventsResult {
+): TimelineRow[] {
   const projection = buildEventProjectionEntries(args.events, {
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
@@ -1407,11 +1407,17 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     threadName: args.options.threadName,
     turnMessageDetail: "full",
   });
-  const nestedRows = buildTimelineRows(projection, {
+  return buildTimelineRows(projection, {
     includeNestedRows: true,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,
   });
+}
+
+export function buildThreadTimelineTurnDetailsFromEvents(
+  args: BuildThreadTimelineTurnDetailsFromEventsArgs,
+): ThreadTimelineTurnDetailsFromEventsResult {
+  const nestedRows = buildThreadTimelineTurnDetailRows(args);
   const matchingTurnSummary = findMatchingTurnSummaryRow(
     nestedRows,
     args.options,
@@ -1433,4 +1439,23 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     kind: "ungrouped",
     rows: nestedRows.filter((row) => !isRootOwnedHumanSteerRow(row)),
   };
+}
+
+/**
+ * Projects one server-selected detail page. Unlike exact-range hydration, a
+ * page need not coincide with the source bounds of a summary row.
+ */
+export function buildThreadTimelineTurnDetailPageFromEvents(
+  args: BuildThreadTimelineTurnDetailsFromEventsArgs,
+): TimelineRow[] {
+  const nestedRows = buildThreadTimelineTurnDetailRows(args);
+  const turnChildren = nestedRows.flatMap((row) =>
+    row.kind === "turn" ? (row.children ?? []) : [],
+  );
+  if (nestedRows.some((row) => row.kind === "turn")) {
+    // Terminal assistant replies and human steers are root-owned siblings of
+    // a completed summary, not children of the expanded "Worked for…" row.
+    return turnChildren;
+  }
+  return nestedRows.filter((row) => !isRootOwnedHumanSteerRow(row));
 }
