@@ -1,3 +1,0 @@
-
-
-export type AgentMessageDelivery = "async";
