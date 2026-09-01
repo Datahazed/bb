@@ -35,6 +35,7 @@ import {
   beginSendThreadMessageTransaction,
   beginStopThreadTransaction,
   beginUpdateQueuedMessageTransaction,
+  prefetchThreadQueuedMessages,
   rollbackCreateQueuedMessageTransaction,
   rollbackRemoveQueuedMessageTransaction,
   rollbackReorderQueuedMessageTransaction,
@@ -137,6 +138,17 @@ export function useCreateThread() {
       }),
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),
     onSuccess: (thread, variables) => {
+      if (thread.queuedMessageCount > 0) {
+        void prefetchThreadQueuedMessages({
+          queryClient,
+          threadId: thread.id,
+          load: (signal) =>
+            sdk.threads.queuedMessages.list({
+              threadId: thread.id,
+              signal,
+            }),
+        });
+      }
       applyCreateThreadResult({
         queryClient,
         request: variables,
