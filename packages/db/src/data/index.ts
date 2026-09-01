@@ -67,8 +67,6 @@ export {
   getThreadPendingStartContext,
   setThreadPendingStartContext,
   hasLiveThreadAtHostPath,
-  hasPendingThreadShutdownInEnvironment,
-  hasRevivableArchivedThreadInEnvironment,
   listHostThreadIds,
   listActiveHostThreads,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
@@ -419,7 +417,6 @@ export {
   pruneClosedSessions,
   pruneDestroyedEnvironments,
   truncateCompletedEventItemOutputs,
-  sweepManagedEnvironments,
 } from "./sweeps.js";
 export {
   compactDatabase,

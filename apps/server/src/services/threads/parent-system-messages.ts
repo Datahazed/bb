@@ -36,7 +36,7 @@ import {
   getActiveTurnId,
 } from "./thread-events.js";
 import {
-  dispatchTurnDuringReprovision,
+  ensureDispatchableThreadEnvironment,
   requireReadyThreadEnvironment,
   type ReadyThreadEnvironment,
 } from "./thread-turn-dispatch.js";
@@ -494,22 +494,7 @@ export async function deliverParentSystemMessage(
       threadId: parentThread.id,
     },
   );
-  if (
-    await dispatchTurnDuringReprovision({
-      deps,
-      environment,
-      execution,
-      initiator: "system",
-      input: args.input,
-      senderThreadId: null,
-      systemMessageKind: args.systemMessageKind,
-      systemMessageSubject: args.systemMessageSubject,
-      thread: parentThread,
-    })
-  ) {
-    return true;
-  }
-
+  ensureDispatchableThreadEnvironment(deps, environment);
   const readyEnvironment = requireReadyThreadEnvironment(
     getEnvironment(deps.db, environment.id) ?? environment,
   );

@@ -15,10 +15,6 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
 import { deleteProjectAttachments } from "./attachments.js";
-import {
-  requestEnvironmentCleanup,
-  runEnvironmentCleanupAdvance,
-} from "../environments/environment-cleanup-internal.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import {
   finalizeStoppedThread,
@@ -189,19 +185,6 @@ export async function advanceProjectDeletion(
     }
     finalizeStoppedThread(deps, {
       threadId: thread.id,
-    });
-  }
-
-  for (const environment of projectEnvironments) {
-    if (!environment.managed || environment.status === "destroyed") {
-      continue;
-    }
-
-    requestEnvironmentCleanup(deps, {
-      environmentId: environment.id,
-    });
-    await runEnvironmentCleanupAdvance(deps, {
-      environmentId: environment.id,
     });
   }
 

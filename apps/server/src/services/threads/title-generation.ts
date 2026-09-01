@@ -11,7 +11,6 @@ import {
 
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WORDS = 5;
-const MAX_BRANCH_SLUG_LENGTH = 48;
 
 interface ApplyGeneratedThreadTitleArgs {
   threadId: string;
@@ -26,7 +25,6 @@ interface ThreadMetadataGenerationArgs {
 }
 
 interface GeneratedThreadMetadata {
-  branchSlug?: string;
   title?: string;
 }
 
@@ -84,19 +82,6 @@ export function sanitizeGeneratedTitle(value: string): string | null {
   return title.length > 0 ? title : null;
 }
 
-export function sanitizeGeneratedBranchSlug(value: string): string | null {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/-{2,}/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .slice(0, MAX_BRANCH_SLUG_LENGTH)
-    .replace(/-+$/u, "");
-
-  return slug.length > 0 ? slug : null;
-}
-
 const threadMetadataSchema = Type.Object({
   title: Type.String(),
 });
@@ -109,15 +94,11 @@ function normalizeGeneratedThreadMetadata(
   }
 
   const title = parsed.title ? sanitizeGeneratedTitle(parsed.title) : null;
-  const branchSlug = title ? sanitizeGeneratedBranchSlug(title) : null;
-  if (!title && !branchSlug) {
+  if (!title) {
     return null;
   }
 
-  return {
-    ...(branchSlug ? { branchSlug } : {}),
-    ...(title ? { title } : {}),
-  };
+  return { title };
 }
 
 export async function generateThreadMetadataWithOutcome(

@@ -478,9 +478,6 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     path: "/home/me/.bb/checkouts/project",
     gitRemoteUrl: "git@example.com:me/project.git",
   },
-  "environment.destroy": {
-    transcript: [],
-  },
   "workspace.commit": {
     commitSha: "abcdef123456",
     commitSubject: "Checkpoint work",
@@ -935,7 +932,7 @@ const ACP_BRIDGE_LAUNCH = {
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(176);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(177);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1069,26 +1066,6 @@ describe("host-daemon command schemas", () => {
     ).toMatchObject({
       type: "workspace.commit",
       message: "Checkpoint work",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "environment.provision",
-        environmentId: "env_123",
-        initiator: {
-          threadId: "thr_123",
-          provisioningId: "tpv_123",
-        },
-        workspaceProvisionType: "managed-worktree",
-        sourcePath: "/tmp/project",
-        targetPath: "/tmp/project/.bb/env",
-        branchName: "bb/env-123",
-        baseBranch: null,
-        setupTimeoutMs: 900000,
-      }),
-    ).toMatchObject({
-      type: "environment.provision",
-      workspaceProvisionType: "managed-worktree",
     });
 
     expect(

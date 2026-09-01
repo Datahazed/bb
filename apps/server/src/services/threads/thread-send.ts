@@ -40,7 +40,7 @@ import {
 } from "./thread-lifecycle.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
-  dispatchTurnDuringReprovision,
+  ensureDispatchableThreadEnvironment,
   requireReadyThreadEnvironment,
 } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
@@ -506,24 +506,7 @@ export async function sendThreadMessage(
     initiator,
   });
 
-  if (
-    await dispatchTurnDuringReprovision({
-      beforeRequestAppendInTransaction: beforeAppendInTransaction,
-      deps,
-      environment,
-      execution,
-      initiator,
-      input,
-      inputGroups,
-      senderThreadId,
-      thread,
-    })
-  ) {
-    if (shouldCaptureUserMessageSent) {
-      captureUserMessageSentTelemetry(deps, thread);
-    }
-    return;
-  }
+  ensureDispatchableThreadEnvironment(deps, environment);
   const readyEnvironment = requireReadyThreadEnvironment(
     getEnvironment(deps.db, environment.id) ?? environment,
   );

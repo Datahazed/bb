@@ -19,6 +19,7 @@ const allEventTypes: readonly EnvironmentLifecycleEventType[] = [
   "provision.cancelled",
   "retire.requested",
   "retire.cancelled",
+  "destroy.recorded",
   "destroy.started",
   "destroy.completed",
   "destroy.failed",
@@ -124,13 +125,16 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
       ready: {
         "provision.requested": "provisioning",
         "retire.requested": "retiring",
+        "destroy.recorded": "destroyed",
       },
       retiring: {
         "retire.cancelled": "ready",
+        "destroy.recorded": "destroyed",
         "destroy.started": "destroying",
       },
       error: {
         "provision.requested": "provisioning",
+        "destroy.recorded": "destroyed",
         "destroy.started": "destroying",
         "destroy.completed": "destroyed",
       },
@@ -151,6 +155,7 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
       "provision.cancelled": {},
       "retire.requested": { managed: true },
       "retire.cancelled": {},
+      "destroy.recorded": {},
       "destroy.started": { managed: true },
       "destroy.completed": { matchingDestroyAttempt: true },
       "destroy.failed": { matchingDestroyAttempt: true },

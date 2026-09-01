@@ -31,11 +31,6 @@ import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { emitPluginMessageCancelled } from "../../services/plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
-import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../../services/environments/environment-cleanup-internal.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import { retryFailedTurn } from "../../services/threads/turn-retry.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
@@ -539,10 +534,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       });
       return context.json({ ok: true });
     }
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
-      environmentId: thread.environmentId,
-      excludeThreadId: thread.id,
-    });
     const environment = resolveArchiveThreadEnvironment(deps, { thread });
     const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
       environment,
@@ -550,14 +541,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     if (!archiveResult) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-    if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
-        environmentId: thread.environmentId,
-      });
-      requestEnvironmentCleanupAdvance(deps, {
-        environmentId: thread.environmentId,
-      });
     }
     return context.json({ ok: true });
   });

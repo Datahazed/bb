@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql, lt } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
@@ -302,27 +302,6 @@ export function recordProvisionedEnvironmentWorkspace(
       ? { mergeBaseBranch: input.mergeBaseBranch }
       : {}),
   });
-}
-
-export interface ListStaleDestroyingManagedEnvironmentsArgs {
-  updatedBefore: number;
-}
-
-export function listStaleDestroyingManagedEnvironments(
-  db: DbConnection,
-  args: ListStaleDestroyingManagedEnvironmentsArgs,
-) {
-  return db
-    .select()
-    .from(environments)
-    .where(
-      and(
-        eq(environments.managed, true),
-        eq(environments.status, "destroying"),
-        lt(environments.updatedAt, args.updatedBefore),
-      ),
-    )
-    .all();
 }
 
 export type ApplyEnvironmentLifecycleEventNoopReason =

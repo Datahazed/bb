@@ -10,11 +10,6 @@ import {
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
 import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../environments/environment-cleanup-internal.js";
-import {
   pruneThreadEventHistoryBestEffort,
   resetActiveThreadEventPruningState,
 } from "../system/event-pruning.js";
@@ -145,20 +140,6 @@ export function archiveEnvironmentThreads(
     archivedThreadIds.push(result.id);
   }
 
-  if (
-    archivedThreadIds.length > 0 &&
-    wouldCleanupEnvironment(deps, {
-      environmentId: args.environment.id,
-    })
-  ) {
-    requestEnvironmentCleanup(deps, {
-      environmentId: args.environment.id,
-    });
-    requestEnvironmentCleanupAdvance(deps, {
-      environmentId: args.environment.id,
-    });
-  }
-
   return archivedThreadIds;
 }
 
@@ -180,7 +161,6 @@ export function archiveThreadAndChildren(
     threads.push(args.parentThread);
   }
   const archivedThreadIds: string[] = [];
-  const affectedEnvironmentIds = new Set<string>();
 
   for (const thread of threads) {
     const environment = resolveArchiveThreadEnvironment(deps, { thread });
@@ -192,20 +172,6 @@ export function archiveThreadAndChildren(
       continue;
     }
     archivedThreadIds.push(result.id);
-    if (environment !== null) {
-      affectedEnvironmentIds.add(environment.id);
-    }
-  }
-
-  for (const environmentId of affectedEnvironmentIds) {
-    if (
-      wouldCleanupEnvironment(deps, {
-        environmentId,
-      })
-    ) {
-      requestEnvironmentCleanup(deps, { environmentId });
-      requestEnvironmentCleanupAdvance(deps, { environmentId });
-    }
   }
 
   return archivedThreadIds;

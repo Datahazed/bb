@@ -1,10 +1,8 @@
-import { getThread, type DbTransaction } from "@bb/db";
+import { getThread } from "@bb/db";
 import {
   type Environment,
   type PromptInput,
   type ResolvedThreadExecutionOptions,
-  type SystemMessageKind,
-  type SystemMessageSubject,
   type Thread,
   type ThreadTurnInitiator,
   type TurnRequestTarget,
@@ -14,15 +12,12 @@ import type { AppDeps } from "../../types.js";
 import { drainThreadQueueOnWorkspaceReady } from "./queue-drains.js";
 import {
   appendClientTurnEvent,
-  appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
   buildCwdBranchEntries,
-  createClientTurnRequestId,
 } from "./thread-events.js";
 import { requestThreadStart } from "./thread-lifecycle.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   createMetadataPendingContext,
-  createReprovisioningContext,
   type ThreadForkDescriptor,
   type ThreadProvisionEnvironmentIntent,
   type ThreadProvisionContext,
@@ -53,21 +48,6 @@ interface RequestThreadProvisionArgs {
   startedOnBehalfOf: StartedOnBehalfOf | null;
   thread: Thread;
   titleProvided: boolean;
-}
-
-interface RequestThreadReprovisionArgs {
-  beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
-  environment: Environment;
-  provisionEventSequence: number;
-  execution: ResolvedThreadExecutionOptions;
-  input: PromptInput[];
-  inputGroups?: PromptInput[][];
-  initiator: ThreadTurnInitiator;
-  provisioningId: string;
-  senderThreadId: string | null;
-  systemMessageKind?: SystemMessageKind;
-  systemMessageSubject?: SystemMessageSubject | null;
-  thread: Thread;
 }
 
 interface AdvanceThreadProvisioningArgs {
@@ -248,74 +228,6 @@ export function requestThreadProvision(
     clientRequestId: request.requestId,
     input: args.providerInput ?? args.input,
     seedWithoutRun: args.startedOnBehalfOf !== null,
-  });
-  rememberActiveThreadProvisionContext({
-    threadId: args.thread.id,
-    context,
-  });
-  return context;
-}
-
-export function requestThreadReprovision(
-  deps: Pick<AppDeps, "db" | "hub">,
-  args: RequestThreadReprovisionArgs,
-): ThreadProvisionContext {
-  const requestId = createClientTurnRequestId();
-  const request = deps.db.transaction(
-    (tx) => {
-      args.beforeRequestAppendInTransaction?.({ tx });
-      const request =
-        appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
-          tx,
-          {
-            threadId: args.thread.id,
-            environmentId: args.environment.id,
-            type: "client/turn/requested",
-            input: args.input,
-            ...(args.inputGroups !== undefined
-              ? { inputGroups: args.inputGroups }
-              : {}),
-            execution: args.execution,
-            initiator: args.initiator,
-            senderThreadId: args.senderThreadId,
-            systemMessageKind: args.systemMessageKind,
-            systemMessageSubject: args.systemMessageSubject,
-            requestMethod: "turn/start",
-            source: "tell",
-            target: { kind: "new-turn" },
-            requestId,
-          },
-        );
-      recordAcceptedPromptHistoryEntry(
-        { db: tx },
-        {
-          thread: args.thread,
-          input: args.input,
-          initiator: args.initiator,
-          target: { kind: "new-turn" },
-          requestSequence: request.sequence,
-        },
-      );
-      return request;
-    },
-    { behavior: "immediate" },
-  );
-  deps.hub.notifyThread(
-    args.thread.id,
-    request.notificationChanges,
-    request.notificationMetadata,
-  );
-
-  const context = createReprovisioningContext({
-    clientRequestId: request.requestId,
-    provisionEventSequence: args.provisionEventSequence,
-    execution: args.execution,
-    environmentId: args.environment.id,
-    input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
-      : {}),
-    provisioningId: args.provisioningId,
   });
   rememberActiveThreadProvisionContext({
     threadId: args.thread.id,

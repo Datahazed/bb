@@ -60,9 +60,8 @@ export function clearThreadQueueWaitsOfKind(
 }
 
 /**
- * Workspace-ready drain. Replaces the reprovision hold's release: the
- * follow-ups and steers that arrived while the workspace was being
- * (re)provisioned stop waiting on it here.
+ * Workspace-ready drain: the follow-ups and steers that arrived while the
+ * workspace was being provisioned stop waiting on it here.
  */
 export function drainThreadQueueOnWorkspaceReady(
   deps: QueueDrainDeps,

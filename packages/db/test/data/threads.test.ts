@@ -11,7 +11,6 @@ import {
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
-  hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
   listActiveVisiblePinnedThreadRoots,
   listThreadMentionRowsByIds,
@@ -1370,7 +1369,7 @@ describe("threads", () => {
     ]);
   });
 
-  it("lists host thread ids and detects pending shutdowns by environment", () => {
+  it("lists host thread ids for live threads on the host", () => {
     const { db, project, host } = setup();
     const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",
@@ -1417,16 +1416,6 @@ describe("threads", () => {
       activeThread.id,
       stoppingThread.id,
     ]);
-    expect(
-      hasPendingThreadShutdownInEnvironment(db, {
-        environmentId: environment.id,
-      }),
-    ).toBe(true);
-    expect(
-      hasPendingThreadShutdownInEnvironment(db, {
-        environmentId: otherEnvironment.id,
-      }),
-    ).toBe(false);
   });
 
   it("lists every host thread id including archived, deleted, and destroyed-environment threads", () => {

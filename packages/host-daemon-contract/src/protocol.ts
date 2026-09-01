@@ -22,6 +22,14 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 176 as const;
+//
+// Version 177: the worktree-plugin cutover deletes core's managed-worktree
+// machinery. `environment.provision` NARROWS by its `managed-worktree` arm,
+// and the `environment.destroy` command (schema, result, and RPC response
+// success arm) is removed outright — the worktree plugin now provisions and
+// tears down worktrees through its own host entry, so an older daemon that
+// still answers these commands must update rather than reconnect into an
+// `invalid-message` loop.
+export const HOST_DAEMON_PROTOCOL_VERSION = 177 as const;
 
 export const HOST_ARTIFACT_MAX_BYTES = 256 * 1024 * 1024;

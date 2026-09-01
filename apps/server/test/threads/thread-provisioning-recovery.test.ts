@@ -1,5 +1,4 @@
-import { eq } from "drizzle-orm";
-import { environments, getEnvironment, getThread, listEvents } from "@bb/db";
+import { getThread, listEvents } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -24,7 +23,6 @@ import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
-  waitForQueuedCommandAfter,
   type QueuedCommand,
 } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -124,7 +122,7 @@ describe("thread provisioning recovery", () => {
         seedWithoutRun: false,
       });
       const attachedContext = createEnvironmentAttachedContext(
-        createEnvironmentPendingContext(requestedContext, { branchSlug: null }),
+        createEnvironmentPendingContext(requestedContext),
         { attachedEnvironmentId: environment.id },
       );
       const workspaceReadyEventSequence = appendThreadProvisioningEvent(
@@ -247,7 +245,7 @@ describe("thread provisioning recovery", () => {
         seedWithoutRun: false,
       });
       const attachedContext = createEnvironmentAttachedContext(
-        createEnvironmentPendingContext(requestedContext, { branchSlug: null }),
+        createEnvironmentPendingContext(requestedContext),
         { attachedEnvironmentId: environment.id },
       );
       const workspaceReadyEventSequence = appendThreadProvisioningEvent(
@@ -375,111 +373,4 @@ describe("thread provisioning recovery", () => {
     });
   });
 
-  it("reprovisions an errored pre-start thread when retry happens before the environment is ready", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-error-retry-before-late-ready",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/error-retry-before-late-ready",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-      });
-      harness.db
-        .update(environments)
-        .set({ path: null, updatedAt: Date.now() })
-        .where(eq(environments.id, environment.id))
-        .run();
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        status: "error",
-      });
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 1,
-        type: "client/turn/requested",
-        scope: threadScope(),
-        data: {
-          direction: "outbound",
-          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-          input: [{ type: "text", text: "initial lost start" }],
-          target: { kind: "new-turn" },
-          execution: THREAD_START_EXECUTION,
-          initiator: "user",
-          senderThreadId: null,
-          request: {
-            method: "turn/start",
-            params: {},
-          },
-          source: "tell",
-        },
-      });
-
-      let startCommand: QueuedCommand | null = null;
-      try {
-        const response = await harness.app.request(
-          `/api/v1/threads/${thread.id}/send`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              input: [{ type: "text", text: "retry before ready" }],
-              mode: "auto",
-            }),
-          },
-        );
-
-        expect(response.status).toBe(200);
-        expect(getThread(harness.db, thread.id)?.status).toBe("starting");
-        expect(getEnvironment(harness.db, environment.id)?.status).toBe(
-          "provisioning",
-        );
-        const provisionCommand = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "environment.provision" &&
-            command.environmentId === environment.id,
-        );
-        if (
-          provisionCommand.command.type !== "environment.provision" ||
-          provisionCommand.command.workspaceProvisionType === "unmanaged"
-        ) {
-          throw new Error("Expected managed environment.provision command");
-        }
-        await reportQueuedCommandSuccess(harness, provisionCommand, {
-          path: "/tmp/error-retry-before-late-ready",
-          branchName: `bb/${thread.id}`,
-          defaultBranch: "main",
-          isGitRepo: true,
-          isWorktree: true,
-          transcript: [],
-        });
-        startCommand = await waitForQueuedCommandAfter(
-          harness,
-          provisionCommand.row.cursor,
-          ({ command }) =>
-            command.type === "thread.start" && command.threadId === thread.id,
-        );
-
-        expect(getEnvironment(harness.db, environment.id)?.status).toBe(
-          "ready",
-        );
-      } finally {
-        if (startCommand !== null) {
-          await reportQueuedCommandError(harness, startCommand, {
-            errorCode: "test_live_start_cleanup",
-            errorMessage: "Test settled live thread start",
-          });
-        }
-      }
-    });
-  });
 });

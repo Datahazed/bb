@@ -8,11 +8,6 @@ import {
 import { systemThreadProvisioningEventDataSchema } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
-import {
-  dispatchManagedEnvironmentReprovision,
-  MANAGED_REPROVISION_IN_PROGRESS,
-  MANAGED_REPROVISION_STARTED,
-} from "../../src/services/environments/environment-provisioning-internal.js";
 import { beginProjectDeletion } from "../../src/services/projects/project-deletion.js";
 import { runStartupRecoverySweep } from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
@@ -27,7 +22,6 @@ import {
 } from "../helpers/seed.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
-  requireManagedWorktreeEnvironmentProvisionLiveCommand,
   listQueuedEnvironmentCommands,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
@@ -36,253 +30,7 @@ import {
 } from "../helpers/commands.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
-describe("environment reprovisioning", () => {
-  it("starts managed reprovision at most once per environment", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-reprovision-once",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/reprovision-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/reprovision-target",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-        branchName: null,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      const firstAttempt = await dispatchManagedEnvironmentReprovision(
-        harness.deps,
-        {
-          environment,
-          projectId: thread.projectId,
-          provisionEventSequence: 1,
-          provisioningId: "tpv-reprovision-once-first",
-          threadId: thread.id,
-        },
-      );
-      const secondAttempt = await dispatchManagedEnvironmentReprovision(
-        harness.deps,
-        {
-          environment,
-          projectId: thread.projectId,
-          provisionEventSequence: 2,
-          provisioningId: "tpv-reprovision-once-second",
-          threadId: thread.id,
-        },
-      );
-
-      expect(firstAttempt).toMatchObject({
-        status: MANAGED_REPROVISION_STARTED,
-        provisionEventSequence: expect.any(Number),
-      });
-      expect(secondAttempt).toBe(MANAGED_REPROVISION_IN_PROGRESS);
-      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
-        "provisioning",
-      );
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(`bb/${thread.id}`);
-      expect(managedCommand.command.type).toBe("environment.provision");
-    });
-  });
-
-  it("preserves the stored branch name during managed reprovision", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-reprovision-branch",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/reprovision-branch-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/reprovision-branch-target",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-        branchName: "bb/existing-readable-branch",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      await dispatchManagedEnvironmentReprovision(harness.deps, {
-        environment,
-        projectId: thread.projectId,
-        provisionEventSequence: 1,
-        provisioningId: "tpv-reprovision-branch",
-        threadId: thread.id,
-      });
-
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.branchName).toBe(
-        "bb/existing-readable-branch",
-      );
-    });
-  });
-
-  it("uses the persisted base branch during managed reprovision", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-reprovision-base-branch",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/reprovision-base-branch-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/reprovision-base-branch-target",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-        branchName: "bb/base-branch-thread",
-        baseBranch: "release/2026-05",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      await dispatchManagedEnvironmentReprovision(harness.deps, {
-        environment,
-        projectId: thread.projectId,
-        provisionEventSequence: 1,
-        provisioningId: "tpv-reprovision-base-branch",
-        threadId: thread.id,
-      });
-
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.baseBranch).toBe("release/2026-05");
-    });
-  });
-
-  it("uses the source default base branch during managed reprovision", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-reprovision-default-base-branch",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/reprovision-default-base-branch-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/reprovision-default-base-branch-target",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-        branchName: "bb/default-base-branch-thread",
-        baseBranch: null,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      await dispatchManagedEnvironmentReprovision(harness.deps, {
-        environment,
-        projectId: thread.projectId,
-        provisionEventSequence: 1,
-        provisioningId: "tpv-reprovision-default-base-branch",
-        threadId: thread.id,
-      });
-
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "environment.provision",
-      );
-      const managedCommand =
-        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.baseBranch).toBeNull();
-    });
-  });
-
-  it("fails reprovision before mutating state when the host is disconnected", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-reprovision-offline",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/reprovision-offline-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/reprovision-offline-target",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      let thrownError: ApiError | null = null;
-      try {
-        await dispatchManagedEnvironmentReprovision(harness.deps, {
-          environment,
-          projectId: thread.projectId,
-          provisionEventSequence: 1,
-          provisioningId: "tpv-reprovision-offline",
-          threadId: thread.id,
-        });
-      } catch (error) {
-        if (error instanceof ApiError) {
-          thrownError = error;
-        } else {
-          throw error;
-        }
-      }
-
-      expect(thrownError).toMatchObject({
-        body: {
-          code: "host_unavailable",
-          message: "Host is not connected",
-          details: {
-            reason: "disconnected",
-            hostStatus: "disconnected",
-            suspendedAt: null,
-            destroyedAt: null,
-          },
-        },
-        status: 502,
-      });
-      expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
-    });
-  });
-
+describe("environment provisioning", () => {
   it("fails host-backed thread creation before creating provisioning state when the host is disconnected", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, {
@@ -350,8 +98,8 @@ describe("environment reprovisioning", () => {
           type: "host",
           hostId: host.id,
           workspace: {
-            type: "managed-worktree",
-            baseBranch: { kind: "default" },
+            type: "unmanaged",
+            path: "/tmp/provision-after-delete-workspace",
           },
         },
         input: textInput("delete mid-provision"),
@@ -385,14 +133,8 @@ describe("environment reprovisioning", () => {
       });
 
       expect(getThread(harness.db, thread.id)).toBeNull();
-      await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "environment.destroy" &&
-          command.environmentId === environmentId,
-      );
       expect(getEnvironment(harness.db, environmentId)).toMatchObject({
-        status: "destroying",
+        status: "ready",
       });
     });
   });
@@ -413,8 +155,8 @@ describe("environment reprovisioning", () => {
           type: "host",
           hostId: host.id,
           workspace: {
-            type: "managed-worktree",
-            baseBranch: { kind: "default" },
+            type: "unmanaged",
+            path: "/tmp/pre-start-provision-cancel-workspace",
           },
         },
         input: textInput("stop before provisioning finishes"),
@@ -502,8 +244,8 @@ describe("environment reprovisioning", () => {
           type: "host",
           hostId: host.id,
           workspace: {
-            type: "managed-worktree",
-            baseBranch: { kind: "default" },
+            type: "unmanaged",
+            path: "/tmp/provision-cancel-log-workspace",
           },
         },
         input: textInput("cancelled provisioning log"),
@@ -570,8 +312,8 @@ describe("environment reprovisioning", () => {
           type: "host",
           hostId: host.id,
           workspace: {
-            type: "managed-worktree",
-            baseBranch: { kind: "default" },
+            type: "unmanaged",
+            path: "/tmp/shared-provision-cancel-workspace",
           },
         },
         input: textInput("first shared provisioning thread"),

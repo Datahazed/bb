@@ -1,7 +1,6 @@
 import {
   eq,
   and,
-  sql,
   lt,
   asc,
 } from "drizzle-orm";
@@ -332,27 +331,6 @@ export function truncateCompletedEventItemOutputs(
       outputPath: "resultText",
     }),
   };
-}
-
-export function sweepManagedEnvironments(db: DbConnection) {
-  const rows = db
-    .select()
-    .from(environments)
-    .where(
-      and(
-        eq(environments.managed, true),
-        eq(environments.status, "retiring"),
-        sql`NOT EXISTS (
-          SELECT 1 FROM threads
-          WHERE threads.environment_id = ${environments.id}
-          AND threads.archived_at IS NULL
-          AND threads.deleted_at IS NULL
-        )`,
-      ),
-    )
-    .all();
-
-  return rows;
 }
 
 export function pruneDestroyedEnvironments(

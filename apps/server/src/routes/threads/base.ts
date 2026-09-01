@@ -34,10 +34,6 @@ import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { parseOptionalInteger } from "../../services/lib/validation.js";
 import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-} from "../../services/environments/environment-cleanup-internal.js";
-import {
   getNonDestroyedHostWithStatus,
   requireEnvironment,
   requirePublicProject,
@@ -484,12 +480,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
     finalizeStoppedThread(deps, {
       threadId: thread.id,
-    });
-    requestEnvironmentCleanup(deps, {
-      environmentId: environment.id,
-    });
-    requestEnvironmentCleanupAdvance(deps, {
-      environmentId: environment.id,
     });
     return context.json({ ok: true });
   });

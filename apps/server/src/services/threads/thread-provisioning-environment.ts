@@ -15,7 +15,7 @@ import {
   type ProvisioningTranscriptEntry,
   type Thread,
 } from "@bb/domain";
-import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
+import type { UnmanagedBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
@@ -30,37 +30,29 @@ import {
   appendThreadProvisioningEventInTransaction,
 } from "./thread-events.js";
 import {
-  baseBranchSpecToStoredName,
   buildEnvironmentProvisionCommand,
-  buildManagedBranchName,
-  SETUP_TIMEOUT_MS,
+  buildThreadBranchName,
   type UnmanagedCheckoutCommand,
 } from "./thread-create-helpers.js";
 import { dispatchThreadRenameCommand } from "./thread-commands.js";
 import { inferThreadMetadata } from "./thread-metadata-inference.js";
-import { sanitizeGeneratedBranchSlug } from "./title-generation.js";
 import {
   createEnvironmentAttachedContext,
   createEnvironmentPendingContext,
-  createEnvironmentPreparedContext,
   createEnvironmentProvisioningContext,
   createWorkspaceReadyContext,
   isAttachableContext,
-  isEnvironmentPreparedContext,
   isEnvironmentProvisioningContext,
   isEnvironmentPendingContext,
   isMetadataPendingContext,
   isProvisionableContext,
   provisionableContextForWorkspaceReady,
   provisioningStartedContext,
-  resolvePreparedEnvironmentMetadata,
   type ThreadProvisionAttachableContext,
   type ThreadProvisionContext,
   type ThreadProvisionEnvironmentIntent,
   type ThreadProvisionEnvironmentPendingContext,
-  type ThreadProvisionEnvironmentPreparedContext,
   type ThreadProvisionEnvironmentProvisioningContext,
-  type ThreadProvisionMetadataPendingContext,
   type ThreadProvisionProvisionableContext,
 } from "./thread-provisioning-context.js";
 import {
@@ -69,10 +61,7 @@ import {
   rememberActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
-import {
-  resolveManagedTargetPath,
-  resolvePersonalTargetPath,
-} from "./worktree-paths.js";
+import { resolvePersonalTargetPath } from "./worktree-paths.js";
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
 
@@ -146,7 +135,6 @@ interface BuildEnvironmentProvisionRequestArgs {
 interface BuildUnmanagedCheckoutArgs {
   branch: UnmanagedBranchSpec;
   branchPrefix: string;
-  context: ThreadProvisionEnvironmentProvisioningContext;
   thread: Thread;
 }
 
@@ -162,12 +150,6 @@ interface CreateProvisioningEnvironmentArgs extends ThreadProvisionEnvironmentPl
   thread: Thread;
 }
 
-interface CreatePreparedProvisioningEnvironmentArgs {
-  context: ThreadProvisionMetadataPendingContext;
-  environmentInput: CreateEnvironmentInput;
-  thread: Thread;
-}
-
 interface ThreadProvisioningResult {
   context: ThreadProvisionContext;
   environment: Environment;
@@ -176,11 +158,6 @@ interface ThreadProvisioningResult {
 
 interface ResolveEnvironmentCreationPlanArgs {
   intent: NewThreadProvisionEnvironmentIntent;
-  thread: Thread;
-}
-
-interface RequestPreparedEnvironmentProvisionArgs {
-  context: ThreadProvisionEnvironmentPreparedContext;
   thread: Thread;
 }
 
@@ -219,15 +196,6 @@ type CheckoutUnmanagedEnvironmentProvisionResult =
     }
   | { kind: "active-provision" };
 
-interface ManagedEnvironmentPlanArgs {
-  branchPrefix: string;
-  dataDir: string;
-  hostId: string;
-  sourcePath: string;
-  baseBranch: BaseBranchSpec;
-  thread: Thread;
-  workspaceProvisionType: "managed-worktree";
-}
 
 interface PersonalEnvironmentPlanArgs {
   dataDir: string;
@@ -386,133 +354,55 @@ function hasActiveEnvironmentProvision(environment: Environment): boolean {
   return environment.status === "provisioning";
 }
 
-function shouldPrepareEnvironmentBeforeMetadata(
-  context: ThreadProvisionContext,
-): context is ThreadProvisionMetadataPendingContext {
-  return (
-    isMetadataPendingContext(context) &&
-    context.request.environmentIntent.type === "direct-managed" &&
-    !context.request.titleProvided
-  );
-}
-
-async function resolveMetadataIfNeeded(
+function resolveMetadataIfNeeded(
   deps: ThreadProvisioningDeps,
   args: ResolveMetadataIfNeededArgs,
-): Promise<ThreadProvisionContext> {
-  if (isEnvironmentPreparedContext(args.context)) {
-    if (
-      args.context.request.environmentIntent.type !== "direct-managed" ||
-      args.context.request.titleProvided
-    ) {
-      return args.context;
-    }
-
-    const metadata = await inferThreadMetadata(deps, {
-      environmentId: args.context.state.environmentId,
-      generateBranchName: true,
-      input: args.context.request.input,
-      provisioningId: args.context.state.provisioningId,
-      threadId: args.thread.id,
-      writeTranscript: true,
-    });
-
-    const resolvedContext = resolvePreparedEnvironmentMetadata(args.context, {
-      branchSlug: metadata.branchSlug,
-    });
-    rememberActiveThreadProvisionContext({
-      threadId: args.thread.id,
-      context: resolvedContext,
-    });
-    return resolvedContext;
-  }
-
+): ThreadProvisionContext {
   if (!isMetadataPendingContext(args.context)) {
     return args.context;
   }
 
-  const needsBranch =
-    args.context.request.environmentIntent.type === "direct-managed";
-  if (!needsBranch) {
-    if (!args.context.request.titleProvided) {
-      void inferThreadMetadata(deps, {
-        environmentId: null,
-        generateBranchName: false,
-        input: args.context.request.input,
-        provisioningId: args.context.state.provisioningId,
-        threadId: args.thread.id,
-        writeTranscript: false,
-      })
-        .then((metadata) => {
-          if (!metadata.titleApplied || !metadata.title) {
-            return;
-          }
-          const titledThread = getThread(deps.db, args.thread.id);
-          const environment = titledThread?.environmentId
-            ? getEnvironment(deps.db, titledThread.environmentId)
-            : null;
-          if (
-            !titledThread ||
-            !environment ||
-            (titledThread.status !== "active" && titledThread.status !== "idle")
-          ) {
-            return;
-          }
-          dispatchThreadRenameCommand(deps, {
-            environment: {
-              id: environment.id,
-              hostId: environment.hostId,
-            },
-            providerId: titledThread.providerId,
-            threadId: titledThread.id,
-            title: metadata.title,
-          });
-        })
-        .catch((error) => {
-          deps.logger.warn(
-            {
-              threadId: args.thread.id,
-              ...runtimeErrorLogFields(deps.config, error),
-            },
-            "Failed to generate thread title",
-          );
+  if (!args.context.request.titleProvided) {
+    void inferThreadMetadata(deps, {
+      input: args.context.request.input,
+      threadId: args.thread.id,
+    })
+      .then((metadata) => {
+        if (!metadata.titleApplied || !metadata.title) {
+          return;
+        }
+        const titledThread = getThread(deps.db, args.thread.id);
+        const environment = titledThread?.environmentId
+          ? getEnvironment(deps.db, titledThread.environmentId)
+          : null;
+        if (
+          !titledThread ||
+          !environment ||
+          (titledThread.status !== "active" && titledThread.status !== "idle")
+        ) {
+          return;
+        }
+        dispatchThreadRenameCommand(deps, {
+          environment: {
+            id: environment.id,
+            hostId: environment.hostId,
+          },
+          providerId: titledThread.providerId,
+          threadId: titledThread.id,
+          title: metadata.title,
         });
-    }
-    const resolvedContext = createEnvironmentPendingContext(args.context, {
-      branchSlug: null,
-    });
-    rememberActiveThreadProvisionContext({
-      threadId: args.thread.id,
-      context: resolvedContext,
-    });
-    return resolvedContext;
+      })
+      .catch((error) => {
+        deps.logger.warn(
+          {
+            threadId: args.thread.id,
+            ...runtimeErrorLogFields(deps.config, error),
+          },
+          "Failed to generate thread title",
+        );
+      });
   }
-
-  if (args.context.request.titleProvided) {
-    const resolvedContext = createEnvironmentPendingContext(args.context, {
-      branchSlug: args.thread.title
-        ? sanitizeGeneratedBranchSlug(args.thread.title)
-        : null,
-    });
-    rememberActiveThreadProvisionContext({
-      threadId: args.thread.id,
-      context: resolvedContext,
-    });
-    return resolvedContext;
-  }
-
-  const metadata = await inferThreadMetadata(deps, {
-    environmentId: null,
-    generateBranchName: needsBranch,
-    input: args.context.request.input,
-    provisioningId: args.context.state.provisioningId,
-    threadId: args.thread.id,
-    writeTranscript: false,
-  });
-
-  const resolvedContext = createEnvironmentPendingContext(args.context, {
-    branchSlug: metadata.branchSlug,
-  });
+  const resolvedContext = createEnvironmentPendingContext(args.context);
   rememberActiveThreadProvisionContext({
     threadId: args.thread.id,
     context: resolvedContext,
@@ -644,63 +534,6 @@ function createProvisioningEnvironment(
   return result;
 }
 
-function createPreparedProvisioningEnvironment(
-  deps: ThreadProvisionWriteDeps,
-  args: CreatePreparedProvisioningEnvironmentArgs,
-): ThreadProvisioningResult {
-  const result = deps.db.transaction(
-    (tx) => {
-      const activeThread = getThread(tx, args.thread.id);
-      const activeContext = getActiveThreadProvisionContext(args.thread.id);
-      if (
-        !activeThread ||
-        activeThread.status !== "starting" ||
-        !activeContext ||
-        activeContext.state.provisioningId !== args.context.state.provisioningId
-      ) {
-        throw new Error("Thread provisioning context is no longer active");
-      }
-      if (!isMetadataPendingContext(activeContext)) {
-        throw new Error(
-          `Cannot prepare environment from ${activeContext.state.stage} state`,
-        );
-      }
-
-      const environment = createEnvironment(tx, deps.hub, {
-        ...args.environmentInput,
-        status: "ready",
-      });
-      if (args.thread.environmentId !== environment.id) {
-        updateThread(tx, deps.hub, args.thread.id, {
-          environmentId: environment.id,
-        });
-      }
-
-      const appendedSequence = appendThreadProvisioningEventInTransaction(tx, {
-        threadId: args.thread.id,
-        environmentId: environment.id,
-        provisioningId: activeContext.state.provisioningId,
-        status: "active",
-        entries: initialProvisioningEntries(environment),
-      });
-      const context = createEnvironmentPreparedContext(activeContext, {
-        attachedEnvironmentId: environment.id,
-        provisionEventSequence: appendedSequence,
-      });
-      rememberActiveThreadProvisionContext({
-        threadId: args.thread.id,
-        context,
-      });
-      return { context, environment };
-    },
-    { behavior: "immediate" },
-  );
-  deps.hub.notifyThread(args.thread.id, ["events-appended"], {
-    eventTypes: ["system/thread-provisioning"],
-  });
-  return result;
-}
-
 function buildUnmanagedCheckout(
   args: BuildUnmanagedCheckoutArgs,
 ): UnmanagedCheckoutCommand {
@@ -713,9 +546,8 @@ function buildUnmanagedCheckout(
 
   return {
     kind: "new",
-    name: buildManagedBranchName({
+    name: buildThreadBranchName({
       branchPrefix: args.branchPrefix,
-      branchSlug: args.context.request.branchSlug,
       threadId: args.thread.id,
     }),
     baseBranch: args.branch.baseBranch,
@@ -732,7 +564,6 @@ function buildCheckoutUnmanagedEnvironmentProvisionRequest(
   const checkout = buildUnmanagedCheckout({
     branch: args.intent.branch,
     branchPrefix: args.branchPrefix,
-    context: args.context,
     thread: args.thread,
   });
   const command = buildEnvironmentProvisionCommand({
@@ -766,7 +597,6 @@ function buildDirectUnmanagedEnvironmentPlan(
         ? buildUnmanagedCheckout({
             branch: args.intent.branch,
             branchPrefix: args.branchPrefix,
-            context,
             thread: args.thread,
           })
         : undefined;
@@ -783,47 +613,6 @@ function buildDirectUnmanagedEnvironmentPlan(
           ...(checkout ? { checkout } : {}),
         }),
       };
-    },
-  };
-}
-
-function buildManagedEnvironmentPlan(
-  args: ManagedEnvironmentPlanArgs,
-): ThreadProvisionEnvironmentPlan {
-  return {
-    environmentInput: {
-      projectId: args.thread.projectId,
-      hostId: args.hostId,
-      managed: true,
-      workspaceProvisionType: args.workspaceProvisionType,
-      baseBranch: baseBranchSpecToStoredName(args.baseBranch),
-      status: "provisioning",
-    },
-    buildRequest: ({ context, environment }) => {
-      const command = buildEnvironmentProvisionCommand({
-        branchName: buildManagedBranchName({
-          branchPrefix: args.branchPrefix,
-          branchSlug: context.request.branchSlug,
-          threadId: args.thread.id,
-        }),
-        baseBranch: args.baseBranch,
-        environmentId: environment.id,
-        hostId: args.hostId,
-        initiator: {
-          threadId: args.thread.id,
-          provisioningId: context.state.provisioningId,
-        },
-        sourcePath: args.sourcePath,
-        targetPath: resolveManagedTargetPath({
-          dataDir: args.dataDir,
-          environmentId: environment.id,
-          sourcePath: args.sourcePath,
-        }),
-        workspaceProvisionType: args.workspaceProvisionType,
-        setupTimeoutMs: SETUP_TIMEOUT_MS,
-      });
-
-      return { command };
     },
   };
 }
@@ -868,20 +657,10 @@ async function resolveEnvironmentCreationPlan(
         intent: args.intent,
         thread: args.thread,
       });
-    case "direct-managed": {
-      const hostSession = await ensureHostSessionReadyForWork(deps, {
-        hostId: args.intent.hostId,
-      });
-      return buildManagedEnvironmentPlan({
-        branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
-        dataDir: hostSession.dataDir,
-        hostId: args.intent.hostId,
-        sourcePath: args.intent.sourcePath,
-        baseBranch: args.intent.baseBranch,
-        thread: args.thread,
-        workspaceProvisionType: args.intent.workspaceProvisionType,
-      });
-    }
+    case "direct-managed":
+      throw new Error(
+        "A direct-managed intent must be resolved into a plugin-target environment before provisioning",
+      );
     case "direct-personal": {
       const hostSession = await ensureHostSessionReadyForWork(deps, {
         hostId: args.intent.hostId,
@@ -1012,77 +791,6 @@ function queueCheckoutUnmanagedEnvironment(
   return result;
 }
 
-async function requestPreparedEnvironmentProvision(
-  deps: ThreadProvisioningDeps,
-  args: RequestPreparedEnvironmentProvisionArgs,
-): Promise<ThreadProvisioningResult> {
-  const intent = args.context.request.environmentIntent;
-  if (intent.type === "reuse" || intent.type === "checkout-unmanaged") {
-    throw new Error(`Cannot provision prepared ${intent.type} environment`);
-  }
-
-  const plan = await resolveEnvironmentCreationPlan(deps, {
-    intent,
-    thread: args.thread,
-  });
-
-  return deps.db.transaction(
-    (tx) => {
-      const activeThread = getThread(tx, args.thread.id);
-      const activeContext = getActiveThreadProvisionContext(args.thread.id);
-      if (
-        !activeThread ||
-        activeThread.status !== "starting" ||
-        !activeContext ||
-        !isEnvironmentPreparedContext(activeContext) ||
-        activeContext.state.environmentId !==
-          args.context.state.environmentId ||
-        activeContext.state.provisioningId !== args.context.state.provisioningId
-      ) {
-        throw new Error("Thread provisioning context is no longer active");
-      }
-
-      const environment = getEnvironment(tx, activeContext.state.environmentId);
-      if (!environment) {
-        throw new ApiError(
-          404,
-          "environment_not_found",
-          "Environment not found",
-        );
-      }
-
-      const context = createEnvironmentProvisioningContext(activeContext, {
-        provisionEventSequence: activeContext.state.provisionEventSequence,
-      });
-      rememberActiveThreadProvisionContext({
-        threadId: args.thread.id,
-        context,
-      });
-      const provisionRequest = plan.buildRequest({
-        context,
-        environment,
-      });
-      const requestedOutcome =
-        applyLoggedEnvironmentLifecycleEventInTransaction(
-          { db: tx, logger: deps.logger },
-          {
-            environmentId: environment.id,
-            event: { type: "provision.requested" },
-          },
-        );
-      if (requestedOutcome.applied) {
-        deps.hub.notifyEnvironment(environment.id, requestedOutcome.changes);
-      }
-      return {
-        context,
-        environment: getEnvironment(tx, environment.id) ?? environment,
-        provisionRequest,
-      };
-    },
-    { behavior: "immediate" },
-  );
-}
-
 function attachActiveProvisioningEnvironment(
   deps: ThreadProvisionWriteDeps,
   args: EnvironmentPayloadThreadArgs,
@@ -1200,13 +908,6 @@ async function ensureEnvironmentRequested(
   deps: ThreadProvisioningDeps,
   args: EnsureEnvironmentRequestedArgs,
 ): Promise<ThreadProvisioningResult> {
-  if (isEnvironmentPreparedContext(args.context)) {
-    return requestPreparedEnvironmentProvision(deps, {
-      context: args.context,
-      thread: args.thread,
-    });
-  }
-
   if (!isAttachableContext(args.context)) {
     throw new Error(
       `Cannot request environment from ${args.context.state.stage} state`,
@@ -1277,26 +978,8 @@ export async function ensureThreadProvisionEnvironmentReady(
   deps: ThreadProvisioningDeps,
   args: EnsureThreadProvisionEnvironmentReadyArgs,
 ): Promise<ThreadProvisionReadyEnvironment> {
-  let preparedContext = args.context;
-  if (shouldPrepareEnvironmentBeforeMetadata(args.context)) {
-    const intent = args.context.request.environmentIntent;
-    if (intent.type !== "direct-managed") {
-      throw new Error(
-        `Cannot prepare ${intent.type} environment before metadata`,
-      );
-    }
-    const plan = await resolveEnvironmentCreationPlan(deps, {
-      intent,
-      thread: args.thread,
-    });
-    preparedContext = createPreparedProvisioningEnvironment(deps, {
-      context: args.context,
-      environmentInput: plan.environmentInput,
-      thread: args.thread,
-    }).context;
-  }
-  const context = await resolveMetadataIfNeeded(deps, {
-    context: preparedContext,
+  const context = resolveMetadataIfNeeded(deps, {
+    context: args.context,
     thread: args.thread,
   });
   const {

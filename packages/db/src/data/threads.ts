@@ -82,10 +82,6 @@ function listThreadsWhere(
   return db.select().from(threads).where(where).all();
 }
 
-function hasThreadWhere(db: ThreadWriteConnection, where: ThreadWhere): boolean {
-  return db.select({ id: threads.id }).from(threads).where(where).get() !== undefined;
-}
-
 export interface ThreadSearchHighlightRange {
   start: number;
   end: number;
@@ -574,10 +570,6 @@ export interface ListLiveThreadsInEnvironmentArgs {
   environmentId: string;
 }
 
-export interface HasRevivableArchivedThreadInEnvironmentArgs {
-  environmentId: string;
-}
-
 export interface CountNonDeletedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
@@ -620,10 +612,6 @@ export interface ListActiveHostThreadsArgs {
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
-}
-
-export interface HasPendingThreadShutdownInEnvironmentArgs {
-  environmentId: string;
 }
 
 const NON_TERMINAL_THREAD_STATUSES: readonly ThreadStatus[] = [
@@ -1409,19 +1397,6 @@ export function countLiveThreadsInEnvironment(
   );
 }
 
-export function hasRevivableArchivedThreadInEnvironment(
-  db: ThreadWriteConnection,
-  args: HasRevivableArchivedThreadInEnvironmentArgs,
-): boolean {
-  return hasThreadWhere(
-    db,
-    nonDeletedThreads(
-      eq(threads.environmentId, args.environmentId),
-      isNotNull(threads.archivedAt),
-    ),
-  );
-}
-
 export function listLiveThreadsInEnvironment(
   db: ThreadWriteConnection,
   args: ListLiveThreadsInEnvironmentArgs,
@@ -1557,24 +1532,6 @@ export function listActiveHostThreads(
       ),
     )
     .all();
-}
-
-export function hasPendingThreadShutdownInEnvironment(
-  db: DbConnection,
-  args: HasPendingThreadShutdownInEnvironmentArgs,
-): boolean {
-  const row = db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        eq(threads.status, "stopping"),
-      ),
-    )
-    .get();
-
-  return row !== undefined;
 }
 
 export function pinThread(

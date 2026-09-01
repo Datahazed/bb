@@ -23,25 +23,12 @@ import {
   threadScope,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
-import { ApiError } from "../../errors.js";
 import {
   appendSystemErrorEventInTransaction,
   appendThreadProvisioningEventInTransaction,
   buildCwdBranchEntries,
 } from "../threads/thread-events.js";
-import {
-  buildEnvironmentProvisionCommand,
-  buildManagedBranchName,
-  SETUP_TIMEOUT_MS,
-  requireSourceForHost,
-  storedBaseBranchNameToSpec,
-} from "../threads/thread-create-helpers.js";
-import {
-  resolveManagedTargetPath,
-  resolvePersonalTargetPath,
-} from "../threads/worktree-paths.js";
 import type { EnvironmentProvisionRequest } from "./environment-provision-request.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   createLiveHostCommandExecution,
   expectedLiveHostCommandErrorLogFields,
@@ -49,10 +36,7 @@ import {
   runLiveHostCommand,
 } from "../hosts/live-command.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
-import {
-  applyLoggedEnvironmentLifecycleEvent,
-  applyLoggedEnvironmentLifecycleEventInTransaction,
-} from "./lifecycle-outcome.js";
+import { applyLoggedEnvironmentLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -63,10 +47,6 @@ import {
   finalizeStoppedThreadInTransaction,
   requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
-import {
-  requestEnvironmentCleanup,
-  runEnvironmentCleanupAdvance,
-} from "./environment-cleanup-internal.js";
 import {
   emptyCommandResultSideEffects,
   type CommandResultPostCommitAction,
@@ -416,9 +396,9 @@ function hasOnlyCancelledOrStoppedProvisioningOutcomeThreads(
 function restoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeInTransaction(
   deps: EnvironmentProvisionTransactionDeps,
   args: RestoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeArgs,
-): boolean {
+): void {
   if (args.environment.status === "destroyed") {
-    return false;
+    return;
   }
 
   const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(deps, {
@@ -432,8 +412,6 @@ function restoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeInTransa
       environment: outcome.environment,
     });
   }
-
-  return true;
 }
 
 function completePathlessDestroyInTransaction(
@@ -490,10 +468,10 @@ function resolveProvisionedEnvironmentBranchMetadata(
 function recordEnvironmentProvisioningFailureInTransaction(
   deps: EnvironmentProvisionTransactionDeps,
   args: FailEnvironmentProvisioningDurablyArgs,
-): boolean {
+): void {
   const environment = getEnvironment(deps.db, args.environmentId);
   if (!environment) {
-    return false;
+    return;
   }
   const liveThreads = listLiveEnvironmentThreads(deps, environment.id);
   const failureThreads = liveThreads.filter(
@@ -510,10 +488,11 @@ function recordEnvironmentProvisioningFailureInTransaction(
       threads: liveThreads,
     })
   ) {
-    return restoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeInTransaction(
+    restoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeInTransaction(
       deps,
       { environment },
     );
+    return;
   }
 
   const failureOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
@@ -553,8 +532,6 @@ function recordEnvironmentProvisioningFailureInTransaction(
       deps.hub.notifyThread(thread.id, ["status-changed"]);
     }
   }
-
-  return true;
 }
 
 export function settleEnvironmentProvisionCommandResult(
@@ -628,12 +605,6 @@ export function settleEnvironmentProvisionCommandResult(
         finalizeStoppedThreadInTransaction(args.deps, {
           threadId: thread.id,
         });
-        postCommitActions.push({
-          run: (deps) =>
-            runEnvironmentCleanupAdvance(deps, {
-              environmentId: args.command.environmentId,
-            }),
-        });
         continue;
       }
       if (
@@ -685,12 +656,6 @@ export function settleEnvironmentProvisionCommandResult(
       });
     }
 
-    postCommitActions.push({
-      run: (deps) =>
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        }),
-    });
     return { postCommitActions };
   }
 
@@ -698,34 +663,19 @@ export function settleEnvironmentProvisionCommandResult(
     return emptyCommandResultSideEffects();
   }
   const environmentProvisioningId = initiator.provisioningId;
-  const failureHandled = recordEnvironmentProvisioningFailureInTransaction(
-    args.deps,
-    {
-      environmentId: args.command.environmentId,
-      failureReason: args.report.errorMessage,
-      provisioningId: environmentProvisioningId,
-      failureEntry: {
-        type: "step",
-        key: "workspace-failed",
-        text: "Workspace setup failed",
-        status: "failed",
-        startedAt: args.execution.createdAt,
-        metadata: { durationMs: Date.now() - args.execution.createdAt },
-      },
+  recordEnvironmentProvisioningFailureInTransaction(args.deps, {
+    environmentId: args.command.environmentId,
+    failureReason: args.report.errorMessage,
+    provisioningId: environmentProvisioningId,
+    failureEntry: {
+      type: "step",
+      key: "workspace-failed",
+      text: "Workspace setup failed",
+      status: "failed",
+      startedAt: args.execution.createdAt,
+      metadata: { durationMs: Date.now() - args.execution.createdAt },
     },
-  );
-  if (failureHandled) {
-    postCommitActions.push({
-      run: (deps) => {
-        requestEnvironmentCleanup(deps, {
-          environmentId: args.command.environmentId,
-        });
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        });
-      },
-    });
-  }
+  });
   return { postCommitActions };
 }
 
@@ -783,7 +733,6 @@ export function settleEnvironmentProvisionCancelCommandResult(
     };
   }
 
-  const postCommitActions: CommandResultPostCommitAction[] = [];
   const cancelledOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
     args.deps,
     {
@@ -791,7 +740,6 @@ export function settleEnvironmentProvisionCancelCommandResult(
       event: { type: "provision.cancelled" },
     },
   );
-  const restoredProvisioningEnvironment = cancelledOutcome.applied;
   if (cancelledOutcome.applied) {
     args.deps.hub.notifyEnvironment(
       args.command.environmentId,
@@ -808,22 +756,8 @@ export function settleEnvironmentProvisionCancelCommandResult(
       threadId: thread.id,
     });
   }
-  const finalizedThread = stoppedThreads.length > 0;
 
-  if (finalizedThread || restoredProvisioningEnvironment) {
-    postCommitActions.push({
-      run: (deps) => {
-        requestEnvironmentCleanup(deps, {
-          environmentId: args.command.environmentId,
-        });
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        });
-      },
-    });
-  }
-
-  return { postCommitActions };
+  return emptyCommandResultSideEffects();
 }
 
 function interruptUnrecoverableEnvironmentProvisioning(
@@ -943,131 +877,3 @@ export async function advanceEnvironmentProvisioning(
   });
 }
 
-export const MANAGED_REPROVISION_STARTED = "started" as const;
-export const MANAGED_REPROVISION_IN_PROGRESS = "already-provisioning" as const;
-interface StartedManagedReprovision {
-  provisionEventSequence: number;
-  status: typeof MANAGED_REPROVISION_STARTED;
-}
-type ManagedReprovisionResult =
-  | StartedManagedReprovision
-  | typeof MANAGED_REPROVISION_IN_PROGRESS;
-
-interface ActiveManagedEnvironmentProvisionArgs {
-  environmentId: string;
-}
-
-interface DispatchManagedEnvironmentReprovisionArgs {
-  beforeProvisionCommandStart?: () => void;
-  environment: Environment;
-  projectId: string;
-  provisionEventSequence: number;
-  provisioningId: string;
-  threadId: string;
-}
-
-export function hasActiveManagedEnvironmentProvision(
-  deps: Pick<AppDeps, "db">,
-  args: ActiveManagedEnvironmentProvisionArgs,
-): boolean {
-  return getEnvironment(deps.db, args.environmentId)?.status === "provisioning";
-}
-
-export async function dispatchManagedEnvironmentReprovision(
-  deps: CommandResultSideEffectsDeps,
-  args: DispatchManagedEnvironmentReprovisionArgs,
-): Promise<ManagedReprovisionResult> {
-  const provisionType = args.environment.workspaceProvisionType;
-  if (!args.environment.managed || provisionType === "unmanaged") {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Environment cannot be reprovisioned automatically",
-      {
-        details: {
-          managed: args.environment.managed,
-          workspaceProvisionType: provisionType,
-        },
-      },
-    );
-  }
-
-  if (
-    hasActiveManagedEnvironmentProvision(deps, {
-      environmentId: args.environment.id,
-    })
-  ) {
-    return MANAGED_REPROVISION_IN_PROGRESS;
-  }
-
-  const hostSession = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.environment.hostId,
-  });
-
-  const initiator = {
-    threadId: args.threadId,
-    provisioningId: args.provisioningId,
-  };
-  const command =
-    provisionType === "personal"
-      ? buildEnvironmentProvisionCommand({
-          environmentId: args.environment.id,
-          hostId: args.environment.hostId,
-          initiator,
-          targetPath:
-            args.environment.path ??
-            resolvePersonalTargetPath({
-              dataDir: hostSession.dataDir,
-              environmentId: args.environment.id,
-            }),
-          workspaceProvisionType: provisionType,
-        })
-      : (() => {
-          const source = requireSourceForHost(
-            deps,
-            args.projectId,
-            args.environment.hostId,
-          );
-          const targetPath =
-            args.environment.path ??
-            resolveManagedTargetPath({
-              dataDir: hostSession.dataDir,
-              environmentId: args.environment.id,
-              sourcePath: source.path,
-            });
-          const branchName =
-            args.environment.branchName ??
-            buildManagedBranchName({
-              branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
-              threadId: args.threadId,
-            });
-          const baseBranch = storedBaseBranchNameToSpec(
-            args.environment.baseBranch,
-          );
-          return buildEnvironmentProvisionCommand({
-            branchName,
-            baseBranch,
-            environmentId: args.environment.id,
-            hostId: args.environment.hostId,
-            initiator,
-            sourcePath: source.path,
-            targetPath,
-            workspaceProvisionType: provisionType,
-            setupTimeoutMs: SETUP_TIMEOUT_MS,
-          });
-        })();
-
-  args.beforeProvisionCommandStart?.();
-  applyLoggedEnvironmentLifecycleEvent(deps, {
-    environmentId: args.environment.id,
-    event: { type: "provision.requested" },
-  });
-  await advanceEnvironmentProvisioning(deps, {
-    environmentId: args.environment.id,
-    request: { command },
-  });
-  return {
-    provisionEventSequence: args.provisionEventSequence,
-    status: MANAGED_REPROVISION_STARTED,
-  };
-}

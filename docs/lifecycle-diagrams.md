@@ -63,11 +63,13 @@ flowchart LR
     provisioning -->|"provision.cancelled (no workspace)"| destroying
     ready -->|"provision.requested"| provisioning
     ready -->|"retire.requested ⟨managed⟩"| retiring
+    ready -->|"destroy.recorded"| destroyed
     retiring -->|"retire.cancelled"| ready
+    retiring -->|"destroy.recorded"| destroyed
     retiring -->|"destroy.started ⟨managed⟩"| destroying
     error -->|"provision.requested"| provisioning
+    error -->|"destroy.recorded<br/>destroy.completed ⟨matchingDestroyAttempt⟩"| destroyed
     error -->|"destroy.started ⟨managed⟩"| destroying
-    error -->|"destroy.completed ⟨matchingDestroyAttempt⟩"| destroyed
     destroying -->|"destroy.completed ⟨matchingDestroyAttempt⟩"| destroyed
     destroying -->|"destroy.failed ⟨matchingDestroyAttempt⟩"| retiring
     destroying -->|"destroy.lost"| error

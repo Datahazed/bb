@@ -24,7 +24,6 @@ import {
   runIncrementalVacuum,
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
-  sweepManagedEnvironments,
   threads,
   truncateCompletedEventItemOutputs,
 } from "@bb/db";
@@ -32,15 +31,6 @@ import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
-import {
-  recoverOrphanedEnvironmentDestroyRequests,
-  runEnvironmentCleanupAdvance,
-} from "../environments/environment-cleanup-internal.js";
-import {
-  isCommandTimeoutError,
-  isHostUnavailableError,
-  runtimeErrorLogFields,
-} from "../lib/error-log-fields.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
 import {
   advanceProjectDeletion,
@@ -55,7 +45,6 @@ import {
   type QueueWaitPluginDirectory,
 } from "../threads/queue-drains.js";
 import { deliverLegacyDeferredThreadMessages } from "../threads/legacy-deferred-messages.js";
-import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
@@ -71,9 +60,6 @@ type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
-const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS = 15 * 60_000;
-const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
-  LIVE_DAEMON_COMMAND_TIMEOUT_MS;
 
 type PeriodicSweepJobCategory =
   | "retention"
@@ -94,27 +80,10 @@ interface PeriodicSweepJobState {
   running: boolean;
 }
 
-interface ManagedEnvironmentArchiveCleanupEvaluationResult {
-  candidates: number;
-  hostUnavailableDeferrals: number;
-}
-
 type PeriodicSweepJobList = readonly PeriodicSweepJob[];
-type HostUnavailableDeferralsByHostId = ReadonlyMap<string, number>;
-
-function countHostUnavailableDeferrals(
-  deferralsByHostId: HostUnavailableDeferralsByHostId,
-): number {
-  let total = 0;
-  for (const count of deferralsByHostId.values()) {
-    total += count;
-  }
-  return total;
-}
 
 let lastDatabaseMaintenanceCheckAt = 0;
 let databaseMaintenanceRunning = false;
-let lastManagedEnvironmentArchiveCleanupRecoveryAt = 0;
 const periodicSweepJobStates = new Map<string, PeriodicSweepJobState>();
 
 function getPeriodicSweepJobState(
@@ -177,81 +146,6 @@ export async function runPeriodicSweepJobs(
   for (const job of jobs) {
     await runPeriodicSweepJob(deps, job, now);
   }
-}
-
-async function advanceRetiringManagedEnvironments(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-): Promise<ManagedEnvironmentArchiveCleanupEvaluationResult> {
-  const environmentsToClean = sweepManagedEnvironments(deps.db);
-  if (environmentsToClean.length === 0) {
-    return {
-      candidates: 0,
-      hostUnavailableDeferrals: 0,
-    };
-  }
-
-  const hostUnavailableDeferralsByHostId = new Map<string, number>();
-  for (const environment of environmentsToClean) {
-    if (environment.path && !deps.hub.hasDaemonForHost(environment.hostId)) {
-      hostUnavailableDeferralsByHostId.set(
-        environment.hostId,
-        (hostUnavailableDeferralsByHostId.get(environment.hostId) ?? 0) + 1,
-      );
-      continue;
-    }
-
-    try {
-      await runEnvironmentCleanupAdvance(deps, {
-        environmentId: environment.id,
-      });
-    } catch (error) {
-      if (isCommandTimeoutError(error)) {
-        deps.logger.debug(
-          {
-            environmentId: environment.id,
-            ...runtimeErrorLogFields(deps.config, error),
-          },
-          "Managed environment archive cleanup deferred by host timeout",
-        );
-        continue;
-      }
-      if (isHostUnavailableError(error)) {
-        hostUnavailableDeferralsByHostId.set(
-          environment.hostId,
-          (hostUnavailableDeferralsByHostId.get(environment.hostId) ?? 0) + 1,
-        );
-        continue;
-      }
-      deps.logger.warn(
-        {
-          environmentId: environment.id,
-          err: error,
-        },
-        "Managed environment archive cleanup sweep failed",
-      );
-    }
-  }
-
-  const hostUnavailableDeferrals = countHostUnavailableDeferrals(
-    hostUnavailableDeferralsByHostId,
-  );
-  if (
-    hostUnavailableDeferrals > 0 &&
-    hostUnavailableDeferrals < environmentsToClean.length
-  ) {
-    deps.logger.debug(
-      {
-        deferredEnvironmentCount: hostUnavailableDeferrals,
-        deferredHostIds: Array.from(hostUnavailableDeferralsByHostId.keys()),
-      },
-      "Managed environment archive cleanup deferred some candidates until host reconnects",
-    );
-  }
-
-  return {
-    candidates: environmentsToClean.length,
-    hostUnavailableDeferrals,
-  };
 }
 
 export function runDatabaseMaintenanceSweep(
@@ -363,23 +257,6 @@ export function runDatabaseMaintenanceSweep(
   } finally {
     databaseMaintenanceRunning = false;
   }
-}
-
-export async function runManagedEnvironmentArchiveCleanupRecoverySweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
-): Promise<void> {
-  if (
-    now - lastManagedEnvironmentArchiveCleanupRecoveryAt >=
-    MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS
-  ) {
-    recoverOrphanedEnvironmentDestroyRequests(deps, {
-      updatedBefore: now - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
-    });
-    lastManagedEnvironmentArchiveCleanupRecoveryAt = now;
-  }
-
-  await advanceRetiringManagedEnvironments(deps);
 }
 
 async function runProjectDeletionSweep(
@@ -573,12 +450,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
-    name: "managed-environment-archive-cleanup-recovery",
-    run: runManagedEnvironmentArchiveCleanupRecoverySweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "durable-intent-retry",
     name: "project-deletion",
     run: runProjectDeletionSweep,
   },
@@ -602,10 +473,6 @@ export async function runStartupRecoverySweep(
   await deliverLegacyDeferredThreadMessages(deps);
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
-  recoverOrphanedEnvironmentDestroyRequests(deps, {
-    updatedBefore: Date.now() - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
-  });
-  await advanceRetiringManagedEnvironments(deps);
 }
 
 export async function runPeriodicSweeps(

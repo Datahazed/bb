@@ -186,17 +186,6 @@ function toProvisionWorkspaceOptions(
         onProgress,
       };
     }
-    case "managed-worktree": {
-      return {
-        workspaceProvisionType: command.workspaceProvisionType,
-        sourcePath: command.sourcePath,
-        targetPath: command.targetPath,
-        branchName: command.branchName,
-        baseBranch: command.baseBranch,
-        timeoutMs: command.setupTimeoutMs,
-        onProgress,
-      };
-    }
     case "personal": {
       const personalWorkspaceRoot = getPersonalWorkspaceRoot(options.dataDir);
       const targetPath = validatePersonalWorkspaceTargetPath({

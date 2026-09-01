@@ -9,7 +9,6 @@ import {
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
-import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
@@ -31,7 +30,6 @@ import type {
 import {
   provisionWorkspace,
   WorkspaceError,
-  type DestroyWorkspaceArgs,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
@@ -1087,57 +1085,6 @@ export class RuntimeManager {
       environmentId: args.entry.environmentId,
       changeKinds: ["work-status-changed", "git-refs-changed"],
     });
-  }
-
-  async destroyEnvironment(
-    environmentId: string,
-    args: DestroyWorkspaceArgs,
-  ): Promise<void> {
-    const existing = this.entries.get(environmentId);
-    const pending = this.pendingEntries.get(environmentId);
-    const entry = existing ?? (pending ? await pending : undefined);
-
-    if (!entry) {
-      return;
-    }
-
-    this.entries.delete(environmentId);
-    await this.stopWatchingStatus(entry);
-    await entry.runtime.shutdown();
-    await this.killManagedWorkspaceProcesses(entry);
-    await entry.workspace.destroy(args);
-    await this.cleanupUnusedInjectedSkillStagingDirs([]);
-  }
-
-  private async killManagedWorkspaceProcesses(
-    entry: RuntimeEntry,
-  ): Promise<void> {
-    if (!entry.workspace.managed) {
-      return;
-    }
-    try {
-      const killed = await killProcessesWithCwdUnder({
-        directory: entry.workspace.path,
-      });
-      if (killed.length > 0) {
-        this.options.logger?.warn(
-          {
-            environmentId: entry.environmentId,
-            workspacePath: entry.workspace.path,
-            pids: killed.map((process) => process.pid),
-          },
-          "Killed processes still running in a destroyed environment",
-        );
-      }
-    } catch (error) {
-      this.options.logger?.warn(
-        {
-          environmentId: entry.environmentId,
-          reason: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to reap processes in a destroyed environment",
-      );
-    }
   }
 
   async forgetEnvironment(environmentId: string): Promise<void> {

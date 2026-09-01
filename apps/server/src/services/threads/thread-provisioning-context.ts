@@ -78,7 +78,6 @@ export const threadForkDescriptorSchema = z.object({
 });
 
 const threadProvisionCommonPayloadSchema = z.object({
-  branchSlug: z.string().nullable().default(null),
   clientRequestId: clientTurnRequestIdSchema,
   environmentIntent: threadProvisionEnvironmentIntentSchema,
   execution: resolvedThreadExecutionOptionsSchema,
@@ -100,7 +99,6 @@ type ThreadProvisionOperationPayload = z.infer<
 const threadProvisioningStageValues = [
   "metadata-pending",
   "environment-pending",
-  "environment-prepared",
   "environment-attached",
   "environment-provisioning",
   "workspace-ready",
@@ -140,16 +138,6 @@ export type ThreadProvisionEnvironmentPendingContext =
     };
   };
 
-export type ThreadProvisionEnvironmentPreparedContext =
-  ThreadProvisionContext & {
-    state: ThreadProvisioningState & {
-      environmentId: string;
-      provisionEventSequence: number;
-      stage: "environment-prepared";
-      workspaceReadyEventSequence: null;
-    };
-  };
-
 type ThreadProvisionEnvironmentAttachedContext = ThreadProvisionContext & {
   state: ThreadProvisioningState & {
     environmentId: string;
@@ -184,7 +172,6 @@ export type ThreadProvisionAttachableContext =
   | ThreadProvisionWorkspaceReadyContext;
 
 type ThreadProvisionProvisionRequestableContext =
-  | ThreadProvisionEnvironmentPreparedContext
   | ThreadProvisionEnvironmentAttachedContext
   | ThreadProvisionEnvironmentProvisioningContext
   | ThreadProvisionWorkspaceReadyContext;
@@ -204,39 +191,16 @@ interface CreateMetadataPendingContextArgs {
   titleProvided: boolean;
 }
 
-interface CreateEnvironmentPendingContextArgs {
-  branchSlug: string | null;
-}
-
 interface CreateEnvironmentAttachedContextArgs {
   attachedEnvironmentId: string;
-}
-
-interface CreateEnvironmentPreparedContextArgs {
-  attachedEnvironmentId: string;
-  provisionEventSequence: number;
 }
 
 interface CreateEnvironmentProvisioningContextArgs {
   provisionEventSequence: number;
 }
 
-interface CreateReprovisioningContextArgs {
-  clientRequestId: ClientTurnRequestId;
-  environmentId: string;
-  provisionEventSequence: number;
-  execution: ResolvedThreadExecutionOptions;
-  input: PromptInput[];
-  inputGroups?: PromptInput[][];
-  provisioningId: string;
-}
-
 interface CreateWorkspaceReadyContextArgs {
   workspaceReadyEventSequence: number | null;
-}
-
-interface ResolvePreparedEnvironmentMetadataArgs {
-  branchSlug: string | null;
 }
 
 export function isAttachableContext(
@@ -247,8 +211,6 @@ export function isAttachableContext(
       return false;
     case "environment-pending":
       return context.state.environmentId === null;
-    case "environment-prepared":
-      return false;
     case "environment-attached":
     case "environment-provisioning":
     case "workspace-ready":
@@ -289,17 +251,6 @@ export function isEnvironmentProvisioningContext(
   );
 }
 
-export function isEnvironmentPreparedContext(
-  context: ThreadProvisionContext,
-): context is ThreadProvisionEnvironmentPreparedContext {
-  return (
-    context.state.stage === "environment-prepared" &&
-    context.state.environmentId !== null &&
-    context.state.provisionEventSequence !== null &&
-    context.state.workspaceReadyEventSequence === null
-  );
-}
-
 function isWorkspaceReadyContext(
   context: ThreadProvisionContext,
 ): context is ThreadProvisionWorkspaceReadyContext {
@@ -324,7 +275,6 @@ export function isProvisionableContext(
   switch (context.state.stage) {
     case "metadata-pending":
     case "environment-pending":
-    case "environment-prepared":
       return false;
     case "environment-attached":
     case "environment-provisioning":
@@ -338,7 +288,6 @@ export function createMetadataPendingContext(
 ): ThreadProvisionMetadataPendingContext {
   return {
     request: {
-      branchSlug: null,
       clientRequestId: args.clientRequestId,
       environmentIntent: args.environmentIntent,
       execution: args.execution,
@@ -359,13 +308,9 @@ export function createMetadataPendingContext(
 
 export function createEnvironmentPendingContext(
   context: ThreadProvisionMetadataPendingContext,
-  args: CreateEnvironmentPendingContextArgs,
 ): ThreadProvisionEnvironmentPendingContext {
   return {
-    request: {
-      ...context.request,
-      branchSlug: args.branchSlug,
-    },
+    request: context.request,
     state: {
       environmentId: null,
       provisionEventSequence: null,
@@ -392,22 +337,6 @@ export function createEnvironmentAttachedContext(
   };
 }
 
-export function createEnvironmentPreparedContext(
-  context: ThreadProvisionMetadataPendingContext,
-  args: CreateEnvironmentPreparedContextArgs,
-): ThreadProvisionEnvironmentPreparedContext {
-  return {
-    request: context.request,
-    state: {
-      environmentId: args.attachedEnvironmentId,
-      provisionEventSequence: args.provisionEventSequence,
-      provisioningId: context.state.provisioningId,
-      stage: "environment-prepared",
-      workspaceReadyEventSequence: null,
-    },
-  };
-}
-
 export function createEnvironmentProvisioningContext(
   context: ThreadProvisionProvisionRequestableContext,
   args: CreateEnvironmentProvisioningContextArgs,
@@ -418,49 +347,6 @@ export function createEnvironmentProvisioningContext(
       environmentId: context.state.environmentId,
       provisionEventSequence: args.provisionEventSequence,
       provisioningId: context.state.provisioningId,
-      stage: "environment-provisioning",
-      workspaceReadyEventSequence: null,
-    },
-  };
-}
-
-export function resolvePreparedEnvironmentMetadata(
-  context: ThreadProvisionEnvironmentPreparedContext,
-  args: ResolvePreparedEnvironmentMetadataArgs,
-): ThreadProvisionEnvironmentPreparedContext {
-  return {
-    request: {
-      ...context.request,
-      branchSlug: args.branchSlug,
-    },
-    state: context.state,
-  };
-}
-
-export function createReprovisioningContext(
-  args: CreateReprovisioningContextArgs,
-): ThreadProvisionEnvironmentProvisioningContext {
-  return {
-    request: {
-      branchSlug: null,
-      environmentIntent: {
-        type: "reuse",
-        environmentId: args.environmentId,
-      },
-      clientRequestId: args.clientRequestId,
-      execution: args.execution,
-      fork: null,
-      input: args.input,
-      ...(args.inputGroups !== undefined
-        ? { inputGroups: args.inputGroups }
-        : {}),
-      titleProvided: true,
-      seedWithoutRun: false,
-    },
-    state: {
-      environmentId: args.environmentId,
-      provisionEventSequence: args.provisionEventSequence,
-      provisioningId: args.provisioningId,
       stage: "environment-provisioning",
       workspaceReadyEventSequence: null,
     },

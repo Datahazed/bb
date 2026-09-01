@@ -40,11 +40,6 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
   LoggedWorkSessionDeps,
 } from "../../types.js";
-import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  runEnvironmentCleanupAdvance,
-} from "../environments/environment-cleanup-internal.js";
 import { cancelEnvironmentProvisioningForThreadStopInTransaction } from "../environments/environment-provisioning-cancellation.js";
 import {
   emptyCommandResultSideEffects,
@@ -827,12 +822,6 @@ export function settleThreadStartCommandResult(
     finalizeStoppedThreadInTransaction(args.deps, {
       threadId: currentThread.id,
     });
-    postCommitActions.push({
-      run: (deps) =>
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        }),
-    });
     return { postCommitActions };
   }
   if (
@@ -965,16 +954,7 @@ export function settleThreadStopCommandResult(
     finalizeStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,
     });
-    return {
-      postCommitActions: [
-        {
-          run: (deps) =>
-            runEnvironmentCleanupAdvance(deps, {
-              environmentId: args.command.environmentId,
-            }),
-        },
-      ],
-    };
+    return emptyCommandResultSideEffects();
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
@@ -992,12 +972,6 @@ export function settleThreadStopCommandResult(
             threadId: args.command.threadId,
           });
         },
-      },
-      {
-        run: (deps) =>
-          runEnvironmentCleanupAdvance(deps, {
-            environmentId: args.command.environmentId,
-          }),
       },
     ],
   };
@@ -1278,7 +1252,6 @@ function requestPreStartThreadStop(
   notificationBuffer.flushInto(deps.hub);
 
   if (!result.finalized && result.environmentId && result.cancelHostId) {
-    requestEnvironmentCleanup(deps, { environmentId: result.environmentId });
     startLiveHostCommand(deps, {
       command: {
         type: "environment.provision.cancel",
@@ -1298,13 +1271,6 @@ function requestPreStartThreadStop(
       },
     });
     return;
-  }
-
-  if (result.finalized && result.environmentId !== null) {
-    requestEnvironmentCleanup(deps, { environmentId: result.environmentId });
-    requestEnvironmentCleanupAdvance(deps, {
-      environmentId: result.environmentId,
-    });
   }
 }
 
@@ -1748,28 +1714,10 @@ export function finalizeStoppedThreadInTransaction(
       },
     );
 
-    const environmentId = finalizedThread.environmentId;
     deleteThread(deps.db, deps.hub, finalizedThread.id);
-    requestEnvironmentCleanup(deps, {
-      environmentId,
-    });
   }
 }
 
-export function finalizeStoppedThreadAndRequestCleanupAdvance(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  args: FinalizeStoppedThreadArgs,
-): void {
-  const threadBeforeFinalize = getThread(deps.db, args.threadId);
-  finalizeStoppedThread(deps, args);
-
-  const threadAfterFinalize = getThread(deps.db, args.threadId);
-  const environmentId =
-    threadAfterFinalize?.environmentId ??
-    threadBeforeFinalize?.environmentId ??
-    null;
-  requestEnvironmentCleanupAdvance(deps, { environmentId });
-}
 
 export async function reconcileDaemonReportedThreads(
   deps: LoggedPendingInteractionWorkSessionDeps,
@@ -1812,7 +1760,7 @@ export async function reconcileDaemonReportedThreads(
       continue;
     }
 
-    finalizeStoppedThreadAndRequestCleanupAdvance(deps, {
+    finalizeStoppedThread(deps, {
       threadId: thread.id,
     });
   }

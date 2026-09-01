@@ -288,10 +288,6 @@ interface CloseArchivedThreadTerminalsArgs {
   threadId: string;
 }
 
-interface CloseDestroyedEnvironmentTerminalsArgs {
-  environmentId: string;
-}
-
 interface ExpireDisconnectedHostTerminalsArgs {
   daemonSessionId: string;
   hostId: string;
@@ -1189,32 +1185,6 @@ export class TerminalSessionLifecycle {
       threadId: args.threadId,
       closeReason: "thread-archived",
       message: "Terminal session closed because the thread was archived",
-    });
-  }
-
-  closeDestroyedEnvironmentTerminals(
-    args: CloseDestroyedEnvironmentTerminalsArgs,
-  ): void {
-    const currentSessions = listTerminalSessions(this.options.db, {
-      scope: { environmentId: args.environmentId, kind: "environment" },
-      visible: false,
-    });
-    this.requestTerminalCloses({
-      closeReason: "environment-destroyed",
-      sessions: currentSessions,
-    });
-    const exitedSessions = updateTerminalSessions(this.options.db, {
-      scope: {
-        environmentId: args.environmentId,
-        kind: "environment",
-        statuses: NON_TERMINAL_SESSION_STATUSES,
-      },
-      update: { closeReason: "environment-destroyed", kind: "exit" },
-    });
-    this.publishLifecycleTerminalExitsForSessions({
-      currentSessions,
-      exitedSessions,
-      message: "Terminal session closed because the environment was destroyed",
     });
   }
 

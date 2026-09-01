@@ -470,34 +470,6 @@ const commandHandlers: CommandHandlerMap = {
         : {}),
     }),
   "environment.provision.cancel": cancelEnvironmentProvision,
-  "environment.destroy": async (command, options) => {
-    const transcript: HostDaemonCommandResult<"environment.destroy">["transcript"] =
-      [];
-    const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
-      environmentId: command.environmentId,
-      runtimeManager: options.runtimeManager,
-      workspaceContext: command.workspaceContext,
-    });
-    if (!resolution.ok) {
-      if (resolution.failure.code === "path_not_found") {
-        return { transcript };
-      }
-      throw new ExpectedCommandDispatchError(
-        resolution.failure.code,
-        resolution.failure.message,
-      );
-    }
-    await options.terminalManager?.closeEnvironmentTerminals({
-      environmentId: command.environmentId,
-      reason: "environment-destroyed",
-    });
-    await options.runtimeManager.destroyEnvironment(command.environmentId, {
-      timeoutMs: command.teardownTimeoutMs,
-      onProgress: (entry) => transcript.push(entry),
-    });
-    return { transcript };
-  },
   "workspace.commit": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,

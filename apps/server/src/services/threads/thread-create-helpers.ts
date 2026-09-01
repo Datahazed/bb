@@ -9,24 +9,10 @@ import {
 import type { DbNotifier } from "@bb/db";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import type { LocalPathProjectSource } from "@bb/domain";
-import type { BaseBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
 import type { ThreadCreateServiceRequest } from "./thread-create-request.js";
-import { sanitizeGeneratedBranchSlug } from "./title-generation.js";
-
-export function baseBranchSpecToStoredName(
-  spec: BaseBranchSpec,
-): string | null {
-  return spec.kind === "named" ? spec.name : null;
-}
-
-export function storedBaseBranchNameToSpec(
-  name: string | null,
-): BaseBranchSpec {
-  return name ? { kind: "named", name } : { kind: "default" };
-}
 
 type EnvironmentProvisionCommand = Extract<
   HostDaemonCommand,
@@ -35,19 +21,13 @@ type EnvironmentProvisionCommand = Extract<
 type EnvironmentProvisionCommandInitiator =
   EnvironmentProvisionCommand["initiator"];
 
-interface ManagedBranchNameArgs {
+interface ThreadBranchNameArgs {
   branchPrefix: string;
-  branchSlug?: string | null;
   threadId: string;
 }
 
-export function buildManagedBranchName(args: ManagedBranchNameArgs): string {
-  const branchSlug = args.branchSlug
-    ? sanitizeGeneratedBranchSlug(args.branchSlug)
-    : null;
-  return branchSlug
-    ? `${args.branchPrefix}${branchSlug}-${args.threadId}`
-    : `${args.branchPrefix}${args.threadId}`;
+export function buildThreadBranchName(args: ThreadBranchNameArgs): string {
+  return `${args.branchPrefix}${args.threadId}`;
 }
 
 export function requirePublicProjectForThreadCreate(
@@ -60,8 +40,6 @@ export function requirePublicProjectForThreadCreate(
   }
   return project;
 }
-
-export const SETUP_TIMEOUT_MS = 15 * 60 * 1000;
 
 export function requireSourceForHost(
   deps: Pick<AppDeps, "db">,
@@ -93,17 +71,6 @@ type EnvironmentProvisionCommandArgs =
       checkout?: UnmanagedCheckoutCommand;
     }
   | {
-      workspaceProvisionType: "managed-worktree";
-      environmentId: string;
-      hostId: string;
-      initiator: EnvironmentProvisionCommandInitiator;
-      sourcePath: string;
-      targetPath: string;
-      branchName: string;
-      baseBranch: BaseBranchSpec;
-      setupTimeoutMs: number;
-    }
-  | {
       workspaceProvisionType: "personal";
       environmentId: string;
       hostId: string;
@@ -123,18 +90,6 @@ export function buildEnvironmentProvisionCommand(
         workspaceProvisionType: args.workspaceProvisionType,
         path: args.path,
         ...(args.checkout ? { checkout: args.checkout } : {}),
-      };
-    case "managed-worktree":
-      return {
-        type: "environment.provision" as const,
-        environmentId: args.environmentId,
-        initiator: args.initiator,
-        workspaceProvisionType: args.workspaceProvisionType,
-        sourcePath: args.sourcePath,
-        targetPath: args.targetPath,
-        branchName: args.branchName,
-        baseBranch: baseBranchSpecToStoredName(args.baseBranch),
-        setupTimeoutMs: args.setupTimeoutMs,
       };
     case "personal":
       return {

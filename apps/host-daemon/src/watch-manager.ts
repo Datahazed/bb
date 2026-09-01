@@ -153,12 +153,6 @@ export class WatchManager {
     });
   }
 
-  async removeEnvironmentWorkspaceWatch(environmentId: string): Promise<void> {
-    await this.enqueueWatchSetMutation(async () => {
-      await this.removeWorkspaceWatch(environmentId);
-    });
-  }
-
   async shutdown(): Promise<void> {
     await this.enqueueWatchSetMutation(async () => {
       const entries = [...this.workspaceEntries.values()];
@@ -484,15 +478,6 @@ export class WatchManager {
     const stopWatchingStatus = entry.stopWatchingStatus;
     entry.stopWatchingStatus = STOP_WATCHING;
     await stopWatchingStatus();
-  }
-
-  private async removeWorkspaceWatch(environmentId: string): Promise<void> {
-    const entry = this.workspaceEntries.get(environmentId);
-    if (!entry) {
-      return;
-    }
-    this.workspaceEntries.delete(environmentId);
-    await this.stopWorkspaceWatch(entry);
   }
 
   private ensureThreadStorageWatcher(): void {
