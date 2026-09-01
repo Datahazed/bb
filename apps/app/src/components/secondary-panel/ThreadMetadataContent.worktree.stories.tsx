@@ -109,7 +109,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="Named · one local machine"
-        hint="Set from the sidebar row. Composer and Info show the name; Composer omits the redundant machine."
+        hint="Set from the sidebar row. Composer shows the name; Info identifies the environment as a worktree and includes the name."
       >
         <ContextFixture name="Design system polish" />
       </StoryRow>
@@ -121,7 +121,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="No custom name"
-        hint="No sidebar name is set. Composer uses the machine as a readable fallback with the worktree icon; Info omits the optional Worktree row."
+        hint="No sidebar name is set. Composer uses the machine as a readable fallback with the worktree icon; Info still identifies the environment as a worktree."
       >
         <ContextFixture name={null} />
       </StoryRow>

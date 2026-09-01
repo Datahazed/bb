@@ -285,7 +285,6 @@ export function EnvironmentRow({
   const isWorktree = isWorktreeEnvironment(environment);
   if (!isWorktree) return null;
   const worktreeTitle = environment.name;
-  if (!worktreeTitle) return null;
   const display = formatEnvironmentDisplay({
     environment,
     host: environmentDisplayHost,
@@ -299,9 +298,9 @@ export function EnvironmentRow({
         : display.lifecycle === "destroyed"
           ? "Destroyed"
           : null;
-  const environmentTitle = lifecycleTitle
-    ? `${worktreeTitle} · ${lifecycleTitle}`
-    : worktreeTitle;
+  const environmentTitle = ["Worktree", worktreeTitle, lifecycleTitle]
+    .filter((value) => Boolean(value))
+    .join(" · ");
   return (
     <DetailRow
       label={
@@ -310,23 +309,18 @@ export function EnvironmentRow({
             display.workspaceDisplayKind,
           )}
         >
-          Worktree
+          Environment
         </DetailRowIconLabel>
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
       <DetailValueTooltip
-        accessibleLabel={`Worktree: ${environmentTitle}`}
-        measurementKey={worktreeTitle}
+        accessibleLabel={`Environment: ${environmentTitle}`}
+        measurementKey={environmentTitle}
         tooltip={environmentTitle}
       >
-        {worktreeTitle}
+        {environmentTitle}
       </DetailValueTooltip>
-      {lifecycleTitle ? (
-        <span className="shrink-0 text-muted-foreground">
-          · {lifecycleTitle}
-        </span>
-      ) : null}
       {showCreateThreadButton ? (
         <Tooltip>
           <TooltipTrigger asChild>
