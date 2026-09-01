@@ -332,7 +332,7 @@ export function closeAutomationRunForSettledThread(
 }
 
 type ReconcileOutcome =
-  | { status: "succeeded" }
+  | { status: "succeeded"; skipReason: string }
   | { status: "failed"; error: string }
   | { status: "skipped"; skipReason: string };
 
@@ -415,7 +415,11 @@ async function reconcileOutcome(
   }
   switch (thread.status) {
     case "idle":
-      return { status: "succeeded" };
+      return {
+        status: "succeeded",
+        skipReason:
+          "interrupted: the server restarted before the agent run was observed to finish",
+      };
     case "error":
       return {
         status: "failed",
