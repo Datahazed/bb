@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   MemoryRouter,
@@ -131,6 +132,7 @@ function installFetch(
     DOCS_CATALOG_ENTRY,
     GITHUB_CATALOG_ENTRY,
   ],
+  listingRecords: readonly unknown[] = [],
 ) {
   vi.stubGlobal(
     "fetch",
@@ -182,7 +184,7 @@ function installFetch(
         });
       }
       if (url.pathname === "/api/v1/plugin-listings") {
-        return responseJson({ records: [], notices: [] });
+        return responseJson({ records: listingRecords, notices: [] });
       }
       return responseJson({ error: "not found" }, 404);
     }),
@@ -306,7 +308,20 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByTestId("inline-composer")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Plugin Guide" })).toBeTruthy();
+    const pluginGuideButton = screen.getByRole("button", {
+      name: "Open Plugin Guide in main app",
+    });
+    expect(pluginGuideButton.querySelector('[data-icon="Puzzle"]')).toBeNull();
+    expect(
+      pluginGuideButton.querySelector('[data-icon="ExternalLink"]'),
+    ).not.toBeNull();
+    const [mapIcon, pinIcon] = pluginGuideButton.querySelectorAll(
+      "span.relative > svg",
+    );
+    expect(mapIcon?.getAttribute("class")).not.toContain(
+      "group-hover:opacity-0",
+    );
+    expect(pinIcon?.querySelectorAll("path")).toHaveLength(2);
     expect(screen.getByText("Start from an example")).toBeTruthy();
     expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
     expect(
@@ -314,6 +329,52 @@ describe("PluginsOverview", () => {
         "Plugins authored from local paths, grouped by their marketplace listing category.",
       ),
     ).toBeNull();
+  });
+
+  it("enriches published My plugin cards from the existing catalog search", async () => {
+    installFetch(
+      [AUTOMATIONS_PLUGIN],
+      [
+        {
+          ...AUTOMATIONS_CATALOG_ENTRY,
+          iconTinted: false,
+          screenshots: [],
+          newAndNotableRank: null,
+          repositoryUrl: null,
+          author: null,
+          installs: 1_250,
+          incompatibleReason: null,
+        },
+      ],
+      [
+        {
+          pluginId: "automations",
+          authorship: "path",
+          lifecycle: {
+            status: "published",
+            entryId: "automations",
+            publishedAt: 1,
+          },
+        },
+      ],
+    );
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins?view=my"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const card = await screen.findByTestId("my-plugin-card-automations");
+    expect(
+      within(card).getByLabelText("Automations installed — 1,250 installs")
+        .textContent,
+    ).toBe("1.3K");
+    expect(card.querySelector(".row-start-3")?.textContent).toBe(
+      "Tasks & Workflows",
+    );
   });
 
   it("opens on Browse and renders it before Installed", async () => {

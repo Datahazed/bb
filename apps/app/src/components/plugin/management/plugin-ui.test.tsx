@@ -60,16 +60,17 @@ it("uses a tokenized category treatment without making the label interactive", (
   expect(pill).not.toBeNull();
   if (pill === null) throw new Error("Category pill missing");
   expect(pill.style.background).toBe(
-    "color-mix(in oklab, var(--plugin-category-family-agent-work) 16%, var(--canvas))",
+    "color-mix(in oklab, var(--plugin-category-family-agent-work) 10%, var(--canvas))",
   );
   expect(pill.style.borderColor).toBe(
-    "color-mix(in oklab, var(--plugin-category-family-agent-work) 24%, var(--canvas))",
+    "color-mix(in oklab, var(--plugin-category-family-agent-work) 18%, var(--canvas))",
   );
   expect(pill.style.color).toBe(
-    "color-mix(in oklab, var(--plugin-category-family-agent-work) 52%, var(--ink))",
+    "color-mix(in oklab, var(--plugin-category-family-agent-work) 50%, var(--ink))",
   );
   expect(pill.classList.contains("border")).toBe(true);
   expect(pill.classList.contains("inline-flex")).toBe(true);
+  expect(pill.classList.contains("leading-tight")).toBe(true);
   expect(label.classList.contains("truncate")).toBe(true);
   expect(pill.closest("a, button")).toBeNull();
 });
@@ -77,9 +78,9 @@ it("uses a tokenized category treatment without making the label interactive", (
 it("derives every category treatment from the canonical category token", () => {
   for (const category of PLUGIN_CATALOG_CATEGORIES) {
     expect(pluginCatalogCategoryPillStyle(category.id)).toEqual({
-      background: `color-mix(in oklab, var(${category.accentToken}) 16%, var(--canvas))`,
-      borderColor: `color-mix(in oklab, var(${category.accentToken}) 24%, var(--canvas))`,
-      color: `color-mix(in oklab, var(${category.accentToken}) 52%, var(--ink))`,
+      background: `color-mix(in oklab, var(${category.accentToken}) 10%, var(--canvas))`,
+      borderColor: `color-mix(in oklab, var(${category.accentToken}) 18%, var(--canvas))`,
+      color: `color-mix(in oklab, var(${category.accentToken}) 50%, var(--ink))`,
     });
     expect(pluginCatalogCategoryMutedAccentStyle(category.id)).toEqual({
       background: `color-mix(in oklab, var(${category.accentToken}) 55%, var(--canvas))`,

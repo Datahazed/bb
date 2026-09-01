@@ -334,7 +334,7 @@ export function PluginBrowseCategoryFilter(
             aria-multiselectable={
               props.selectionMode === "multiple" ? true : undefined
             }
-            className="transient-scrollbar max-h-64 overflow-y-auto"
+            className="transient-scrollbar max-h-60 overflow-y-auto"
             onScroll={revealScrollbarWhileScrolling}
           >
             <div ref={topSentinelRef} aria-hidden className="h-px w-full" />
@@ -381,7 +381,7 @@ export function PluginBrowseCategoryFilter(
             <div
               aria-hidden
               data-category-list-fade="below"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-popover/90 via-popover/60 to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-gradient-to-t from-popover/90 via-popover/60 to-transparent"
             />
           ) : null}
         </div>

@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -69,13 +76,44 @@ const draftEntry = {
   screenshots: [],
 } as const;
 
+function catalogEntry(
+  overrides: Partial<PluginCatalogSearchEntry> = {},
+): PluginCatalogSearchEntry {
+  return {
+    entryId: "published",
+    pluginId: "published",
+    displayName: "Release Notes",
+    description: "Release Notes description",
+    icon: "FileText",
+    iconUrl: null,
+    iconTinted: false,
+    categoryId: "code-and-reviews",
+    category: "Code & Reviews",
+    screenshots: [],
+    newAndNotableRank: null,
+    source: "builtin:published",
+    repositoryUrl: null,
+    marketplace: "bb-community",
+    marketplaceDisplayName: "BB Community",
+    publisherKey: "bb-community",
+    publisherLabel: "BB Community",
+    official: false,
+    author: { name: "Author" },
+    installed: true,
+    installs: 1_250,
+    compatible: true,
+    incompatibleReason: null,
+    ...overrides,
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
 describe("MyPluginsTab", () => {
-  it("groups authored records by listing lifecycle without repeating row status", () => {
+  it("uses one Browse card grid with marketplace metadata or lifecycle status", () => {
     vi.mocked(usePluginListings).mockReturnValue({
       data: {
         records: [
@@ -121,6 +159,7 @@ describe("MyPluginsTab", () => {
     render(
       <MemoryRouter>
         <MyPluginsTab
+          catalogEntriesByEntryId={new Map([["published", catalogEntry()]])}
           plugins={[
             plugin("usage", "Usage"),
             plugin("review", "Review"),
@@ -132,25 +171,41 @@ describe("MyPluginsTab", () => {
       </MemoryRouter>,
     );
 
-    const headings = screen.getAllByRole("heading", { level: 2 });
-    expect(headings.map((heading) => heading.textContent)).toEqual([
-      "Not published · 1",
-      "In review · 1",
-      "Published · 1",
-      "Create another plugin",
-    ]);
+    const notPublishedCard = screen.getByTestId("my-plugin-card-usage");
+    const inReviewCard = screen.getByTestId("my-plugin-card-review");
+    const publishedCard = screen.getByTestId("my-plugin-card-published");
+    const cards = [notPublishedCard, inReviewCard, publishedCard];
     expect(
-      screen.getByRole("button", { name: "Usage listing details" }).textContent,
-    ).not.toContain("Not published");
+      Array.from(document.querySelectorAll('[data-testid^="my-plugin-card-"]')),
+    ).toEqual(cards);
     expect(
-      screen.getByRole("button", { name: "Review listing details" })
+      document.querySelectorAll("[data-resource-list-panel]"),
+    ).toHaveLength(0);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "My plugins 3 plugins" }),
+    ).toBeTruthy();
+    expect(
+      document.querySelector("[data-authored-plugin-count]")?.textContent,
+    ).toBe("3 plugins");
+    expect(screen.queryByText("Create another plugin")).toBeNull();
+    expect(notPublishedCard.querySelector(".row-start-3")?.textContent).toBe(
+      "Not published",
+    );
+    expect(inReviewCard.querySelector(".row-start-3")?.textContent).toBe(
+      "In review",
+    );
+    expect(within(notPublishedCard).queryByLabelText(/installed/u)).toBeNull();
+    expect(within(inReviewCard).queryByLabelText(/installed/u)).toBeNull();
+
+    const published = within(publishedCard);
+    expect(
+      published.getByLabelText("Release Notes installed — 1,250 installs")
         .textContent,
-    ).not.toContain("In review");
-    expect(
-      screen.getByRole("button", {
-        name: "Release Notes listing details",
-      }).textContent,
-    ).not.toContain("Published");
+    ).toBe("1.3K");
+    expect(publishedCard.querySelector(".row-start-3")?.textContent).toBe(
+      "Code & Reviews",
+    );
+    expect(published.queryByText("Published")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Release Notes listing details" }),
@@ -158,7 +213,50 @@ describe("MyPluginsTab", () => {
     expect(onOpenPlugin).toHaveBeenCalledWith("published");
   });
 
-  it("keeps the full creation examples alongside one to four authored plugins", () => {
+  it("keeps a published category visible while catalog data is unavailable", () => {
+    vi.mocked(usePluginListings).mockReturnValue({
+      data: {
+        records: [
+          {
+            pluginId: "published",
+            authorship: "path",
+            lifecycle: {
+              status: "published",
+              entryId: "published",
+              publishedAt: 1,
+            },
+          },
+        ],
+        notices: [],
+      },
+      isError: false,
+      isFetching: false,
+    } as never);
+
+    render(
+      <MemoryRouter>
+        <MyPluginsTab
+          plugins={[
+            {
+              ...plugin("published", "Release Notes"),
+              categoryId: "code-and-reviews",
+              category: "Code & Reviews",
+            },
+          ]}
+          onOpenPlugin={vi.fn()}
+          onCreatePlugin={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    const card = screen.getByTestId("my-plugin-card-published");
+    expect(card.querySelector(".row-start-3")?.textContent).toBe(
+      "Code & Reviews",
+    );
+    expect(within(card).queryByLabelText(/installed/u)).toBeNull();
+  });
+
+  it("keeps the full creation examples alongside two authored plugins", () => {
     vi.mocked(usePluginListings).mockReturnValue({
       data: {
         records: [
@@ -166,6 +264,11 @@ describe("MyPluginsTab", () => {
             pluginId: "usage",
             authorship: "path",
             lifecycle: { status: "draft", entry: draftEntry },
+          },
+          {
+            pluginId: "review",
+            authorship: "path",
+            lifecycle: { status: "not-published" },
           },
         ],
         notices: [],
@@ -178,7 +281,7 @@ describe("MyPluginsTab", () => {
     render(
       <MemoryRouter>
         <MyPluginsTab
-          plugins={[plugin("usage", "Usage")]}
+          plugins={[plugin("usage", "Usage"), plugin("review", "Review")]}
           onOpenPlugin={vi.fn()}
           onCreatePlugin={onCreatePlugin}
         />
@@ -188,12 +291,15 @@ describe("MyPluginsTab", () => {
     expect(screen.getByText("Create another plugin")).toBeTruthy();
     expect(screen.getByText("Video editor")).toBeTruthy();
     expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "My plugins 2 plugins" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByText("Kanban board"));
     expect(onCreatePlugin).toHaveBeenCalledOnce();
   });
 
-  it("collapses creation examples after five authored plugins and expands them on request", () => {
-    const ids = ["one", "two", "three", "four", "five"];
+  it("removes creation onboarding at three authored plugins", () => {
+    const ids = ["three", "one", "two"];
     vi.mocked(usePluginListings).mockReturnValue({
       data: {
         records: ids.map((id) => ({
@@ -220,13 +326,19 @@ describe("MyPluginsTab", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Kanban board")).toBeTruthy();
+    expect(screen.queryByText("Create another plugin")).toBeNull();
+    expect(screen.queryByText("Kanban board")).toBeNull();
     expect(screen.queryByText("Video editor")).toBeNull();
     expect(screen.queryByText("Explore plugin capabilities")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "View all examples" }));
-    expect(screen.getByText("Video editor")).toBeTruthy();
-    expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Show fewer" })).toBeTruthy();
+    expect(
+      Array.from(
+        document.querySelectorAll('[data-testid^="my-plugin-card-"]'),
+      ).map((card) => card.getAttribute("data-testid")),
+    ).toEqual([
+      "my-plugin-card-one",
+      "my-plugin-card-three",
+      "my-plugin-card-two",
+    ]);
   });
 
   it("uses the exact status token treatments", () => {

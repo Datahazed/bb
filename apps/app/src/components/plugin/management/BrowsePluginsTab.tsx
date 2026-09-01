@@ -150,8 +150,8 @@ function BrowseCategorySelectionHeader({
         <Icon name="ChevronLeft" className="size-3" />
         Browse plugins
       </ResourceShelfAction>
-      <h2 className="flex flex-wrap items-center gap-2">
-        <PluginCategoryLabel categoryId={categoryId} label={label} />
+      <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold leading-5 text-foreground">
+        <PluginCategoryShelfLabel categoryId={categoryId} label={label} />
         <span
           data-plugin-category-selection-count
           className="text-xs font-normal tabular-nums text-subtle-foreground"
@@ -498,7 +498,6 @@ export function BrowsePluginsTab({
                   {hasCategoryDiscovery ? (
                     <BrowseShelf
                       label="New & notable"
-                      count={notableEntries.length}
                       entries={notableEntries}
                       showCategory
                       leading={<NewAndNotableIcon entries={notableEntries} />}
@@ -512,7 +511,6 @@ export function BrowsePluginsTab({
                       categoryId={shelf.id}
                       label={shelf.label}
                       description={shelf.description}
-                      count={shelf.entries.length}
                       entries={shelf.entries.slice(0, 6)}
                       onViewAll={() => openCategory(shelf.id)}
                       onInstall={onInstall}
@@ -642,7 +640,7 @@ function BrowseShelf({
   label: string;
   description?: string;
   leading?: ReactNode;
-  count: number;
+  count?: number;
   entries: readonly PluginCatalogSearchEntry[];
   showCategory?: boolean;
   onViewAll?: () => void;
@@ -671,9 +669,11 @@ function BrowseShelf({
       label={shelfLabel}
       leading={leading}
       attribution={
-        <span className="tabular-nums">
-          {count.toLocaleString()} {count === 1 ? "plugin" : "plugins"}
-        </span>
+        count === undefined ? undefined : (
+          <span className="tabular-nums">
+            {count.toLocaleString()} {count === 1 ? "plugin" : "plugins"}
+          </span>
+        )
       }
       description={description}
       contentMode="panel"

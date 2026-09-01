@@ -263,6 +263,7 @@ describe("PluginBrowseCategoryFilter", () => {
 
     const list = categoryList();
     const fade = () => document.querySelector("[data-category-list-fade]");
+    expect(list.className).toContain("max-h-60");
 
     setScrollMetrics(list, {
       clientHeight: 400,
@@ -283,6 +284,7 @@ describe("PluginBrowseCategoryFilter", () => {
     await waitFor(() => {
       expect(fade()).not.toBeNull();
     });
+    expect(fade()?.className).toContain("h-10");
     expect(fade()?.className).toContain("from-popover/90");
 
     list.scrollTop = 300;

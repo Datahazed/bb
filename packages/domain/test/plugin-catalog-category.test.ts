@@ -63,7 +63,7 @@ describe("plugin catalog categories", () => {
       "File Viewers & Editors",
       "Cloud & Remote",
       "Command Line",
-      "Utilities",
+      "Machines & Hosts",
       "Plugin Development",
       "Tasks & Workflows",
     ]);

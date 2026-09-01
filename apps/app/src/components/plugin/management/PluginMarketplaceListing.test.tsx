@@ -98,13 +98,17 @@ describe("PluginMarketplaceListing", () => {
     const titleRow = screen.getByRole("heading", {
       name: "Usage",
     }).parentElement;
-    expect(titleRow?.textContent).toContain("Token Usage & Limits");
+    expect(titleRow?.textContent).not.toContain("Token Usage & Limits");
     expect(titleRow?.nextElementSibling?.textContent).not.toContain(
       "Token Usage & Limits",
     );
     const updated = screen.getByLabelText(/^Updated /u);
     expect(updated.tagName).toBe("TIME");
     expect(updated.getAttribute("datetime")).toBe("2026-08-24T12:00:00.000Z");
+    expect(screen.getByText("Last updated").className).toContain(
+      "text-subtle-foreground",
+    );
+    expect(updated.closest("dd")?.className).toContain("text-foreground");
     expect(
       screen.getByRole("img", { name: "Usage screenshot 1" }),
     ).toBeTruthy();
@@ -137,6 +141,12 @@ describe("PluginMarketplaceListing", () => {
     );
     expect(screen.getByText("More from this author")).toBeTruthy();
     expect(screen.getByText("Headroom")).toBeTruthy();
+    const recommendationGrid = document.querySelector(
+      "[data-plugin-more-from-author-grid]",
+    );
+    expect(recommendationGrid?.className).toContain(
+      "grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))]",
+    );
     const sectionOrder = [...document.querySelectorAll("h2, h3")]
       .map((heading) => heading.textContent?.trim())
       .filter(
@@ -155,14 +165,14 @@ describe("PluginMarketplaceListing", () => {
     ]);
     expect(screen.getByText("Last updated")).toBeTruthy();
     expect(screen.getByText("Source")).toBeTruthy();
-    expect(screen.getByText("Marketplace")).toBeTruthy();
-    expect(screen.getByText("BB Community")).toBeTruthy();
-    expect(screen.queryByText("Category")).toBeNull();
+    expect(screen.queryByText("Marketplace")).toBeNull();
+    expect(screen.queryByText("BB Community")).toBeNull();
+    expect(screen.getByText("Category")).toBeTruthy();
     expect(
       screen
         .getAllByText("Token Usage & Limits")
         .some(
-          (label) => label.closest("[data-resource-detail-section]") === null,
+          (label) => label.closest("[data-resource-detail-section]") !== null,
         ),
     ).toBe(true);
     const sourceLink = screen.getByRole("link", {

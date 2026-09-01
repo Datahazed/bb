@@ -106,8 +106,8 @@ export function PluginsOverview({
   const [searchParams] = useSearchParams();
   const activeMode = modeFromSearchParams(searchParams.get("view"));
   const listQuery = usePluginList({ enabled: true });
-  const installedCatalogQuery = usePluginCatalogSearch("", {
-    enabled: activeMode === "installed",
+  const catalogQuery = usePluginCatalogSearch("", {
+    enabled: activeMode === "installed" || activeMode === "my",
   });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
@@ -153,9 +153,8 @@ export function PluginsOverview({
     );
   }, [plugins]);
   const installedCatalogEntries = useMemo(
-    () =>
-      (installedCatalogQuery.data ?? []).filter((entry) => entry.compatible),
-    [installedCatalogQuery.data],
+    () => (catalogQuery.data ?? []).filter((entry) => entry.compatible),
+    [catalogQuery.data],
   );
   const installedCatalogEntriesByPluginId = useMemo(
     () =>
@@ -164,6 +163,11 @@ export function PluginsOverview({
   );
   const installedCatalogHasInstallCounts = installedCatalogEntries.some(
     (entry) => entry.installs !== null,
+  );
+  const catalogEntriesByEntryId = useMemo(
+    () =>
+      new Map((catalogQuery.data ?? []).map((entry) => [entry.entryId, entry])),
+    [catalogQuery.data],
   );
   const activeCategoryFilters = useMemo(
     () =>
@@ -443,6 +447,7 @@ export function PluginsOverview({
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
           <MyPluginsTab
+            catalogEntriesByEntryId={catalogEntriesByEntryId}
             plugins={plugins}
             onOpenPlugin={(pluginId) => openPlugin(pluginId, "my")}
             onCreatePlugin={startCreatePlugin}

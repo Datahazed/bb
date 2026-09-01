@@ -24,11 +24,11 @@ export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
 
-const PLUGIN_CATEGORY_PILL_FILL_PERCENT = 16;
+const PLUGIN_CATEGORY_PILL_FILL_PERCENT = 10;
 const PLUGIN_CATEGORY_PILL_TINT_STEP_PERCENT = 8;
 const PLUGIN_CATEGORY_PILL_BORDER_PERCENT =
   PLUGIN_CATEGORY_PILL_FILL_PERCENT + PLUGIN_CATEGORY_PILL_TINT_STEP_PERCENT;
-const PLUGIN_CATEGORY_PILL_INK_PERCENT = 52;
+const PLUGIN_CATEGORY_PILL_INK_PERCENT = 50;
 const PLUGIN_CATEGORY_MUTED_ACCENT_PERCENT = 55;
 
 export function pluginCatalogCategoryPillStyle(
@@ -159,7 +159,7 @@ export function PluginCategoryLabel({
   return (
     <span
       data-plugin-category-label
-      className="inline-flex max-w-full min-w-0 shrink-0 items-center rounded border px-2 py-1 text-2xs leading-none"
+      className="inline-flex max-w-full min-w-0 shrink-0 items-center rounded border px-2 py-1 text-2xs leading-tight"
       style={pluginCatalogCategoryPillStyle(categoryId)}
     >
       <span className="truncate">{label}</span>

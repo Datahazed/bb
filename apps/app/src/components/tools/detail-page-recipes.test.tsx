@@ -215,7 +215,7 @@ describe("Plugin detail recipe", () => {
 
     const title = screen.getByRole("heading", { name: "GitHub" });
     expect(title.classList.contains("focus-visible:outline-none")).toBe(true);
-    expect(title.parentElement?.textContent).toContain("Code & Reviews");
+    expect(title.parentElement?.textContent).not.toContain("Code & Reviews");
     expect(title.parentElement?.nextElementSibling?.textContent).not.toContain(
       "Code & Reviews",
     );
@@ -232,22 +232,27 @@ describe("Plugin detail recipe", () => {
     expect(
       screen.queryByRole("button", { name: /Copy plugin path/u }),
     ).toBeNull();
+    const detailsSection = screen
+      .getByRole("heading", { name: "Details" })
+      .closest('[data-resource-detail-section="definition"]');
     expect(screen.getByText("Code & Reviews")).toBeTruthy();
     expect(
       screen
         .getByText("Code & Reviews")
         .closest("[data-resource-detail-section]"),
-    ).toBeNull();
-    expect(screen.queryByText("Category")).toBeNull();
-    expect(screen.getByText("BB Community")).toBeTruthy();
-    const detailsSection = screen
-      .getByRole("heading", { name: "Details" })
-      .closest('[data-resource-detail-section="definition"]');
+    ).toBe(detailsSection);
+    expect(screen.getByText("Category")).toBeTruthy();
+    expect(screen.queryByText("BB Community")).toBeNull();
     expect(
       [...(detailsSection?.querySelectorAll("dt") ?? [])].map(
         (item) => item.textContent,
       ),
-    ).toEqual(["Last updated", "Version", "Delivery", "Marketplace"]);
+    ).toEqual([
+      "Last updated",
+      "Version",
+      "Delivery",
+      "Category",
+    ]);
     const sourceLink = screen.getByRole("link", {
       name: /github.com\/get-bb\/bb/u,
     });

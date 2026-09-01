@@ -245,7 +245,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
 
     expect(screen.getByRole("heading", { name: "GitHub" })).toBeTruthy();
-    expect(screen.getByText("BB Official")).toBeTruthy();
+    expect(screen.queryByText("BB Official")).toBeNull();
     expect(screen.getByText("Developer tools")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),

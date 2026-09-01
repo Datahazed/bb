@@ -1,11 +1,19 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { SkillProvider } from "@bb/server-contract";
+import type {
+  PluginListingLifecycle,
+  SkillProvider,
+} from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
+  ResourceBrowseCard,
+  ResourceBrowseGrid,
   ResourceCreateButton,
+  ResourceDetailOverviewSection,
+  ResourceDetailPage,
+  ResourceDetailStack,
   ResourceInstallControl,
   ResourceListState,
   ResourceOverflowMenu,
@@ -35,6 +43,18 @@ import {
   PluginDetailBanners,
   PluginProvenancePill,
 } from "@/components/tools/PluginDetail";
+import {
+  PluginMarketplaceCategoryPill,
+  PluginMarketplaceDetails,
+  PluginMarketplaceHeaderMetadata,
+} from "@/components/plugin/management/PluginMarketplaceListing";
+import {
+  CatalogEntryIcon,
+  CatalogEntryIconChip,
+  PluginCategoryLabel,
+} from "@/components/plugin/management/plugin-ui";
+import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
+import { PluginListingStatusPill } from "@/components/plugin/management/PluginListingStatusPill";
 import {
   ProviderLogo,
   SkillProvenanceTooltip,
@@ -843,6 +863,222 @@ export function PluginDetailStates() {
         </State>
       </Story>
     </PluginStoryQueryBoundary>
+  );
+}
+
+const CATEGORY_PLACEMENT_ENTRY = {
+  ...UNINSTALLED_CATALOG_PLUGIN,
+  entryId: "copy-session-id",
+  pluginId: "copy-session-id",
+  displayName: "Copy Session ID",
+  description: "Copy a thread's session ID from its left-sidebar context menu.",
+  icon: "Copy",
+  categoryId: "thread-management",
+  category: "Thread Management",
+  repositoryUrl:
+    "https://github.com/patleeman/bb-plugins/tree/main/plugins/copy-session-id",
+  publisherKey: "patleeman",
+  publisherLabel: "BB Community",
+  official: false,
+  author: {
+    name: "Patrick Lee",
+    github: "patleeman",
+    url: "https://github.com/patleeman",
+  },
+  installs: 13,
+} satisfies PluginCatalogSearchEntry;
+
+function CategoryPlacementDetail({
+  placement,
+}: {
+  placement: "title" | "details";
+}) {
+  const author = (
+    <PluginMarketplaceHeaderMetadata entry={CATEGORY_PLACEMENT_ENTRY} />
+  );
+  const category = (
+    <PluginMarketplaceCategoryPill entry={CATEGORY_PLACEMENT_ENTRY} />
+  );
+  return (
+    <ResourceDetailPage
+      maxWidthClassName="max-w-5xl"
+      leading={
+        <CatalogEntryIcon
+          entry={CATEGORY_PLACEMENT_ENTRY}
+          className="size-full"
+        />
+      }
+      title={CATEGORY_PLACEMENT_ENTRY.displayName}
+      titleMeta={placement === "title" ? category : undefined}
+      metadata={author}
+      actions={
+        <ResourceInstallControl
+          accessibleLabel="Install Copy Session ID"
+          count={{ display: "13", accessibleLabel: "13 installs" }}
+          onAction={noop}
+        />
+      }
+    >
+      <ResourceDetailStack>
+        <ResourceDetailOverviewSection label="About">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {CATEGORY_PLACEMENT_ENTRY.description}
+          </p>
+        </ResourceDetailOverviewSection>
+        {placement === "details" ? (
+          <PluginMarketplaceDetails entry={CATEGORY_PLACEMENT_ENTRY} />
+        ) : null}
+      </ResourceDetailStack>
+    </ResourceDetailPage>
+  );
+}
+
+export function PluginCategoryPlacementComparison() {
+  return (
+    <Story
+      title="Plugin category placement"
+      description="Browse owns the colored category signal. The detail page keeps category available as supporting metadata."
+      renderedLabel="Detail page"
+      renderedNote="Previous and implemented production placement"
+    >
+      <State
+        name="Previous"
+        note="Category sits beside the plugin title and reads as part of its primary identity."
+      >
+        <CategoryPlacementDetail placement="title" />
+      </State>
+      <State
+        name="Implemented"
+        note="Category leaves the header and becomes a plain Details fact: available for deep links without competing with plugin identity."
+      >
+        <CategoryPlacementDetail placement="details" />
+      </State>
+    </Story>
+  );
+}
+
+const AUTHORED_IN_REVIEW_LIFECYCLE = {
+  status: "in-review",
+  entry: {
+    id: "thread-tags",
+    displayName: "Thread Tags",
+    description: "Organize active threads with lightweight custom tags.",
+    icon: "Tags",
+    category: "thread-management",
+    screenshots: [],
+    author: { name: "You", github: "you" },
+    source: { npm: { package: "@you/thread-tags" } },
+  },
+  pullRequest: {
+    url: "https://github.com/get-bb/marketplace/pull/2814",
+    openedAt: new Date(2026, 7, 30).getTime(),
+  },
+} satisfies PluginListingLifecycle;
+
+const AUTHORED_CARD_ENTRIES = {
+  published: {
+    ...CATEGORY_PLACEMENT_ENTRY,
+    entryId: "copy-session-id",
+    pluginId: "copy-session-id",
+    displayName: "Copy Session ID",
+  },
+  inReview: {
+    ...CATEGORY_PLACEMENT_ENTRY,
+    entryId: "thread-tags",
+    pluginId: "thread-tags",
+    displayName: "Thread Tags",
+    description: "Organize active threads with lightweight custom tags.",
+    icon: "Tags",
+  },
+  notPublished: {
+    ...CATEGORY_PLACEMENT_ENTRY,
+    entryId: "release-notes",
+    pluginId: "release-notes",
+    displayName: "Release Notes",
+    description: "Draft release notes from the commits in the current branch.",
+    icon: "FileText",
+  },
+} satisfies Record<string, PluginCatalogSearchEntry>;
+
+export function MyPluginsCardVariants() {
+  const published = AUTHORED_CARD_ENTRIES.published;
+  const inReview = AUTHORED_CARD_ENTRIES.inReview;
+  const notPublished = AUTHORED_CARD_ENTRIES.notPublished;
+  const cardClassName =
+    "min-h-28 gap-2 border-border bg-background p-3 shadow-none";
+  return (
+    <Story
+      title="My Plugins card variants"
+      description="Authored plugins use the Browse card as one shared model. Lifecycle changes only the card's secondary signals."
+      renderedLabel="My Plugins collection"
+      renderedNote="Production Browse cards with story-only lifecycle composition"
+    >
+      <State
+        name="Recommended"
+        note="Published keeps marketplace category and install count. In review and Not published replace the category in the same footer slot and omit unavailable marketplace counts."
+      >
+        <section className="space-y-2" aria-labelledby="authored-plugin-cards">
+          <h1
+            id="authored-plugin-cards"
+            className="flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground"
+          >
+            <span>My plugins</span>
+            <span className="rounded-md bg-muted px-2 py-1 text-2xs font-medium tabular-nums text-subtle-foreground">
+              3 plugins
+            </span>
+          </h1>
+          <ResourceBrowseGrid className="grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-2">
+            <ResourceBrowseCard
+              className={cardClassName}
+              leading={<CatalogEntryIconChip entry={published} />}
+              title={published.displayName}
+              description={published.description}
+              headerAction={
+                <PluginCatalogInstallControl
+                  displayName={published.displayName}
+                  installed
+                  count={{ display: "13", accessibleLabel: "13 installs" }}
+                />
+              }
+              footerMeta={
+                <PluginCategoryLabel
+                  categoryId={published.categoryId}
+                  label={published.category ?? "Thread Management"}
+                />
+              }
+              openLabel={`Open ${published.displayName} details`}
+              onOpen={noop}
+            />
+            <ResourceBrowseCard
+              className={cardClassName}
+              leading={<CatalogEntryIconChip entry={inReview} />}
+              title={inReview.displayName}
+              description={inReview.description}
+              footerMeta={
+                <PluginListingStatusPill
+                  lifecycle={AUTHORED_IN_REVIEW_LIFECYCLE}
+                />
+              }
+              openLabel={`Open ${inReview.displayName} details`}
+              onOpen={noop}
+            />
+            <ResourceBrowseCard
+              className={cardClassName}
+              leading={<CatalogEntryIconChip entry={notPublished} />}
+              title={notPublished.displayName}
+              description={notPublished.description}
+              footerMeta={
+                <PluginListingStatusPill
+                  lifecycle={{ status: "not-published" }}
+                />
+              }
+              openLabel={`Open ${notPublished.displayName} details`}
+              onOpen={noop}
+            />
+          </ResourceBrowseGrid>
+        </section>
+      </State>
+    </Story>
   );
 }
 

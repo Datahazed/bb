@@ -1,4 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { MapsIcon, MapsLocation02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -18,6 +20,7 @@ import { getPluginPanelRoutePath } from "@/lib/route-paths";
 const PLUGIN_GUIDE_ID = "plugin-api-docs";
 const PLUGIN_GUIDE_PANEL_PATH = "plugin-api";
 const PLUGIN_GUIDE_LOAD_TIMEOUT_MS = 10_000;
+const MAP_LOCATION_PIN_ICON = MapsLocation02Icon.slice(-2);
 
 function isPluginGuidePanelRegistered(): boolean {
   return getPluginSlotSnapshot().navPanels.some(
@@ -96,16 +99,33 @@ export function OpenPluginGuideButton({
       type="button"
       variant="outline"
       size="sm"
+      className="group"
       disabled={pluginListLoading || openGuide.isPending}
       aria-busy={openGuide.isPending}
+      aria-label={
+        openGuide.isPending
+          ? "Opening Plugin Guide"
+          : "Open Plugin Guide in main app"
+      }
       onClick={() => openGuide.mutate()}
     >
+      {openGuide.isPending ? (
+        <Icon name="Spinner" className="animate-spin" aria-hidden />
+      ) : (
+        <span className="relative size-4 shrink-0" aria-hidden>
+          <HugeiconsIcon icon={MapsIcon} className="absolute inset-0" />
+          <HugeiconsIcon
+            icon={MAP_LOCATION_PIN_ICON}
+            className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [&>path:first-child]:fill-background"
+          />
+        </span>
+      )}
+      {openGuide.isPending ? "Opening…" : "Plugin Guide"}
       <Icon
-        name={openGuide.isPending ? "Spinner" : "Puzzle"}
-        className={openGuide.isPending ? "animate-spin" : undefined}
+        name="ExternalLink"
+        className="size-3.5 text-muted-foreground"
         aria-hidden
       />
-      {openGuide.isPending ? "Opening…" : "Plugin Guide"}
     </Button>
   );
 }

@@ -88,7 +88,7 @@ export function PluginDetailMetadataItem({
   return (
     <div className={cn("min-w-0 space-y-1", className)}>
       <dt className="text-2xs font-medium text-subtle-foreground">{label}</dt>
-      <dd className="min-w-0 text-xs text-muted-foreground">{children}</dd>
+      <dd className="min-w-0 text-xs text-foreground">{children}</dd>
     </div>
   );
 }
@@ -134,9 +134,11 @@ export function PluginMarketplaceDetails({
           </PluginDetailMetadataItem>
         )}
         {children}
-        <PluginDetailMetadataItem label="Marketplace">
-          {entry.publisherLabel}
-        </PluginDetailMetadataItem>
+        {entry.category === undefined ? null : (
+          <PluginDetailMetadataItem label="Category">
+            {entry.category}
+          </PluginDetailMetadataItem>
+        )}
       </dl>
     </ResourceDefinitionSection>
   );
@@ -372,7 +374,10 @@ export function PluginMoreFromAuthorSection({
         </ResourceShelfAction>
       }
     >
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div
+        data-plugin-more-from-author-grid
+        className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-2"
+      >
         {moreEntries.slice(0, 3).map((candidate) => (
           <ResourceBrowseCard
             key={`${candidate.marketplace}/${candidate.entryId}`}

@@ -39,7 +39,6 @@ import {
 } from "@/components/plugin/management/plugin-ui";
 import {
   PluginDetailMetadataItem,
-  PluginMarketplaceCategoryPill,
   PluginMarketplaceListingSections,
   PluginMarketplaceHeaderMetadata,
   PluginMoreFromAuthorSection,
@@ -192,7 +191,6 @@ export function CatalogPluginDetail({
       leading={<CatalogEntryIcon entry={entry} className="size-full" />}
       title={entry.displayName}
       titleClassName="focus-visible:outline-none"
-      titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
       metadata={<PluginMarketplaceHeaderMetadata entry={entry} />}
       actions={
         <ResourceInstallControl
@@ -455,23 +453,19 @@ export function PluginDetail({
       title={pluginName}
       titleClassName="focus-visible:outline-none"
       titleMeta={
-        catalogEntry !== null || listingLifecycle !== null ? (
+        listingLifecycle !== null ? (
           <span className="inline-flex items-center gap-1.5">
             {catalogEntry === null ? (
               <PluginProvenancePill plugin={plugin} />
-            ) : (
-              <PluginMarketplaceCategoryPill entry={catalogEntry} />
-            )}
-            {listingLifecycle === null ? null : (
-              <PluginListingStatusPill
-                lifecycle={listingLifecycle}
-                includePublished
-              />
-            )}
+            ) : null}
+            <PluginListingStatusPill
+              lifecycle={listingLifecycle}
+              includePublished
+            />
           </span>
-        ) : (
+        ) : catalogEntry === null ? (
           <PluginProvenancePill plugin={plugin} />
-        )
+        ) : undefined
       }
       metadata={
         catalogEntry === null ? null : (

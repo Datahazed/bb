@@ -88,8 +88,8 @@ export const PLUGIN_CATALOG_CATEGORIES = [
   },
   {
     id: "system-management",
-    displayName: "Utilities",
-    description: "Inspect or control the computers bb runs on.",
+    displayName: "Machines & Hosts",
+    description: "Monitor and control the machines bb runs on.",
     accentToken: PLUGIN_CATALOG_CATEGORY_FAMILY_ACCENT_TOKENS.environment,
   },
   {

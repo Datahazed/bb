@@ -702,7 +702,7 @@ describe("plugin catalog service", () => {
           entryId: "ports",
           displayName: "Live Ports",
           categoryId: "system-management",
-          category: "Utilities",
+          category: "Machines & Hosts",
         },
       ]);
       expect(await catalog.search("registry")).toHaveLength(1);

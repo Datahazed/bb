@@ -43,11 +43,7 @@ export function PluginCatalogInstallControl(
   );
 
   if (installed) {
-    const tooltip = included
-      ? "Included with bb"
-      : count === undefined
-        ? "Installed"
-        : `Installed — ${count.accessibleLabel}`;
+    const tooltip = included ? "Included with bb" : "Installed";
     return (
       <TooltipProvider delayDuration={250}>
         <Tooltip>

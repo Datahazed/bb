@@ -550,7 +550,7 @@ describe("BrowsePluginsTab", () => {
     ).toBeNull();
   });
 
-  it("shows broad shelf counts, multi-row previews, and View all owns a URL", async () => {
+  it("keeps overview shelves count-free and gives View all a shelf-styled counted header", async () => {
     const entries = Array.from(
       { length: CATALOG_STATUS.pluginCount },
       (_, index) => ({
@@ -632,7 +632,7 @@ describe("BrowsePluginsTab", () => {
     expect(
       memoryShelf.querySelector("[data-plugin-category-label]"),
     ).toBeNull();
-    expect(memoryShelf.textContent).toContain("8 plugins");
+    expect(memoryShelf.textContent).not.toContain("8 plugins");
     const shelfCard = within(memoryShelf)
       .getAllByRole("button", { name: /^Open Official .* details$/u })[0]
       ?.closest("div");
@@ -727,14 +727,14 @@ describe("BrowsePluginsTab", () => {
       "?category=memory-and-context&shelf=memory-and-context",
     );
     const pluginCount = screen.getByText("8 plugins");
-    expect(pluginCount.style.background).toBe(
-      "color-mix(in oklab, var(--plugin-category-family-agent-work) 16%, var(--canvas))",
-    );
-    expect(pluginCount.style.color).toBe(
-      "color-mix(in oklab, var(--plugin-category-family-agent-work) 52%, var(--ink))",
-    );
     expect(pluginCount.textContent).not.toContain("·");
     const listHeader = pluginCount.closest("[data-plugin-list-header]");
+    expect(
+      listHeader?.querySelector(
+        '[data-plugin-category-accent="memory-and-context"]',
+      ),
+    ).not.toBeNull();
+    expect(listHeader?.querySelector("[data-plugin-category-label]")).toBeNull();
     expect(listHeader?.classList.contains("space-y-3")).toBe(false);
     expect(pluginCount.parentElement?.classList.contains("gap-2")).toBe(true);
     expect(listHeader?.querySelector("p")?.classList.contains("mt-1")).toBe(
@@ -955,7 +955,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.keyDown(categorySearch, { key: "ArrowDown" });
     expect(document.activeElement?.textContent).toContain("Memory & Context");
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
-    expect(document.activeElement?.textContent).toContain("Utilities");
+    expect(document.activeElement?.textContent).toContain("Machines & Hosts");
 
     categorySearch.focus();
     fireEvent.change(categorySearch, {
@@ -1099,6 +1099,7 @@ describe("BrowsePluginsTab", () => {
       name: "Memory & Context",
     });
     expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(1);
+    expect(memoryHeading.closest("section")?.textContent).toContain("1 plugin");
     expect(document.querySelector("[data-plugin-list-header]")).toBeNull();
     expect(
       screen
@@ -1494,9 +1495,7 @@ describe("BrowsePluginsTab", () => {
       await screen.findAllByLabelText("Memory installed — 1,204 installs")
     )[0]!;
     fireEvent.pointerMove(installed);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Installed — 1,204 installs",
-    );
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Installed");
     expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
     expect(installed.textContent).toBe("1.2K");
     const installedClasses = new Set(installed.className.split(/\s+/));

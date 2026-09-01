@@ -1,11 +1,9 @@
 import { useState } from "react";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
 import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
 import { nextComposerRequestNonce } from "@/components/plugin/browse-hero/browse-hero-archetypes";
 
-type PluginCreationOnboardingMode = "prominent" | "supporting" | "compact";
+type PluginCreationOnboardingMode = "prominent" | "supporting";
 
 export function PluginCreationOnboarding({
   mode,
@@ -14,7 +12,6 @@ export function PluginCreationOnboarding({
   mode: PluginCreationOnboardingMode;
   onCreate: (prompt: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [composerRequest, setComposerRequest] = useState<{
     nonce: number;
     seed?: string;
@@ -34,7 +31,6 @@ export function PluginCreationOnboarding({
     );
   }
 
-  const compact = mode === "compact" && !expanded;
   return (
     <section
       className="space-y-3 border-t border-border-seam/60 pt-6"
@@ -47,26 +43,9 @@ export function PluginCreationOnboarding({
         >
           Create another plugin
         </h2>
-        {mode === "compact" ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            onClick={() => setExpanded((current) => !current)}
-          >
-            {expanded ? "Show fewer" : "View all examples"}
-            <Icon
-              name={expanded ? "ChevronDown" : "ChevronRight"}
-              className="size-3.5"
-              aria-hidden
-            />
-          </Button>
-        ) : null}
       </div>
       <BrowseArchetypeCards
         onCreate={onCreate}
-        compact={compact}
         className="rounded-lg bg-surface-recessed/35 p-3"
       />
     </section>
