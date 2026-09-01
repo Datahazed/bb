@@ -13,6 +13,7 @@ import {
   providerInfoSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
+import { jsonValueSchema } from "@bb/domain";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
@@ -251,4 +252,30 @@ export type SystemInstallCliSkillsResponse = z.infer<
 >;
 export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
+>;
+
+/**
+ * One registered environment target, as the picker and CLI list them:
+ * `{pluginId}/{targetId}` is the selectable identity, `defaultConfiguration`
+ * is what a selection submits until the target's configuration control
+ * changes it, and `hostScoped` targets are offered once per enrolled
+ * machine with `configuration.hostId` pre-filled.
+ */
+export const systemEnvironmentTargetSchema = z.object({
+  pluginId: z.string().min(1),
+  targetId: z.string().min(1),
+  title: z.string().min(1),
+  icon: z.string().min(1).nullable(),
+  hostScoped: z.boolean(),
+  defaultConfiguration: jsonValueSchema,
+});
+export type SystemEnvironmentTarget = z.infer<
+  typeof systemEnvironmentTargetSchema
+>;
+
+export const systemEnvironmentTargetsResponseSchema = z.object({
+  targets: z.array(systemEnvironmentTargetSchema),
+});
+export type SystemEnvironmentTargetsResponse = z.infer<
+  typeof systemEnvironmentTargetsResponseSchema
 >;

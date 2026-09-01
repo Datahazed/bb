@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createThreadProvisioningId } from "@bb/db";
 import {
+  jsonValueSchema,
   promptInputSchema,
   resolvedThreadExecutionOptionsSchema,
   clientTurnRequestIdSchema,
@@ -47,6 +48,13 @@ const reuseIntentSchema = z.object({
   environmentId: z.string().min(1),
 });
 
+const pluginTargetIntentSchema = z.object({
+  type: z.literal("plugin-target"),
+  pluginId: z.string().min(1),
+  targetId: z.string().min(1),
+  configuration: jsonValueSchema,
+});
+
 /**
  * Exported so a queued thread-start can persist the intent it resolved at
  * create time and rebuild this context when its wait clears, possibly after a
@@ -60,6 +68,7 @@ export const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion(
     directManagedIntentSchema,
     directPersonalIntentSchema,
     reuseIntentSchema,
+    pluginTargetIntentSchema,
   ],
 );
 

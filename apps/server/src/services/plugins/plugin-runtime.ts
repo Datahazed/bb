@@ -66,6 +66,7 @@ import type {
   PluginSettingDescriptors,
 } from "@get-bb/plugin-sdk";
 import type { PluginHookRegistration } from "./plugin-hook-registry.js";
+import type { PluginEnvironmentTargetRecord } from "./plugin-environment-target-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -621,6 +622,24 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       if (handler !== null) registrations.push({ pluginId: id, handler });
     }
     return registrations;
+  }
+
+  function listPluginEnvironmentTargets(): PluginEnvironmentTargetRecord[] {
+    const records: PluginEnvironmentTargetRecord[] = [];
+    for (const [id, plugin] of loaded) {
+      for (const target of plugin.handle.environmentTargets.values()) {
+        records.push({ pluginId: id, target });
+      }
+    }
+    return records;
+  }
+
+  function getPluginEnvironmentTarget(
+    pluginId: string,
+    targetId: string,
+  ): PluginEnvironmentTargetRecord | undefined {
+    const target = loaded.get(pluginId)?.handle.environmentTargets.get(targetId);
+    return target === undefined ? undefined : { pluginId, target };
   }
 
   function hasThreadEventHandlers(event: PluginThreadEventName): boolean {
@@ -1721,6 +1740,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     invokeWrapped,
     isBuiltinPluginId,
     listPluginHooks,
+    listPluginEnvironmentTargets,
+    getPluginEnvironmentTarget,
     identities,
     isPackagedBuiltinEntry,
     loadAll,

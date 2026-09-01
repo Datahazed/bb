@@ -29,6 +29,7 @@ import {
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
+import { setPluginEnvironmentTargetProvider } from "./services/plugins/plugin-environment-target-registry.js";
 import {
   clearQueueWaitsForUnregisteredPlugin,
   requestQueueDrain,
@@ -598,6 +599,7 @@ export function createApp(
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
+  setPluginEnvironmentTargetProvider(pluginService.environmentTargets);
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();

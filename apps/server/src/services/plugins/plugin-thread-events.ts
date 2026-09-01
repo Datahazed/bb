@@ -37,6 +37,11 @@ export function emitPluginMessageDispatched(entry: ThreadQueuedMessage): void {
   emitter?.emitMessageDispatched(entry);
 }
 
+/** Called after the user removed a queued row before it dispatched. */
+export function emitPluginMessageCancelled(entry: ThreadQueuedMessage): void {
+  emitter?.emitMessageCancelled(entry);
+}
+
 /**
  * Called after an applied `run.failed` lifecycle event, from the same seam
  * that announces the thread's move into `error`.

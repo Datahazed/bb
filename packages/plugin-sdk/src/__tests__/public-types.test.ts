@@ -8,6 +8,7 @@ type ExpectedBbPluginApiKey =
   | "cli"
   | "events"
   | "experimental_aiServices"
+  | "experimental_environments"
   | "experimental_hooks"
   | "hosts"
   | "http"

@@ -111,6 +111,7 @@ import {
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
 import type { PluginHookProvider } from "./plugin-hook-registry.js";
+import type { PluginEnvironmentTargetProvider } from "./plugin-environment-target-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
@@ -162,6 +163,8 @@ export interface PluginService {
   events: PluginThreadEventEmitter;
   /** The hook chain the dispatch pipeline consults; registered in createApp. */
   hooks: PluginHookProvider;
+  /** Registered environment targets; consulted by dispatch and the system route. */
+  environmentTargets: PluginEnvironmentTargetProvider;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -854,6 +857,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     invokeWrapped,
     isBuiltinPluginId,
     listPluginHooks,
+    listPluginEnvironmentTargets,
+    getPluginEnvironmentTarget,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -1370,6 +1375,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       emitMessageQueued: buildQueuedMessageEventEmitter("message.queued"),
       emitMessageDispatched:
         buildQueuedMessageEventEmitter("message.dispatched"),
+      emitMessageCancelled:
+        buildQueuedMessageEventEmitter("message.cancelled"),
       emitTurnFailed(threadId) {
         // Built lazily inside the emitter: with no listener the failure path
         // pays one map lookup and never touches the database.
@@ -1382,6 +1389,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     hooks: {
       listHooks: listPluginHooks,
       invokeHook: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
+    environmentTargets: {
+      listEnvironmentTargets: listPluginEnvironmentTargets,
+      getEnvironmentTarget: getPluginEnvironmentTarget,
+      invokeTarget: async (pluginId, label, run) => {
         const outcome = await invokeWrapped(pluginId, label, run);
         return outcome.ok
           ? { ok: true, value: outcome.value }

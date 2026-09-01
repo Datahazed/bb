@@ -893,6 +893,10 @@ async function resolveEnvironmentCreationPlan(
         workspaceProvisionType: args.intent.workspaceProvisionType,
       });
     }
+    case "plugin-target":
+      throw new Error(
+        "A plugin-target intent must be resolved into a concrete environment before provisioning",
+      );
   }
   const _exhaustive: never = args.intent;
   return _exhaustive;

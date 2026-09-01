@@ -151,6 +151,7 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemEnvironmentTargetsResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -1443,6 +1444,12 @@ export const publicApiRoutes = {
         systemExecutionOptionsQuerySchema,
       ),
       response: jsonResponse<SystemExecutionOptionsResponse>(),
+    }),
+    environmentTargets: defineRoute({
+      path: "/system/environment-targets",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemEnvironmentTargetsResponse>(),
     }),
     providers: defineRoute({
       path: "/system/providers",

@@ -18,6 +18,7 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type {
+  EnvironmentArgs,
   ExecutionInputFieldSource,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
@@ -291,6 +292,16 @@ export interface PluginThreadEventPayloads {
    * that is at capacity instead of jumping the queue.
    */
   "turn.failed": PluginTurnFailedEvent;
+  /**
+   * Fired after a queued row is removed before it ever dispatched — the user
+   * deleted it from the queued card or `bb thread queue`. This is the only
+   * signal for that removal: a plugin holding external resources for a
+   * waiting message (a sandbox mid-provision, a reserved slot) releases them
+   * here. Rows that dispatch fire `message.dispatched` instead, and rows that
+   * vanish because their thread was archived or deleted fire the thread
+   * event, not this one.
+   */
+  "message.cancelled": { entry: ThreadQueuedMessage };
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -298,6 +309,92 @@ export type PluginThreadEventName = keyof PluginThreadEventPayloads;
 export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
   payload: PluginThreadEventPayloads[E],
 ) => void | Promise<void>;
+
+
+// ---------------------------------------------------------------------------
+// Environment targets: plugin-provisioned places a thread can run.
+// ---------------------------------------------------------------------------
+
+/**
+ * What a target's `provision` sees when core asks it about one thread.
+ *
+ * `configuration` is the JSON the selection carried — the target's
+ * `defaultConfiguration` unless the target's picker control changed it.
+ * Freeform at this boundary; parse it and `reject` with a user-presentable
+ * message when it does not validate. `queuedMessage` is the waiting row on a
+ * re-attempt, null on the very first inline attempt.
+ */
+export interface PluginEnvironmentProvisionContext {
+  thread: ThreadResponse;
+  project: Project;
+  configuration: JsonValue;
+  queuedMessage: ThreadQueuedMessage | null;
+}
+
+/**
+ * A target's answer. `ready` hands core an ordinary environment — an enrolled
+ * host plus workspace, or an existing environment to reuse — and the message
+ * continues through the normal dispatch checkpoint against it. `wait` queues
+ * the message with `reason` on its card; `sendAt` (epoch ms) is when core
+ * should ask again unprompted, which is the retry timer for a failed launch.
+ * `reject` refuses the message outright with `message` shown verbatim.
+ */
+export type PluginEnvironmentProvisionDecision =
+  | { action: "ready"; environment: EnvironmentArgs }
+  | { action: "wait"; reason: string; sendAt?: number | null }
+  | { action: "reject"; message: string };
+
+/**
+ * One place a thread can run, offered by this plugin.
+ *
+ * Declaration and behaviour live together: `provision` is asked on the
+ * thread's first dispatch attempt and on every re-attempt (a drain, a server
+ * restart, the user's Send now) until it answers `ready` or `reject`. It runs
+ * inside the same failure isolation and decision box as a `message.dispatch`
+ * hook — answer from remembered state in milliseconds, do the real work in
+ * the background keyed by `thread.id`, and call
+ * `experimental_environments.recheck()` when it advances. Re-asked means
+ * re-asked: `provision` must be idempotent per thread.
+ *
+ * `hostScoped: true` declares that this target runs on an enrolled machine
+ * the user picks: the picker lists it once per machine with
+ * `configuration.hostId` pre-filled, and core counts a cold start against
+ * that machine's pool. A target that makes its own machine omits it.
+ */
+export interface PluginEnvironmentTargetDeclaration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Picker row label, e.g. "Docker container". */
+  title: string;
+  /** BB icon name; unknown names fall back to the generic plugin icon. */
+  icon?: string;
+  hostScoped?: boolean;
+  /**
+   * What a selection submits until the target's configuration control
+   * changes it. Declare `null` for a target with nothing to configure.
+   */
+  defaultConfiguration: JsonValue;
+  provision(
+    context: PluginEnvironmentProvisionContext,
+  ):
+    | PluginEnvironmentProvisionDecision
+    | Promise<PluginEnvironmentProvisionDecision>;
+}
+
+export interface PluginEnvironments {
+  /**
+   * Offer a place threads can run. Registering an id this plugin already
+   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   */
+  registerTarget(declaration: PluginEnvironmentTargetDeclaration): void;
+  /**
+   * Ask core to re-attempt this plugin's waiting rows now instead of at
+   * their `sendAt` — call it whenever a launch advances (progress text
+   * changed, the environment became ready, a failure was recorded).
+   * Resolves on scheduling, exactly like `experimental_hooks.recheck`.
+   */
+  recheck(): Promise<void>;
+}
 
 // ---------------------------------------------------------------------------
 // Hooks: the questions core asks (plans/dispatch-queue-rework.md).
@@ -1571,6 +1668,12 @@ export interface BbPluginApi {
    * reason, or refuse.
    */
   readonly experimental_hooks: PluginHooks;
+  /**
+   * Environment targets: places a thread can run that this plugin
+   * provisions (plans/plugin-environment-targets.md). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  readonly experimental_environments: PluginEnvironments;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

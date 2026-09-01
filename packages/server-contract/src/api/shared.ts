@@ -4,6 +4,7 @@ import {
   changedMessageLenientSchema,
   changedMessageSchema,
   gitBranchNameSchema,
+  jsonValueSchema,
 } from "@bb/domain";
 import type { GitBranchName } from "@bb/domain";
 
@@ -112,10 +113,28 @@ export const projectDefaultEnvironmentSchema = z.object({
   type: z.literal("project-default"),
 });
 
+/**
+ * A plugin-registered environment target: the thread is created `pending`
+ * with no environment, and the named plugin's target `provision` decision
+ * resolves where it runs when the first message dispatches. `configuration`
+ * is the target's own JSON, chosen in the picker (or the target's declared
+ * default) and passed to `provision` verbatim.
+ */
+export const pluginTargetEnvironmentSchema = z.object({
+  type: z.literal("plugin-target"),
+  pluginId: z.string().min(1),
+  targetId: z.string().min(1),
+  configuration: jsonValueSchema,
+});
+export type PluginTargetEnvironmentArgs = z.infer<
+  typeof pluginTargetEnvironmentSchema
+>;
+
 export const createThreadEnvironmentArgsSchema = z.discriminatedUnion("type", [
   reuseEnvironmentSchema,
   hostEnvironmentSchema,
   projectDefaultEnvironmentSchema,
+  pluginTargetEnvironmentSchema,
 ]);
 export type CreateThreadEnvironmentArgs = z.infer<
   typeof createThreadEnvironmentArgsSchema

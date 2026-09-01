@@ -204,6 +204,8 @@ export interface PluginThreadEventEmitter {
    */
   emitMessageQueued(entry: ThreadQueuedMessage): void;
   emitMessageDispatched(entry: ThreadQueuedMessage): void;
+  /** A queued row was removed by the user before it dispatched. */
+  emitMessageCancelled(entry: ThreadQueuedMessage): void;
   /**
    * A turn on this thread failed and the thread has already landed in `error`.
    * Takes the id alone: the payload is read from the failed turn's own records,

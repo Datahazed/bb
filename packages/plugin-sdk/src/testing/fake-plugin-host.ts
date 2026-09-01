@@ -20,6 +20,8 @@ import {
   isStandardSchema,
   isZodSchemaLike,
   storePluginHook,
+  validatePluginEnvironmentTargetDeclaration,
+  type NormalizedPluginEnvironmentTarget,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -61,6 +63,7 @@ import type {
   PluginCliExecutionResult,
   PluginCliResult,
   PluginHookHandler,
+  PluginEnvironments,
   PluginHookName,
   PluginHooks,
   PluginEvents,
@@ -254,6 +257,9 @@ export interface FakePluginRegistrations {
   hooks: {
     [K in PluginHookName]: PluginHookHandler<K> | null;
   };
+  /** Live target registrations from `bb.experimental_environments.registerTarget`,
+   * keyed by target id (normalized: icon null when omitted, hostScoped filled). */
+  environmentTargets: ReadonlyMap<string, NormalizedPluginEnvironmentTarget>;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -1648,12 +1654,14 @@ function createFakePluginHostInternal(
     "message.queued": [],
     "message.dispatched": [],
     "turn.failed": [],
+    "message.cancelled": [],
   };
   const hooks: {
     [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
     "message.dispatch": null,
   };
+  const environmentTargets = new Map<string, NormalizedPluginEnvironmentTarget>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -1926,6 +1934,18 @@ function createFakePluginHostInternal(
     },
   };
 
+  const experimental_environments: PluginEnvironments = {
+    registerTarget(declaration) {
+      assertLive();
+      const target = validatePluginEnvironmentTargetDeclaration(declaration);
+      environmentTargets.set(target.id, target);
+    },
+    async recheck() {
+      assertLive();
+      requestedDrains += 1;
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1941,6 +1961,7 @@ function createFakePluginHostInternal(
     ui,
     events,
     experimental_hooks,
+    experimental_environments,
     status,
     server,
     hosts,
@@ -2038,10 +2059,15 @@ function createFakePluginHostInternal(
           "message.dispatched":
             threadEventHandlers["message.dispatched"].length,
           "turn.failed": threadEventHandlers["turn.failed"].length,
+          "message.cancelled":
+            threadEventHandlers["message.cancelled"].length,
         };
       },
       get hooks() {
         return { ...hooks };
+      },
+      get environmentTargets() {
+        return new Map(environmentTargets);
       },
       mentionProviders,
       providerRegistrations,

@@ -162,6 +162,7 @@ const BB_PLUGIN_API_KEYS = [
   "hosts",
   "experimental_aiServices",
   "experimental_hooks",
+  "experimental_environments",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
@@ -213,6 +214,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.deleted": ["thread"],
   "message.queued": ["entry"],
   "message.dispatched": ["entry"],
+  "message.cancelled": ["entry"],
   "turn.failed": [
     "threadId",
     "requestId",

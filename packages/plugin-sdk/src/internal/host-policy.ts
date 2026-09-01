@@ -19,6 +19,7 @@ import type {
   PluginAiServiceKind,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
+  PluginEnvironmentTargetDeclaration,
   PluginHookHandler,
   PluginHookName,
   PluginMentionTrigger,
@@ -2119,4 +2120,57 @@ export function pluginHookAlreadyRegisteredMessage(
   hook: PluginHookName,
 ): string {
   return `a "${hook}" hook handler is already registered by this plugin`;
+}
+
+export const ENVIRONMENT_TARGET_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+export const ENVIRONMENT_TARGET_TITLE_MAX_CHARS = 80;
+
+export interface NormalizedPluginEnvironmentTarget {
+  id: string;
+  title: string;
+  icon: string | null;
+  hostScoped: boolean;
+  defaultConfiguration: JsonValue;
+  provision: PluginEnvironmentTargetDeclaration["provision"];
+}
+
+export function validatePluginEnvironmentTargetDeclaration(
+  declaration: PluginEnvironmentTargetDeclaration,
+): NormalizedPluginEnvironmentTarget {
+  if (typeof declaration !== "object" || declaration === null) {
+    throw new Error("environment target declaration must be an object");
+  }
+  const id = declaration.id;
+  if (typeof id !== "string" || !ENVIRONMENT_TARGET_ID_PATTERN.test(id)) {
+    throw new Error(
+      `invalid environment target id ${JSON.stringify(id)} — use 1-64 letters, digits, "-", or "_"`,
+    );
+  }
+  const title = typeof declaration.title === "string" ? declaration.title.trim() : "";
+  if (title.length === 0 || title.length > ENVIRONMENT_TARGET_TITLE_MAX_CHARS) {
+    throw new Error(
+      `environment target "${id}" needs a title of 1-${ENVIRONMENT_TARGET_TITLE_MAX_CHARS} characters`,
+    );
+  }
+  const icon =
+    declaration.icon === undefined ? null : declaration.icon.trim();
+  if (icon !== null && icon.length === 0) {
+    throw new Error(`environment target "${id}" declares an empty icon`);
+  }
+  if (!("defaultConfiguration" in declaration) || declaration.defaultConfiguration === undefined) {
+    throw new Error(
+      `environment target "${id}" must declare defaultConfiguration — use null for a target with nothing to configure`,
+    );
+  }
+  if (typeof declaration.provision !== "function") {
+    throw new Error(`environment target "${id}" must declare a provision function`);
+  }
+  return {
+    id,
+    title,
+    icon,
+    hostScoped: declaration.hostScoped === true,
+    defaultConfiguration: declaration.defaultConfiguration,
+    provision: declaration.provision,
+  };
 }

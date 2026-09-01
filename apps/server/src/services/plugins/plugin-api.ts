@@ -28,6 +28,7 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliResult,
+  PluginEnvironments,
   PluginHooks,
   PluginHookHandler,
   PluginHookName,
@@ -84,6 +85,7 @@ import {
   aiServiceAlreadyRegisteredMessage,
   pluginHookAlreadyRegisteredMessage,
   storePluginHook,
+  validatePluginEnvironmentTargetDeclaration,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -94,6 +96,7 @@ import {
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   AiServiceHostBinding,
+  NormalizedPluginEnvironmentTarget,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
@@ -231,6 +234,8 @@ export interface PluginApiHandle {
   threadEventHandlers: PluginThreadEventHandlers;
   /** Hook handlers recorded by `bb.experimental_hooks.on`. */
   hooks: PluginHookRecords;
+  /** Targets recorded by `bb.experimental_environments.registerTarget`. */
+  environmentTargets: Map<string, NormalizedPluginEnvironmentTarget>;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   rpcHandlers: Map<string, PluginRpcHandler>;
@@ -493,10 +498,12 @@ export function createPluginApi(options: {
     "message.queued": [],
     "message.dispatched": [],
     "turn.failed": [],
+    "message.cancelled": [],
   };
   const hooks: PluginHookRecords = {
     "message.dispatch": null,
   };
+  const environmentTargets = new Map<string, NormalizedPluginEnvironmentTarget>();
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
   const hostWorkerExitHandlers: PluginHostWorkerExitHandler[] = [];
@@ -1377,6 +1384,18 @@ export function createPluginApi(options: {
     register: providerRegistrations.register,
   };
 
+  const experimental_environments: PluginEnvironments = {
+    registerTarget(declaration) {
+      assertLive();
+      const target = validatePluginEnvironmentTargetDeclaration(declaration);
+      environmentTargets.set(target.id, target);
+    },
+    async recheck() {
+      assertLive();
+      requestQueueDrain();
+    },
+  };
+
   const aiServiceRegistrations = createStagedRegistrations({
     validate: validatePluginAiServiceDeclaration,
     bind: assertAiServiceRegistrable,
@@ -1406,6 +1425,7 @@ export function createPluginApi(options: {
     ui,
     events,
     experimental_hooks,
+    experimental_environments,
     status,
     server,
     hosts,
@@ -1435,6 +1455,7 @@ export function createPluginApi(options: {
     databaseHandles,
     threadEventHandlers,
     hooks,
+    environmentTargets,
     httpRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,

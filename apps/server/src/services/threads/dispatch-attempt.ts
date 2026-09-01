@@ -64,6 +64,8 @@ import {
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { queueInputForStartingTurn } from "./thread-turn-starting.js";
+import { pluginTargetIntentHostId } from "./thread-environment-placement.js";
+import { resolvePluginTargetEnvironment } from "./thread-environment-targets.js";
 import {
   ensureThreadIsWritable,
   resolveMessageSenderThreadId,
@@ -109,6 +111,9 @@ function hostIdForEnvironmentIntent(
 ): string | null {
   if (intent.type === "reuse") {
     return getEnvironment(deps.db, intent.environmentId)?.hostId ?? null;
+  }
+  if (intent.type === "plugin-target") {
+    return pluginTargetIntentHostId(intent.configuration);
   }
   return intent.hostId;
 }
@@ -381,6 +386,46 @@ async function runDispatchAttempt(
     deps.pendingInteractions.hasPendingThreadInteraction(thread.id)
   ) {
     return waitOn({ kind: "interaction" }, null);
+  }
+
+  if (firstDispatch) {
+    // A thread whose start intent names a plugin target has no environment to
+    // dispatch into yet, so the target is asked FIRST — an invariant like the
+    // other core waits, not a policy — and only a `ready` answer lets the
+    // attempt continue into the hook pass, which then sees the real
+    // environment. Send-now cannot skip this: there is nothing to run on.
+    const startContext =
+      args.startContext ?? readPendingThreadStartContext(deps, thread.id);
+    if (startContext?.environmentIntent.type === "plugin-target") {
+      const resolution = await resolvePluginTargetEnvironment(deps, {
+        thread,
+        startContext,
+        queuedMessage:
+          claimed?.[0] === undefined ? null : toThreadQueuedMessage(claimed[0]),
+      });
+      if (resolution.kind === "wait") {
+        if (claimed !== null) {
+          noteDispatchRequeued(thread.id);
+        }
+        return waitOn(
+          {
+            kind: "plugin",
+            pluginId: resolution.pluginId,
+            reason: resolution.reason,
+          },
+          resolution.sendAt,
+        );
+      }
+      return runDispatchAttempt(
+        deps,
+        {
+          ...args,
+          thread: resolution.thread,
+          startContext: resolution.startContext,
+        },
+        reattempted,
+      );
+    }
   }
 
   // --- 2. the single plugin pass ------------------------------------------

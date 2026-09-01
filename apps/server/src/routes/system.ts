@@ -25,6 +25,7 @@ import {
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import { pluginImageResponse } from "./plugin-image-response.js";
+import { pluginEnvironmentTargetProvider } from "../services/plugins/plugin-environment-target-registry.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
@@ -276,6 +277,19 @@ export function registerSystemRoutes(
   post(routes.installCliSkills, async (context, body) =>
     context.json(await installGlobalCliSkills(deps, { hostIds: body.hostIds })),
   );
+
+  get(routes.environmentTargets, (context) => {
+    const provider = pluginEnvironmentTargetProvider();
+    const targets = (provider?.listEnvironmentTargets() ?? []).map((record) => ({
+      pluginId: record.pluginId,
+      targetId: record.target.id,
+      title: record.target.title,
+      icon: record.target.icon,
+      hostScoped: record.target.hostScoped,
+      defaultConfiguration: record.target.defaultConfiguration,
+    }));
+    return context.json({ targets });
+  });
 
   get(routes.providers, async (context, query) =>
     context.json(await listSystemProviderInfos(deps, query)),
