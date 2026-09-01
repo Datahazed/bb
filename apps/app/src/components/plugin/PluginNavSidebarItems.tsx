@@ -123,6 +123,7 @@ export function PluginNavSidebarItems(props: {
   return (
     <PluginNavSidebarItemList
       rows={rows}
+      showDivider={props.showDivider}
       splitEnabled={props.splitEnabled ?? false}
       {...(props.onNavigate ? { onNavigate: props.onNavigate } : {})}
     />
@@ -132,10 +133,12 @@ export function PluginNavSidebarItems(props: {
 function PluginNavSidebarItemList({
   onNavigate,
   rows,
+  showDivider = true,
   splitEnabled = false,
 }: {
   onNavigate?: () => void;
   rows: readonly SidebarNavRow[];
+  showDivider?: boolean;
   splitEnabled?: boolean;
 }) {
   const location = useLocation();
@@ -242,13 +245,13 @@ function PluginNavSidebarItemList({
 
   return (
     <>
-      {props.showDivider === false ? null : (
+      {showDivider ? (
         <div
           aria-hidden="true"
           data-sidebar-navigation-divider="plugins"
           className="mx-2 h-px shrink-0 bg-sidebar-border/40"
         />
-      )}
+      ) : null}
       <div
         className="shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
         data-testid="plugin-nav-sidebar-items"
