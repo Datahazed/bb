@@ -20,6 +20,7 @@ import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 import {
   buildAllRouteTimelinePages,
   buildRouteTimelinePage,
+  buildRouteTimelinePageCooperatively,
   loadCorpusThreadIntoDb,
   normalizeJson,
 } from "./corpus-harness.js";
@@ -106,7 +107,7 @@ describe.skipIf(!available)("timeline page recombination", () => {
 
   it.each(corpusThreads.map((thread) => [thread.id, thread.provider] as const))(
     "%s (%s)",
-    (threadId) => {
+    async (threadId) => {
       if (registry === null) {
         throw new Error("provider registry did not load");
       }
@@ -125,6 +126,20 @@ describe.skipIf(!available)("timeline page recombination", () => {
         // the canonical projection.
         expect(reference.response.timelinePage.hasOlderRows).toBe(false);
         const referenceRows = normalizeJson(reference.response.rows);
+
+        // The cooperative (yielding) build must produce the same rows as the
+        // synchronous one; it only differs in scheduling.
+        const cooperative = await buildRouteTimelinePageCooperatively({
+          db: loaded.db,
+          registry,
+          thread: loaded.thread,
+          variant: "default",
+          page: { kind: "latest", segmentLimit: UNLIMITED_SEGMENT_LIMIT },
+        });
+        expect(
+          JSON.stringify(normalizeJson(cooperative.response.rows)),
+          "cooperative build differs from synchronous build",
+        ).toBe(JSON.stringify(referenceRows));
 
         const failures: string[] = [];
         for (const cell of MATRIX) {

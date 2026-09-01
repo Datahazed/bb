@@ -620,13 +620,16 @@ export const threadConversationOutlines = sqliteTable(
   },
 );
 
-export const threadTimelineProjections = sqliteTable(
-  "thread_timeline_projections",
+export const threadTimelineCheckpoints = sqliteTable(
+  "thread_timeline_checkpoints",
   {
     threadId: text("thread_id")
       .primaryKey()
       .references(() => threads.id, { onDelete: "cascade" }),
-    projectionKey: text("projection_key").notNull(),
+    checkpointKey: text("checkpoint_key").notNull(),
+    sequence: integer("sequence").notNull(),
+    eventId: text("event_id").notNull(),
+    eventCount: integer("event_count").notNull(),
     payloadJson: text("payload_json").notNull(),
   },
 );

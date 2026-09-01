@@ -27,11 +27,11 @@ export {
 export type { ThreadConversationOutlineRecord } from "./thread-conversation-outlines.js";
 
 export {
-  deleteThreadTimelineProjectionRecords,
-  getThreadTimelineProjectionRecord,
-  upsertThreadTimelineProjectionRecord,
-} from "./thread-timeline-projections.js";
-export type { ThreadTimelineProjectionRecord } from "./thread-timeline-projections.js";
+  deleteThreadTimelineCheckpointRecords,
+  getThreadTimelineCheckpointRecord,
+  upsertThreadTimelineCheckpointRecord,
+} from "./thread-timeline-checkpoints.js";
+export type { ThreadTimelineCheckpointRecord } from "./thread-timeline-checkpoints.js";
 
 export {
   createThreadSection,
@@ -261,6 +261,7 @@ export {
   getLatestThreadSystemErrorEventRow,
   getLatestThreadSequence,
   getLatestStoredEventTip,
+  listStoredThreadEventExtents,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
@@ -312,6 +313,7 @@ export type {
   ScopedItemRef,
   StoredEventRow,
   StoredThreadEventTip,
+  StoredThreadEventExtent,
   StoredTimelineWindowForwardPage,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,

@@ -51,10 +51,12 @@ export {
 export type { FileChangeAction } from "./file-change-summary.js";
 export {
   buildThreadTimelineFromEvents,
+  buildThreadTimelineFromEventsCooperatively,
   buildThreadTimelineTurnDetailPageFromEvents,
   buildThreadTimelineTurnDetailsFromEvents,
 } from "./build-thread-timeline.js";
 export type { ThreadTimelineFromEventsResult } from "./build-thread-timeline.js";
+export type { CooperativeProjectionOptions } from "./build-event-projection.js";
 export { extractThreadTimelineActivePlanTurn } from "./active-prompt-mode-extraction.js";
 export { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 export type { AcceptedClientRequestContext } from "./accepted-client-request-context.js";

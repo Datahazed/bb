@@ -21,6 +21,7 @@ import { z } from "zod";
 import { resolveRepoRelativeFile } from "./env-file-path.js";
 import {
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
+  buildThreadTimelineCooperatively,
   buildThreadTimelineWithProfile,
   type ThreadTimelineBuildProfile,
 } from "../../src/services/threads/timeline.js";
@@ -157,21 +158,15 @@ export interface BuildRouteTimelinePageArgs {
   variant: TimelineVariant;
 }
 
-export function buildRouteTimelinePage(
-  args: BuildRouteTimelinePageArgs,
-): BuiltTimelinePage {
+function routeBuildOptions(args: BuildRouteTimelinePageArgs) {
   const includeNestedRows = args.variant === "nested";
-  const maxSeq = getLatestThreadSequence(args.db, {
-    threadId: args.thread.id,
-  });
-  const { profile, response } = buildThreadTimelineWithProfile(
-    args.db,
-    args.thread,
-    {
+  return {
+    includeNestedRows,
+    options: {
       includeProviderUnhandledOperations: true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      maxSeq,
+      maxSeq: getLatestThreadSequence(args.db, { threadId: args.thread.id }),
       page: args.page,
       providerDisplayName: args.registry.get(args.thread.providerId)?.info
         .displayName,
@@ -181,17 +176,44 @@ export function buildRouteTimelinePage(
       ),
       summaryOnly: false,
     },
-  );
+  };
+}
+
+function finishRouteTimelinePage(
+  includeNestedRows: boolean,
+  built: { profile: ThreadTimelineBuildProfile; response: ThreadTimelineResponse },
+): BuiltTimelinePage {
   const truncated = truncateTimelineResponseOutputs(
-    response,
+    built.response,
     DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   );
   return {
-    profile,
+    profile: built.profile,
     response: includeNestedRows
       ? truncated
       : previewTimelineResponseOutputs(truncated),
   };
+}
+
+export function buildRouteTimelinePage(
+  args: BuildRouteTimelinePageArgs,
+): BuiltTimelinePage {
+  const { includeNestedRows, options } = routeBuildOptions(args);
+  return finishRouteTimelinePage(
+    includeNestedRows,
+    buildThreadTimelineWithProfile(args.db, args.thread, options),
+  );
+}
+
+/** The route's cooperative (yielding) build; must equal buildRouteTimelinePage. */
+export async function buildRouteTimelinePageCooperatively(
+  args: BuildRouteTimelinePageArgs,
+): Promise<BuiltTimelinePage> {
+  const { includeNestedRows, options } = routeBuildOptions(args);
+  return finishRouteTimelinePage(
+    includeNestedRows,
+    await buildThreadTimelineCooperatively(args.db, args.thread, options),
+  );
 }
 
 export function latestTimelinePage(): ThreadTimelinePageRequest {

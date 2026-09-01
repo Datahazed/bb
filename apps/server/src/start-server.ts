@@ -23,6 +23,7 @@ import {
   runPeriodicSweeps,
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
+import { warmLargeThreadTimelines } from "./services/threads/timeline-warmup.js";
 import { createProviderRegistryService } from "./services/providers/provider-registry.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
@@ -209,6 +210,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   };
   await runStartupRecoverySweep(sweepDeps).catch((error) => {
     logger.error({ err: error }, "Startup recovery sweep failed");
+  });
+  void warmLargeThreadTimelines(sweepDeps).catch((error) => {
+    logger.error({ err: error }, "Timeline warmup failed");
   });
 
   if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {

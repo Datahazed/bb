@@ -43,7 +43,9 @@ import { getFileChangeDiffStats } from "./file-change-summary.js";
 import { getEventProjectionMessageScopeTurnId } from "./message-scope.js";
 import {
   buildEventProjection,
+  buildEventProjectionCooperatively,
   buildEventProjectionEntries,
+  type CooperativeProjectionOptions,
   type ThreadEventWithMeta,
 } from "./build-event-projection.js";
 import {
@@ -1329,10 +1331,10 @@ function buildTimelineRows(
   );
 }
 
-export function buildThreadTimelineFromEvents(
+function toProjectionOptions(
   args: BuildThreadTimelineFromEventsArgs,
-): ThreadTimelineFromEventsResult {
-  const projectionOptions = {
+): Parameters<typeof buildEventProjection>[1] {
+  return {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
@@ -1341,8 +1343,36 @@ export function buildThreadTimelineFromEvents(
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: args.options.turnMessageDetail,
-  } satisfies Parameters<typeof buildEventProjection>[1];
-  const projection = buildEventProjection(args.events, projectionOptions);
+  };
+}
+
+/**
+ * Projects the thread in slices, awaiting `cooperative.yield` between them,
+ * and assembles the same result as buildThreadTimelineFromEvents.
+ */
+export async function buildThreadTimelineFromEventsCooperatively(
+  args: BuildThreadTimelineFromEventsArgs,
+  cooperative: CooperativeProjectionOptions,
+): Promise<ThreadTimelineFromEventsResult> {
+  const projection = await buildEventProjectionCooperatively(
+    args.events,
+    toProjectionOptions(args),
+    cooperative,
+  );
+  return assembleThreadTimeline(args, projection);
+}
+
+export function buildThreadTimelineFromEvents(
+  args: BuildThreadTimelineFromEventsArgs,
+): ThreadTimelineFromEventsResult {
+  const projection = buildEventProjection(args.events, toProjectionOptions(args));
+  return assembleThreadTimeline(args, projection);
+}
+
+function assembleThreadTimeline(
+  args: BuildThreadTimelineFromEventsArgs,
+  projection: EventProjection,
+): ThreadTimelineFromEventsResult {
 
   const rows = [
     ...buildTimelineRows(projection, {

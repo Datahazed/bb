@@ -1947,6 +1947,32 @@ export function listStoredTurnCompletedRowsByTurnIds(
     .all();
 }
 
+export interface StoredThreadEventExtent {
+  latestSequence: number;
+  threadId: string;
+}
+
+/**
+ * Every thread's newest event sequence, from the (thread_id, sequence) index
+ * alone. The startup timeline warmup uses it to find large threads without
+ * counting rows.
+ */
+export function listStoredThreadEventExtents(
+  db: DbConnection,
+  args: { minLatestSequence: number },
+): StoredThreadEventExtent[] {
+  return db
+    .select({
+      latestSequence: max(events.sequence).mapWith(Number),
+      threadId: events.threadId,
+    })
+    .from(events)
+    .groupBy(events.threadId)
+    .having(sql`max(${events.sequence}) >= ${args.minLatestSequence}`)
+    .orderBy(desc(max(events.sequence)))
+    .all();
+}
+
 export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
   itemIds: readonly string[];
   threadId: string;

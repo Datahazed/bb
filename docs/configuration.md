@@ -674,10 +674,14 @@ by the newest event's id and the thread's event count, so appends, message
 edits, and pruning all invalidate it), and by persisting the projection of
 large settled threads (3,000+ events) so a server restart does not re-pay
 their cold build. Persisted projections are keyed by the app version and
-rebuilt after upgrades. While a large thread is streaming, rebuilds are
-rate-limited in proportion to their measured cost (at most ten seconds of
-staleness), so one expensive thread cannot monopolize the server's event
-loop; small threads always refresh immediately.
+rebuilt after upgrades. Builds never block the event loop for long: a
+thread that is not yet cached is read, decoded, and projected in slices that
+yield between them, and threads with 1,000+ events are projected ahead of
+time — largest first after startup, and again whenever a thread settles — so
+their first open is served from the persisted projection. While a large
+thread is streaming, rebuilds are rate-limited in proportion to their
+measured cost (at most ten seconds of staleness); small threads always
+refresh immediately.
 
 Timeline builds slower than 150ms log `Thread timeline build blocked the event
 loop` with a per-stage breakdown, and event-loop stalls over 500ms log `Event

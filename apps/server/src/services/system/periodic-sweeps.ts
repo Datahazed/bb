@@ -26,7 +26,7 @@ import {
   shouldRunIncrementalVacuum,
   sweepManagedEnvironments,
   threads,
-  deleteThreadTimelineProjectionRecords,
+  deleteThreadTimelineCheckpointRecords,
   truncateCompletedEventItemOutputs,
 } from "@bb/db";
 import type {
@@ -476,7 +476,7 @@ function runCompletedEventOutputTruncationSweep(
   });
   // In-place event rewrites are invisible to tip-keyed projection caching.
   clearTimelineProjectionCacheForThreads(result.threadIds);
-  deleteThreadTimelineProjectionRecords(deps.db, result.threadIds);
+  deleteThreadTimelineCheckpointRecords(deps.db, result.threadIds);
 }
 
 function runClosedSessionPruneSweep(

@@ -9,12 +9,12 @@ import {
   createConnection,
   createProject,
   createThread,
-  getThreadTimelineProjectionRecord,
+  getThreadTimelineCheckpointRecord,
   insertEvents,
   migrate,
   noopNotifier,
   upsertHost,
-  upsertThreadTimelineProjectionRecord,
+  upsertThreadTimelineCheckpointRecord,
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
 import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
@@ -153,9 +153,9 @@ describe("persisted timeline projections", () => {
       ...buildOptions,
       appVersion: "1.2.3",
     });
-    const record = getThreadTimelineProjectionRecord(db, thread.id);
+    const record = getThreadTimelineCheckpointRecord(db, thread.id);
     expect(record).not.toBeNull();
-    expect(record?.projectionKey.startsWith("1.2.3|")).toBe(true);
+    expect(record?.checkpointKey.startsWith('["1.2.3",')).toBe(true);
 
     // Prove the read path: tamper with the persisted payload, clear the
     // in-memory cache (a restart), and observe the tampered rows served.
@@ -168,9 +168,9 @@ describe("persisted timeline projections", () => {
     >;
     marker.id = "persisted-marker-row";
     payload.timeline.rows = [...payload.timeline.rows, marker];
-    upsertThreadTimelineProjectionRecord(db, {
+    upsertThreadTimelineCheckpointRecord(db, {
+      ...record!,
       payloadJson: JSON.stringify(payload),
-      projectionKey: record!.projectionKey,
       threadId: thread.id,
     });
     clearTimelineProjectionCacheForThreads([thread.id]);
@@ -200,6 +200,6 @@ describe("persisted timeline projections", () => {
     seedLargeThread(db, thread);
 
     buildThreadTimeline(db, thread, buildOptions);
-    expect(getThreadTimelineProjectionRecord(db, thread.id)).toBeNull();
+    expect(getThreadTimelineCheckpointRecord(db, thread.id)).toBeNull();
   });
 });

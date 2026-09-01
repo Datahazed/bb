@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bb4d29ba-18f1-4d34-8b74-b1a5dd789a74",
+  "id": "9678ce32-23bc-407a-a2dd-0bfc08d366a1",
   "prevId": "cf218880-7d73-429b-9c1d-8540994d1e1a",
   "tables": {
     "app_settings": {
@@ -3495,8 +3495,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "thread_timeline_projections": {
-      "name": "thread_timeline_projections",
+    "thread_timeline_checkpoints": {
+      "name": "thread_timeline_checkpoints",
       "columns": {
         "thread_id": {
           "name": "thread_id",
@@ -3505,9 +3505,30 @@
           "notNull": true,
           "autoincrement": false
         },
-        "projection_key": {
-          "name": "projection_key",
+        "checkpoint_key": {
+          "name": "checkpoint_key",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_count": {
+          "name": "event_count",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -3522,9 +3543,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "thread_timeline_projections_thread_id_threads_id_fk": {
-          "name": "thread_timeline_projections_thread_id_threads_id_fk",
-          "tableFrom": "thread_timeline_projections",
+        "thread_timeline_checkpoints_thread_id_threads_id_fk": {
+          "name": "thread_timeline_checkpoints_thread_id_threads_id_fk",
+          "tableFrom": "thread_timeline_checkpoints",
           "tableTo": "threads",
           "columnsFrom": [
             "thread_id"

@@ -87,6 +87,29 @@ not built: the projection is non-causal (request→acceptance lookahead), so
 true incrementality is the durable-reducer follow-up, and the throttle bounds
 the event loop until then.
 
+## Cold-build revision (after the "unacceptable" review)
+
+Measured on the 64k-event thread: SQL read 3.4 s of 83 MB when the OS cache
+is cold (0.3 s at a 2k output cap, but previews need the true tail and total
+length, so a lower cap is not byte-identical), decode 0.3 s, projection
+0.6 s of which the phase‑1 fold is 85–95%; grouping/normalize/rows ≤60 ms.
+A deep read of the projection showed it is pervasively non-local (later
+events rewrite earlier messages by callId, thread-scoped lifecycle merges,
+delegations absorb later turns via a never-cleared provider-thread link,
+compaction flips at 1,000 deltas), so freezing a prefix is unsound without
+~20 conditions real subagent threads never satisfy; true incrementality is
+the reducer rewrite, still the follow-up.
+
+What ships instead: the fold body is a per-event function with a
+cooperative driver (`buildThreadTimelineFromEventsCooperatively`), verified
+byte-identical to the synchronous build on real threads and by the corpus
+gate; the route builds cooperatively (chunked read/decode, yields every 500
+events, in-flight dedupe, tip re-verification against suffix replacement),
+so no build blocks the loop beyond one slice; threads ≥1,000 events are
+projected at startup (largest first) and re-projected when they settle, so
+their first open is served from the persisted projection. The projection
+table became `thread_timeline_checkpoints` with the tip identity as columns.
+
 ## Design principle
 
 **Never cut the event stream. Project the semantic unit in full, then

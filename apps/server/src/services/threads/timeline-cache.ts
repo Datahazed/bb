@@ -15,6 +15,14 @@ interface ThreadTimelineCache {
     key: string,
     build: () => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
+  /**
+   * Like getOrBuild for asynchronous builds. Concurrent callers for the same
+   * key share one in-flight build instead of each starting their own.
+   */
+  getOrBuildAsync(
+    key: string,
+    build: () => Promise<ThreadTimelineResponse>,
+  ): Promise<ThreadTimelineResponse>;
   readonly size: number;
 }
 
@@ -25,8 +33,45 @@ export function createThreadTimelineCache(
   const maxCacheableRows =
     options.maxCacheableRows ?? DEFAULT_MAX_CACHEABLE_ROWS;
   const entries = new Map<string, ThreadTimelineResponse>();
+  const inFlight = new Map<string, Promise<ThreadTimelineResponse>>();
+
+  function remember(key: string, value: ThreadTimelineResponse): void {
+    if (value.rows.length > maxCacheableRows) {
+      return;
+    }
+    entries.set(key, value);
+    while (entries.size > maxEntries) {
+      const oldest = entries.keys().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      entries.delete(oldest);
+    }
+  }
 
   return {
+    async getOrBuildAsync(key, build) {
+      const cached = entries.get(key);
+      if (cached !== undefined) {
+        entries.delete(key);
+        entries.set(key, cached);
+        return cached;
+      }
+      const pending = inFlight.get(key);
+      if (pending !== undefined) {
+        return pending;
+      }
+      const promise = build()
+        .then((value) => {
+          remember(key, value);
+          return value;
+        })
+        .finally(() => {
+          inFlight.delete(key);
+        });
+      inFlight.set(key, promise);
+      return promise;
+    },
     getOrBuild(key, build) {
       const cached = entries.get(key);
       if (cached !== undefined) {

@@ -45,7 +45,7 @@ import { requireThreadStoragePath } from "../../services/threads/thread-storage.
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   buildThreadConversationOutlineProjectionKey,
-  buildThreadTimelineWithProfile,
+  buildThreadTimelineCooperatively,
   buildTimelineTurnDetailsPage,
   buildTimelineTurnSummaryDetails,
   loadThreadConversationOutline,
@@ -311,7 +311,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   >();
   const CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES = 128;
 
-  get(routes.timeline, (context, query) => {
+  get(routes.timeline, async (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
@@ -337,10 +337,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const paramsKeyForThrottle = buildThreadTimelineParamsKey(keyArgs);
     const full =
       timelineRefreshThrottle.getStale(paramsKeyForThrottle) ??
-      timelineCache.getOrBuild(
+      (await timelineCache.getOrBuildAsync(
         buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
-        () => {
-          const { profile, response } = buildThreadTimelineWithProfile(
+        async () => {
+          const { profile, response } = await buildThreadTimelineCooperatively(
             deps.db,
             thread,
             {
@@ -373,7 +373,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           );
           return responseToServe;
         },
-      );
+      ));
 
     const afterSequence = parseOptionalInteger(
       query.afterSequence,

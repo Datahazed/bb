@@ -1,5 +1,6 @@
 import {
   buildThreadTimelineFromEvents,
+  buildThreadTimelineFromEventsCooperatively,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailPageFromEvents,
   buildThreadTimelineTurnDetailsFromEvents,
@@ -30,8 +31,8 @@ import {
   getEnvironment,
   getLatestStoredEventTip,
   getThreadConversationOutlineRecord,
-  getThreadTimelineProjectionRecord,
-  upsertThreadTimelineProjectionRecord,
+  getThreadTimelineCheckpointRecord,
+  upsertThreadTimelineCheckpointRecord,
   listContextWindowUsageRows,
   listStoredThreadTimelineEventRows,
   listStoredConversationOutlineEventRows,
@@ -155,6 +156,37 @@ export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 export const THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
+
+interface PersistedProjectionKeyArgs {
+  appVersion: string;
+  includeNestedRows: boolean;
+  includeProviderUnhandledOperations: boolean;
+  maxInlineOutputChars: InlineOutputCharLimit;
+  planCommandKey: string;
+  providerDisplayName: string | undefined;
+  threadName: string;
+  threadStatus: string;
+  workspaceRoot: string | null;
+}
+
+/**
+ * Identifies which release and projection options produced a persisted
+ * projection; the event tip it was built from lives in the record's own
+ * columns.
+ */
+function buildPersistedProjectionKey(args: PersistedProjectionKeyArgs): string {
+  return JSON.stringify([
+    args.appVersion,
+    args.includeNestedRows,
+    args.includeProviderUnhandledOperations,
+    args.maxInlineOutputChars,
+    args.planCommandKey,
+    args.providerDisplayName ?? null,
+    args.threadName,
+    args.threadStatus,
+    args.workspaceRoot,
+  ]);
+}
 
 /**
  * Builds below this size are cheap enough to redo on every cold start. The
@@ -902,20 +934,28 @@ function completeThreadTimelineBuildProfile(
   };
 }
 
-function buildThreadTimelineInternal(
+interface TimelineProjectionKeys {
+  cacheKey: string | null;
+  includeNestedRows: boolean;
+  includeProviderUnhandledOperations: boolean;
+  persistedKey: string | null;
+  threadName: string;
+  tip: ReturnType<typeof getLatestStoredEventTip>;
+  workspaceRoot: string | null;
+}
+
+function resolveTimelineProjectionKeys(
   db: DbConnection,
   thread: Thread,
-  options: BuildThreadTimelineInternalOptions,
-): BuildThreadTimelineInternalResult {
-  const profile = options.includeProfile
-    ? createThreadTimelineBuildProfileAccumulator()
-    : null;
+  options: BuildThreadTimelineOptions,
+): TimelineProjectionKeys {
   const includeNestedRows = options.includeNestedRows ?? false;
   const includeProviderUnhandledOperations =
     options.includeProviderUnhandledOperations;
   const workspaceRoot = resolveThreadWorkspaceRoot(db, thread);
   const threadName = thread.title ?? thread.titleFallback ?? "";
   const tip = getLatestStoredEventTip(db, { threadId: thread.id });
+  const planCommandKey = JSON.stringify(options.planCommand ?? null);
   const cacheKey =
     tip === null
       ? null
@@ -923,7 +963,7 @@ function buildThreadTimelineInternal(
           includeNestedRows,
           includeProviderUnhandledOperations,
           maxInlineOutputChars: options.maxInlineOutputChars,
-          planCommandKey: JSON.stringify(options.planCommand ?? null),
+          planCommandKey,
           providerDisplayName: options.providerDisplayName,
           threadId: thread.id,
           threadName,
@@ -935,85 +975,127 @@ function buildThreadTimelineInternal(
   const persistedKey =
     cacheKey === null || options.appVersion === undefined
       ? null
-      : `${options.appVersion}|${cacheKey}`;
-  let cached =
-    cacheKey === null ? undefined : getCachedTimelineProjection(cacheKey);
-  if (cached === undefined && cacheKey !== null && persistedKey !== null) {
-    const persisted = getThreadTimelineProjectionRecord(db, thread.id);
-    if (persisted?.projectionKey === persistedKey) {
-      try {
-        cached = JSON.parse(persisted.payloadJson) as CachedTimelineProjection;
-        setCachedTimelineProjection(cacheKey, cached);
-      } catch {
-        cached = undefined;
-      }
-    }
+      : buildPersistedProjectionKey({
+          appVersion: options.appVersion,
+          includeNestedRows,
+          includeProviderUnhandledOperations,
+          maxInlineOutputChars: options.maxInlineOutputChars,
+          planCommandKey,
+          providerDisplayName: options.providerDisplayName,
+          threadName,
+          threadStatus: thread.status,
+          workspaceRoot,
+        });
+  return {
+    cacheKey,
+    includeNestedRows,
+    includeProviderUnhandledOperations,
+    persistedKey,
+    threadName,
+    tip,
+    workspaceRoot,
+  };
+}
+
+function readCachedTimelineProjection(
+  db: DbConnection,
+  thread: Thread,
+  keys: TimelineProjectionKeys,
+): CachedTimelineProjection | undefined {
+  if (keys.cacheKey === null || keys.tip === null) {
+    return undefined;
   }
-  let timeline;
-  if (cached !== undefined) {
-    timeline = cached.timeline;
-    if (profile) {
-      profile.eventDataBytes = cached.eventDataBytes;
-      profile.eventRowCount = cached.eventRowCount;
-      profile.decodedEventCount = cached.eventRowCount;
-      profile.projectedRowCount = timeline.rows.length;
-    }
-  } else {
-    const rawEventRows = measureThreadTimelineStage(
-      profile,
-      "event-query",
-      () => selectTimelineEventRows(db, thread, options.maxInlineOutputChars),
-    );
-    const eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
-    if (profile) {
-      profile.eventDataBytes = eventDataBytes;
-      profile.eventRowCount = rawEventRows.length;
-    }
-    const acceptedClientRequestContextRows = measureThreadTimelineStage(
-      profile,
-      "accepted-client-request-context-query",
-      () =>
-        selectClientRequestContextRows(db, {
-          rows: rawEventRows,
-          threadId: thread.id,
-        }),
-    );
-    const decodedRawEvents = measureThreadTimelineStage(
-      profile,
-      "event-json-decode",
-      () => rawEventRows.map((row) => toThreadEventWithMeta(row)),
-    );
-    if (profile) {
-      profile.decodedEventCount = decodedRawEvents.length;
-    }
-    const decodedEvents = measureThreadTimelineStage(
-      profile,
-      "summary-compaction",
-      () => compactThreadTimelineSummaryEvents(decodedRawEvents),
-    );
-    if (profile) {
-      profile.compactedEventCount = decodedEvents.length;
-    }
-    const contextWindowUsageRows = measureThreadTimelineStage(
-      profile,
-      "context-window-query",
-      () =>
-        listContextWindowUsageRows(db, {
-          threadId: thread.id,
-        }),
-    );
-    if (profile) {
-      profile.contextWindowEventDataBytes = byteLengthOfStoredEventRows(
-        contextWindowUsageRows,
-      );
-      profile.contextWindowEventRowCount = contextWindowUsageRows.length;
-    }
-    const contextWindowEvents = measureThreadTimelineStage(
-      profile,
-      "context-window-json-decode",
-      () => contextWindowUsageRows.map((row) => toThreadEventWithMeta(row)),
-    );
-    const acceptedClientRequestContext: AcceptedClientRequestContext = {
+  const cached = getCachedTimelineProjection(keys.cacheKey);
+  if (cached !== undefined || keys.persistedKey === null) {
+    return cached;
+  }
+  const persisted = getThreadTimelineCheckpointRecord(db, thread.id);
+  if (
+    persisted === null ||
+    persisted.checkpointKey !== keys.persistedKey ||
+    persisted.eventId !== keys.tip.id ||
+    persisted.sequence !== keys.tip.sequence ||
+    persisted.eventCount !== keys.tip.eventCount
+  ) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(persisted.payloadJson) as CachedTimelineProjection;
+    setCachedTimelineProjection(keys.cacheKey, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function rememberTimelineProjection(
+  db: DbConnection,
+  thread: Thread,
+  keys: TimelineProjectionKeys,
+  entry: CachedTimelineProjection,
+): void {
+  if (keys.cacheKey === null || keys.tip === null) {
+    return;
+  }
+  setCachedTimelineProjection(keys.cacheKey, entry);
+  // Persist projections that are expensive to rebuild so a restart does not
+  // re-pay the cold build; cheap threads just rebuild. Only settled threads
+  // are written - an active tip changes every poll.
+  if (
+    keys.persistedKey !== null &&
+    entry.eventRowCount >= PERSISTED_PROJECTION_MIN_EVENT_ROWS &&
+    (thread.status === "idle" || thread.status === "error")
+  ) {
+    upsertThreadTimelineCheckpointRecord(db, {
+      checkpointKey: keys.persistedKey,
+      eventCount: keys.tip.eventCount,
+      eventId: keys.tip.id,
+      payloadJson: JSON.stringify(entry),
+      sequence: keys.tip.sequence,
+      threadId: thread.id,
+    });
+  }
+}
+
+interface ProjectionInputs {
+  acceptedClientRequestContext: AcceptedClientRequestContext;
+  contextWindowEvents: ThreadEventWithMeta[];
+  events: ThreadEventWithMeta[];
+  eventDataBytes: number;
+  eventRowCount: number;
+}
+
+function buildProjectionInputs(
+  db: DbConnection,
+  thread: Thread,
+  rawEventRows: readonly StoredEventRow[],
+  profile: ThreadTimelineBuildProfileAccumulator | null,
+): ProjectionInputs {
+  const eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
+  if (profile) {
+    profile.eventDataBytes = eventDataBytes;
+    profile.eventRowCount = rawEventRows.length;
+  }
+  const acceptedClientRequestContextRows = measureThreadTimelineStage(
+    profile,
+    "accepted-client-request-context-query",
+    () =>
+      selectClientRequestContextRows(db, {
+        rows: rawEventRows,
+        threadId: thread.id,
+      }),
+  );
+  const decodedRawEvents = measureThreadTimelineStage(
+    profile,
+    "event-json-decode",
+    () => rawEventRows.map((row) => toThreadEventWithMeta(row)),
+  );
+  if (profile) {
+    profile.decodedEventCount = decodedRawEvents.length;
+  }
+  return {
+    ...finishProjectionInputs(db, thread, decodedRawEvents, profile),
+    acceptedClientRequestContext: {
       acceptedClientRequestEvents:
         acceptedClientRequestContextRows.acceptedRows.map((row) =>
           toThreadEventWithMeta(row),
@@ -1022,58 +1104,75 @@ function buildThreadTimelineInternal(
         acceptedClientRequestContextRows.rejectedRows.map((row) =>
           toThreadEventWithMeta(row),
         ),
-    };
-    // Always project as the latest page: rows are isLatestPage-independent
-    // (the recombination gate proves it) and head state is nulled per page
-    // kind when the response is assembled, so one cached projection serves
-    // every page of the thread.
-    timeline = measureThreadTimelineStage(
-      profile,
-      "thread-view-projection",
-      () =>
-        buildThreadTimelineFromEvents({
-          acceptedClientRequestContext,
-          contextWindowEvents,
-          events: decodedEvents,
-          options: {
-            includeProviderUnhandledOperations,
-            isLatestPage: true,
-            providerDisplayName: options.providerDisplayName,
-            planCommand: options.planCommand,
-            threadStatus: thread.status,
-            threadName,
-            workspaceRoot,
-            includeNestedRows,
-            providerId: thread.providerId,
-            turnMessageDetail: includeNestedRows ? "full" : "summary",
-          },
-        }),
+    },
+    eventDataBytes,
+    eventRowCount: rawEventRows.length,
+  };
+}
+
+function finishProjectionInputs(
+  db: DbConnection,
+  thread: Thread,
+  decodedRawEvents: ThreadEventWithMeta[],
+  profile: ThreadTimelineBuildProfileAccumulator | null,
+): Pick<ProjectionInputs, "contextWindowEvents" | "events"> {
+  const events = measureThreadTimelineStage(
+    profile,
+    "summary-compaction",
+    () => compactThreadTimelineSummaryEvents(decodedRawEvents),
+  );
+  if (profile) {
+    profile.compactedEventCount = events.length;
+  }
+  const contextWindowUsageRows = measureThreadTimelineStage(
+    profile,
+    "context-window-query",
+    () => listContextWindowUsageRows(db, { threadId: thread.id }),
+  );
+  if (profile) {
+    profile.contextWindowEventDataBytes = byteLengthOfStoredEventRows(
+      contextWindowUsageRows,
     );
-    if (profile) {
-      profile.projectedRowCount = timeline.rows.length;
-    }
-    if (cacheKey !== null) {
-      const entry = {
-        eventDataBytes,
-        eventRowCount: rawEventRows.length,
-        timeline,
-      };
-      setCachedTimelineProjection(cacheKey, entry);
-      // Persist projections that are expensive to rebuild so a restart does
-      // not re-pay the cold build; cheap threads just rebuild. Only settled
-      // threads are written - an active tip changes every poll.
-      if (
-        persistedKey !== null &&
-        rawEventRows.length >= PERSISTED_PROJECTION_MIN_EVENT_ROWS &&
-        (thread.status === "idle" || thread.status === "error")
-      ) {
-        upsertThreadTimelineProjectionRecord(db, {
-          payloadJson: JSON.stringify(entry),
-          projectionKey: persistedKey,
-          threadId: thread.id,
-        });
-      }
-    }
+    profile.contextWindowEventRowCount = contextWindowUsageRows.length;
+  }
+  const contextWindowEvents = measureThreadTimelineStage(
+    profile,
+    "context-window-json-decode",
+    () => contextWindowUsageRows.map((row) => toThreadEventWithMeta(row)),
+  );
+  return { contextWindowEvents, events };
+}
+
+function projectionOptionsFor(
+  thread: Thread,
+  keys: TimelineProjectionKeys,
+  options: BuildThreadTimelineOptions,
+) {
+  // Always project as the latest page: rows are isLatestPage-independent
+  // (the recombination gate proves it) and head state is nulled per page
+  // kind when the response is assembled, so one cached projection serves
+  // every page of the thread.
+  return {
+    includeProviderUnhandledOperations: keys.includeProviderUnhandledOperations,
+    isLatestPage: true,
+    providerDisplayName: options.providerDisplayName,
+    planCommand: options.planCommand,
+    threadStatus: thread.status,
+    threadName: keys.threadName,
+    workspaceRoot: keys.workspaceRoot,
+    includeNestedRows: keys.includeNestedRows,
+    providerId: thread.providerId,
+    turnMessageDetail: keys.includeNestedRows ? ("full" as const) : ("summary" as const),
+  };
+}
+
+function assembleTimelineResponse(
+  timeline: CachedTimelineProjection["timeline"],
+  options: BuildThreadTimelineInternalOptions,
+  profile: ThreadTimelineBuildProfileAccumulator | null,
+): BuildThreadTimelineInternalResult {
+  if (profile) {
+    profile.projectedRowCount = timeline.rows.length;
   }
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
@@ -1088,26 +1187,20 @@ function buildThreadTimelineInternal(
     profile.responseRowCount = paginatedTimeline.rows.length;
     profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
   }
-
+  const isLatest = options.page.kind === "latest";
   const response: ThreadTimelineResponse = {
     maxSeq: options.maxSeq,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
-    activePromptMode:
-      options.page.kind === "latest" ? timeline.activePromptMode : null,
-    activeThinking:
-      options.page.kind === "latest" ? timeline.activeThinking : null,
-    activeWorkflows:
-      options.page.kind === "latest" ? timeline.activeWorkflows : [],
-    activeBackgroundCommands:
-      options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
-    pendingTodos: options.page.kind === "latest" ? timeline.pendingTodos : null,
-    goal: options.page.kind === "latest" ? timeline.goal : null,
-    modelFallback:
-      options.page.kind === "latest" ? timeline.modelFallback : null,
-    contextWindowUsage:
-      options.page.kind === "latest"
-        ? (timeline.contextWindowUsage ?? undefined)
-        : undefined,
+    activePromptMode: isLatest ? timeline.activePromptMode : null,
+    activeThinking: isLatest ? timeline.activeThinking : null,
+    activeWorkflows: isLatest ? timeline.activeWorkflows : [],
+    activeBackgroundCommands: isLatest ? timeline.activeBackgroundCommands : [],
+    pendingTodos: isLatest ? timeline.pendingTodos : null,
+    goal: isLatest ? timeline.goal : null,
+    modelFallback: isLatest ? timeline.modelFallback : null,
+    contextWindowUsage: isLatest
+      ? (timeline.contextWindowUsage ?? undefined)
+      : undefined,
     timelinePage: {
       kind: options.page.kind,
       segmentLimit: options.page.segmentLimit,
@@ -1123,6 +1216,161 @@ function buildThreadTimelineInternal(
         ? null
         : completeThreadTimelineBuildProfile(profile, options),
   };
+}
+
+function buildThreadTimelineInternal(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadTimelineInternalOptions,
+): BuildThreadTimelineInternalResult {
+  const profile = options.includeProfile
+    ? createThreadTimelineBuildProfileAccumulator()
+    : null;
+  const keys = resolveTimelineProjectionKeys(db, thread, options);
+  let cached = readCachedTimelineProjection(db, thread, keys);
+  if (cached !== undefined && profile) {
+    profile.eventDataBytes = cached.eventDataBytes;
+    profile.eventRowCount = cached.eventRowCount;
+    profile.decodedEventCount = cached.eventRowCount;
+  }
+  if (cached === undefined) {
+    const rawEventRows = measureThreadTimelineStage(
+      profile,
+      "event-query",
+      () => selectTimelineEventRows(db, thread, options.maxInlineOutputChars),
+    );
+    const inputs = buildProjectionInputs(db, thread, rawEventRows, profile);
+    const timeline = measureThreadTimelineStage(
+      profile,
+      "thread-view-projection",
+      () =>
+        buildThreadTimelineFromEvents({
+          acceptedClientRequestContext: inputs.acceptedClientRequestContext,
+          contextWindowEvents: inputs.contextWindowEvents,
+          events: inputs.events,
+          options: projectionOptionsFor(thread, keys, options),
+        }),
+    );
+    cached = {
+      eventDataBytes: inputs.eventDataBytes,
+      eventRowCount: inputs.eventRowCount,
+      timeline,
+    };
+    rememberTimelineProjection(db, thread, keys, cached);
+  }
+  return assembleTimelineResponse(cached.timeline, options, profile);
+}
+
+const COOPERATIVE_READ_CHUNK_SEQUENCES = 4_000;
+
+async function yieldToEventLoop(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+/**
+ * The same build as buildThreadTimelineInternal, but a cache miss reads,
+ * decodes, and projects the thread in slices that yield to the event loop
+ * between them, so a large thread's first build cannot stall other work.
+ * Events appended while the build runs are excluded by bounding the read to
+ * the tip observed at the start; if the tip's identity changed underneath
+ * (suffix replacement), the build restarts once from the new tip.
+ */
+async function buildThreadTimelineCooperativelyInternal(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadTimelineInternalOptions,
+  attempt = 0,
+): Promise<BuildThreadTimelineInternalResult> {
+  const profile = options.includeProfile
+    ? createThreadTimelineBuildProfileAccumulator()
+    : null;
+  const keys = resolveTimelineProjectionKeys(db, thread, options);
+  let cached = readCachedTimelineProjection(db, thread, keys);
+  if (cached === undefined && keys.tip !== null) {
+    const tip = keys.tip;
+    const readStart = performance.now();
+    const rawEventRows: StoredEventRow[] = [];
+    for (
+      let sequenceStart = 0;
+      sequenceStart <= tip.sequence;
+      sequenceStart += COOPERATIVE_READ_CHUNK_SEQUENCES
+    ) {
+      rawEventRows.push(
+        ...listStoredTimelineWindowEventRows(db, {
+          beforeSequence: Math.min(
+            sequenceStart + COOPERATIVE_READ_CHUNK_SEQUENCES,
+            tip.sequence + 1,
+          ),
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          maxInlineOutputChars: options.maxInlineOutputChars,
+          sequenceStart,
+          threadId: thread.id,
+        }),
+      );
+      await yieldToEventLoop();
+    }
+    profile?.stageTimings.push({
+      durationMs: performance.now() - readStart,
+      stage: "event-query",
+    });
+    const tipAfterRead = getLatestStoredEventTip(db, { threadId: thread.id });
+    const tipReplaced =
+      tipAfterRead === null ||
+      tipAfterRead.sequence < tip.sequence ||
+      (tipAfterRead.sequence === tip.sequence && tipAfterRead.id !== tip.id);
+    if (tipReplaced && attempt === 0) {
+      return buildThreadTimelineCooperativelyInternal(db, thread, options, 1);
+    }
+    const inputs = buildProjectionInputs(db, thread, rawEventRows, profile);
+    const projectionStart = performance.now();
+    const timeline = await buildThreadTimelineFromEventsCooperatively(
+      {
+        acceptedClientRequestContext: inputs.acceptedClientRequestContext,
+        contextWindowEvents: inputs.contextWindowEvents,
+        events: inputs.events,
+        options: projectionOptionsFor(thread, keys, options),
+      },
+      { yield: yieldToEventLoop },
+    );
+    profile?.stageTimings.push({
+      durationMs: performance.now() - projectionStart,
+      stage: "thread-view-projection",
+    });
+    cached = {
+      eventDataBytes: inputs.eventDataBytes,
+      eventRowCount: inputs.eventRowCount,
+      timeline,
+    };
+    if (!tipReplaced) {
+      rememberTimelineProjection(db, thread, keys, cached);
+    }
+  } else if (cached !== undefined && profile) {
+    profile.eventDataBytes = cached.eventDataBytes;
+    profile.eventRowCount = cached.eventRowCount;
+    profile.decodedEventCount = cached.eventRowCount;
+  }
+  if (cached === undefined) {
+    return buildThreadTimelineInternal(db, thread, options);
+  }
+  return assembleTimelineResponse(cached.timeline, options, profile);
+}
+
+export async function buildThreadTimelineCooperatively(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadTimelineOptions,
+): Promise<{
+  profile: ThreadTimelineBuildProfile;
+  response: ThreadTimelineResponse;
+}> {
+  const result = await buildThreadTimelineCooperativelyInternal(db, thread, {
+    ...options,
+    includeProfile: true,
+  });
+  if (result.profile === null) {
+    throw new Error("Profiled timeline build returned no profile");
+  }
+  return { profile: result.profile, response: result.response };
 }
 
 export function buildThreadTimeline(

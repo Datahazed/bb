@@ -6,6 +6,7 @@ import {
   type ThreadStatus,
 } from "@bb/domain";
 import type { AppDeps } from "../types.js";
+import { warmThreadTimeline } from "../services/threads/timeline-warmup.js";
 import {
   pruneThreadEventHistoryBestEffort,
   resetActiveThreadEventPruningState,
@@ -31,7 +32,7 @@ function lifecycleEventForTurnCompletion(
 }
 
 export function applyTurnCompletedEvent(
-  deps: Pick<AppDeps, "db" | "hub" | "logger" | "providerRegistry">,
+  deps: Pick<AppDeps, "config" | "db" | "hub" | "logger" | "providerRegistry">,
   payload: Extract<ThreadEvent, { type: "turn/completed" }>,
 ): ApplyTurnCompletedEventResult {
   const thread = getThread(deps.db, payload.threadId);
@@ -65,6 +66,14 @@ export function applyTurnCompletedEvent(
     pruneThreadEventHistoryBestEffort(deps, {
       mode: "idle",
       threadId: payload.threadId,
+    });
+    // The thread just settled: rebuild its summary projection off the request
+    // path so the next open (and the persisted copy) are ready.
+    void warmThreadTimeline(deps, payload.threadId).catch((error) => {
+      deps.logger.warn(
+        { err: error, threadId: payload.threadId },
+        "Timeline refresh after turn completion failed",
+      );
     });
   }
 

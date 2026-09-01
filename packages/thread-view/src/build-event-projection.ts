@@ -561,9 +561,19 @@ function getCompactionTurnFinalization(
   return undefined;
 }
 
-function buildFlatProjectionData(
-  args: BuildFlatProjectionDataArgs,
-): BuildFlatProjectionDataResult {
+interface FlatProjectionRun {
+  acceptedClientRequestById: ReturnType<typeof buildAcceptedClientRequestById>;
+  acceptedRootClientTurnIds: ReadonlySet<string>;
+  args: BuildFlatProjectionDataArgs;
+  clientRequestById: ReturnType<typeof buildClientTurnRequestById>;
+  orderedEvents: ThreadEventWithMeta[];
+  rejectedClientRequestIds: ReadonlySet<string>;
+  selectedStartedTurnIds: ReadonlySet<string>;
+  shouldTrackActiveThinking: boolean;
+  state: ProjectionState;
+}
+
+function startFlatProjection(args: BuildFlatProjectionDataArgs): FlatProjectionRun {
   const state = createProjectionState();
   const shouldTrackActiveThinking = args.includeActiveThinking;
 
@@ -579,396 +589,426 @@ function buildFlatProjectionData(
     orderedEvents,
     clientRequestById,
   );
-  for (const { event: decoded, meta } of orderedEvents) {
-    const eventType = decoded.type;
-    const eventTurnId = getEventTurnId(decoded);
-    const eventProviderThreadId = getEventProviderThreadId(decoded);
-    const isAcceptedRootClientTurn =
-      typeof eventTurnId === "string" &&
-      acceptedRootClientTurnIds.has(eventTurnId);
-    const decodedEventParentToolCallId = getEventParentToolCallId(decoded);
-    if (
-      decoded.type === "turn/started" &&
-      isAcceptedRootClientTurn &&
-      decodedEventParentToolCallId
-    ) {
-      state.suppressedAcceptedRootParentToolCallIdsByTurnId.set(
-        eventTurnId,
-        decodedEventParentToolCallId,
-      );
-    }
-    const explicitEventParentToolCallId =
-      shouldUseExplicitEventParentToolCallId({
-        eventTurnId,
-        isAcceptedRootClientTurn,
-        parentToolCallId: decodedEventParentToolCallId,
-        state,
-      })
-        ? decodedEventParentToolCallId
-        : undefined;
+  return {
+    acceptedClientRequestById,
+    acceptedRootClientTurnIds,
+    args,
+    clientRequestById,
+    orderedEvents,
+    rejectedClientRequestIds,
+    selectedStartedTurnIds,
+    shouldTrackActiveThinking,
+    state,
+  };
+}
 
-    if (decoded.type === "turn/started") {
-      const turnId = requireThreadEventScopeTurnId({
-        type: decoded.type,
-        scope: decoded.scope,
-      });
-      if (isAcceptedRootClientTurn) {
-        state.delegationParentToolCallIdsByTurnId.delete(turnId);
-      } else {
-        const pendingParentToolCallId = consumePendingDelegationTurnLink(
-          state,
-          eventProviderThreadId,
+function projectFlatEvent(
+  run: FlatProjectionRun,
+  { event: decoded, meta }: ThreadEventWithMeta,
+): void {
+  const {
+    acceptedClientRequestById,
+    acceptedRootClientTurnIds,
+    args,
+    clientRequestById,
+    rejectedClientRequestIds,
+    selectedStartedTurnIds,
+    shouldTrackActiveThinking,
+    state,
+  } = run;
+  const eventType = decoded.type;
+  const eventTurnId = getEventTurnId(decoded);
+  const eventProviderThreadId = getEventProviderThreadId(decoded);
+  const isAcceptedRootClientTurn =
+    typeof eventTurnId === "string" &&
+    acceptedRootClientTurnIds.has(eventTurnId);
+  const decodedEventParentToolCallId = getEventParentToolCallId(decoded);
+  if (
+    decoded.type === "turn/started" &&
+    isAcceptedRootClientTurn &&
+    decodedEventParentToolCallId
+  ) {
+    state.suppressedAcceptedRootParentToolCallIdsByTurnId.set(
+      eventTurnId,
+      decodedEventParentToolCallId,
+    );
+  }
+  const explicitEventParentToolCallId =
+    shouldUseExplicitEventParentToolCallId({
+      eventTurnId,
+      isAcceptedRootClientTurn,
+      parentToolCallId: decodedEventParentToolCallId,
+      state,
+    })
+      ? decodedEventParentToolCallId
+      : undefined;
+
+  if (decoded.type === "turn/started") {
+    const turnId = requireThreadEventScopeTurnId({
+      type: decoded.type,
+      scope: decoded.scope,
+    });
+    if (isAcceptedRootClientTurn) {
+      state.delegationParentToolCallIdsByTurnId.delete(turnId);
+    } else {
+      const pendingParentToolCallId = consumePendingDelegationTurnLink(
+        state,
+        eventProviderThreadId,
+        turnId,
+      );
+      if (explicitEventParentToolCallId) {
+        state.delegationParentToolCallIdsByTurnId.set(
           turnId,
+          explicitEventParentToolCallId,
         );
-        if (explicitEventParentToolCallId) {
-          state.delegationParentToolCallIdsByTurnId.set(
-            turnId,
-            explicitEventParentToolCallId,
-          );
-        } else if (pendingParentToolCallId) {
-          state.delegationParentToolCallIdsByTurnId.set(
-            turnId,
-            pendingParentToolCallId,
-          );
-        }
-      }
-      onTurnStarted(state, turnId);
-    }
-
-    const eventParentToolCallId = isAcceptedRootClientTurn
-      ? explicitEventParentToolCallId
-      : (explicitEventParentToolCallId ??
-        (eventTurnId
-          ? state.delegationParentToolCallIdsByTurnId.get(eventTurnId)
-          : undefined) ??
-        (eventProviderThreadId
-          ? state.delegationParentToolCallIdsByProviderThreadId.get(
-              eventProviderThreadId,
-            )
-          : undefined));
-
-    const compactionTurnFinalization = getCompactionTurnFinalization(decoded);
-    if (compactionTurnFinalization) {
-      const settledPendingCompaction = finalizeOpenCompactionsForTurn({
-        state,
-        meta,
-        threadId: decoded.threadId,
-        turnId: eventTurnId,
-        status: compactionTurnFinalization.status,
-        detail: compactionTurnFinalization.detail,
-      });
-      if (settledPendingCompaction && decoded.type === "provider/warning") {
-        continue;
-      }
-    }
-
-    if (isTerminalBufferedTextFlushEvent(eventType)) {
-      if (decoded.type === "turn/completed") {
-        const completedTurnId = requireThreadEventScopeTurnId({
-          type: decoded.type,
-          scope: decoded.scope,
-        });
-        onTurnCompleted({
-          completedAt: meta.createdAt,
-          state,
-          turnId: completedTurnId,
-          status: decoded.status,
-        });
-        flushProjectionBufferedOutputsAfterTurnCompleted(
-          state,
-          completedTurnId,
+      } else if (pendingParentToolCallId) {
+        state.delegationParentToolCallIdsByTurnId.set(
+          turnId,
+          pendingParentToolCallId,
         );
-      } else {
-        onThreadInterrupted({
-          meta,
-          state,
-          threadId: decoded.threadId,
-        });
-        flushProjectionBufferedOutputs(state);
       }
     }
+    onTurnStarted(state, turnId);
+  }
 
-    if (decoded.type === "turn/input/accepted") {
-      const clientRequest = clientRequestById.get(decoded.clientRequestId);
-      const acceptedClientRequest = acceptedClientRequestById.get(
-        decoded.clientRequestId,
-      );
-      const acceptedSteers =
-        clientRequest && acceptedClientRequest
-          ? parseAcceptedSteersFromClientRequest({
-              acceptedClientRequest,
-              decoded: clientRequest.event,
-              meta: clientRequest.meta,
-              options: args.options,
-            })
-          : [];
-      for (const acceptedSteer of acceptedSteers) {
-        appendProjectedUserMessage(state, acceptedSteer);
-      }
-      continue;
-    }
+  const eventParentToolCallId = isAcceptedRootClientTurn
+    ? explicitEventParentToolCallId
+    : (explicitEventParentToolCallId ??
+      (eventTurnId
+        ? state.delegationParentToolCallIdsByTurnId.get(eventTurnId)
+        : undefined) ??
+      (eventProviderThreadId
+        ? state.delegationParentToolCallIdsByProviderThreadId.get(
+            eventProviderThreadId,
+          )
+        : undefined));
 
-    if (decoded.type === "client/turn/rejected") {
-      const clientRequest = clientRequestById.get(decoded.requestId);
-      if (clientRequest) {
-        for (const rejectedMessage of parseRejectedUsersFromClientRequest({
-          decoded: clientRequest.event,
-          meta,
-          options: args.options,
-        })) {
-          appendProjectedUserMessage(state, rejectedMessage);
-        }
-      }
-      continue;
-    }
-
-    if (
-      decoded.type === "client/turn/requested" &&
-      rejectedClientRequestIds.has(decoded.requestId)
-    ) {
-      continue;
-    }
-
-    const acceptedClientRequest =
-      decoded.type === "client/turn/requested"
-        ? acceptedClientRequestById.get(decoded.requestId)
-        : undefined;
-    const visibleProjectionAcceptedClientRequest =
-      acceptedClientRequest &&
-      decoded.type === "client/turn/requested" &&
-      canUseAcceptedClientRequestForVisibleProjection(
-        acceptedClientRequest,
-        decoded,
-        selectedStartedTurnIds,
-      )
-        ? acceptedClientRequest
-        : undefined;
-    const usersFromClientRequest = parseUsersFromClientRequest({
-      acceptedClientRequest: visibleProjectionAcceptedClientRequest,
-      decoded,
+  const compactionTurnFinalization = getCompactionTurnFinalization(decoded);
+  if (compactionTurnFinalization) {
+    const settledPendingCompaction = finalizeOpenCompactionsForTurn({
+      state,
       meta,
-      options: args.options,
+      threadId: decoded.threadId,
+      turnId: eventTurnId,
+      status: compactionTurnFinalization.status,
+      detail: compactionTurnFinalization.detail,
     });
-    if (usersFromClientRequest.length > 0) {
-      for (const userFromClientRequest of usersFromClientRequest) {
-        appendProjectedUserMessage(state, userFromClientRequest);
-      }
-      continue;
-    }
-
-    const providerUserMessage = parseProviderUserMessage(decoded, meta);
-    if (providerUserMessage) {
-      appendProjectedUserMessage(state, providerUserMessage);
-      continue;
-    }
-
-    const legacyUserMessage = parseLegacyUserMessage(decoded, meta);
-    if (legacyUserMessage) {
-      flushToolActivityBeforeNonToolMessage(state);
-      state.messages.push(legacyUserMessage);
-      continue;
-    }
-
-    if (
-      projectAssistantAndReasoningEvent({
-        decoded,
-        eventParentToolCallId,
-        eventTurnId,
-        meta,
-        shouldTrackActiveThinking,
-        state,
-      })
-    ) {
-      continue;
-    }
-
-    if (parseBackgroundTaskLifecycleEvent(decoded)) {
-      flushToolActivityBeforeNonToolMessage(state);
-      upsertBackgroundTaskMessage(state, meta, decoded);
-      continue;
-    }
-
-    const execEvent = parseExecLifecycleEvent(
-      decoded,
-      meta,
-      eventParentToolCallId,
-    );
-    if (execEvent) {
-      if (execEvent.kind === "begin") {
-        onExecBegin(state, meta, decoded.threadId, eventTurnId, execEvent.call);
-      } else if (execEvent.kind === "output") {
-        onExecOutput(
-          state,
-          meta,
-          execEvent.output,
-          execEvent.appendOutput,
-          execEvent.replaceOutput,
-        );
-      } else {
-        onExecEnd(state, meta, decoded.threadId, eventTurnId, execEvent.call);
-      }
-      continue;
-    }
-
-    if (shouldSuppressLowValueToolCall(decoded)) {
-      continue;
-    }
-
-    const toolCallEvent = parseToolCallLifecycleEvent(
-      decoded,
-      meta,
-      eventParentToolCallId,
-    );
-    if (toolCallEvent) {
-      const delegationChildRef = getDelegationChildRef(decoded);
-      if (toolCallEvent.kind !== "output") {
-        if (toolCallEvent.call.kind === "delegation" && eventTurnId) {
-          state.delegationTurnIdsByCallId.set(
-            toolCallEvent.call.callId,
-            eventTurnId,
-          );
-        }
-        if (delegationChildRef !== undefined) {
-          if (
-            delegationChildRef === eventProviderThreadId ||
-            state.delegatedTurnLinkCallIds.has(toolCallEvent.call.callId)
-          ) {
-            enqueuePendingDelegationTurnLink(
-              state,
-              eventProviderThreadId,
-              eventTurnId,
-              toolCallEvent.call.callId,
-            );
-          } else {
-            state.delegationParentToolCallIdsByProviderThreadId.set(
-              delegationChildRef,
-              toolCallEvent.call.callId,
-            );
-          }
-        }
-      }
-      if (toolCallEvent.kind === "begin") {
-        onExecBegin(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          toolCallEvent.call,
-        );
-      } else if (toolCallEvent.kind === "output") {
-        onExecOutput(
-          state,
-          meta,
-          toolCallEvent.output,
-          toolCallEvent.appendOutput,
-          toolCallEvent.replaceOutput,
-        );
-      } else {
-        onExecEnd(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          toolCallEvent.call,
-        );
-      }
-      continue;
-    }
-
-    const webActivityEvent = parseWebActivityLifecycleEvent(
-      decoded,
-      eventParentToolCallId,
-    );
-    if (webActivityEvent) {
-      if (webActivityEvent.kind === "begin") {
-        onWebActivityBegin(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          webActivityEvent,
-        );
-      } else {
-        onWebActivityEnd(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          webActivityEvent,
-        );
-      }
-      continue;
-    }
-
-    const fileEdit = parseFileEditFromItemEvent(decoded, eventParentToolCallId);
-    if (fileEdit) {
-      flushToolActivityBeforeNonToolMessage(state);
-      upsertFileEdit(state, meta, decoded.threadId, eventTurnId, fileEdit);
-      continue;
-    }
-
-    const compactionEvent = parseCompactionLifecycleEvent(decoded, meta);
-    if (compactionEvent) {
-      flushToolActivityBeforeNonToolMessage(state);
-      if (compactionEvent.kind === "begin") {
-        onCompactionBegin(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          compactionEvent,
-        );
-      } else {
-        onCompactionEnd(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          compactionEvent,
-        );
-      }
-      continue;
-    }
-
-    const operation = parseOperationMessage(decoded, meta, {
-      includeProviderUnhandledOperations:
-        args.options?.includeProviderUnhandledOperations,
-      providerDisplayName: args.options?.providerDisplayName,
-      threadName: args.options?.threadName ?? "",
-    });
-    if (operation) {
-      flushToolActivityBeforeNonToolMessage(state);
-      if (
-        operation.kind === "operation" &&
-        operation.opType === "thread-provisioning"
-      ) {
-        upsertProvisioningOperation(state, operation);
-        continue;
-      }
-      if (operation.kind === "operation" && operation.opType === "operation") {
-        upsertThreadOperationMessage(state, operation);
-        continue;
-      }
-      if (operation.kind === "permission-grant-lifecycle") {
-        upsertPermissionGrantLifecycleMessage(state, operation);
-        continue;
-      }
-      if (operation.kind === "user-question-lifecycle") {
-        upsertUserQuestionLifecycleMessage(state, operation);
-        continue;
-      }
-      state.messages.push(operation);
-      continue;
-    }
-
-    const error = parseErrorMessage(decoded, meta);
-    if (error) {
-      flushToolActivityBeforeNonToolMessage(state);
-      state.messages.push(error);
-      continue;
+    if (settledPendingCompaction && decoded.type === "provider/warning") {
+      return;
     }
   }
 
+  if (isTerminalBufferedTextFlushEvent(eventType)) {
+    if (decoded.type === "turn/completed") {
+      const completedTurnId = requireThreadEventScopeTurnId({
+        type: decoded.type,
+        scope: decoded.scope,
+      });
+      onTurnCompleted({
+        completedAt: meta.createdAt,
+        state,
+        turnId: completedTurnId,
+        status: decoded.status,
+      });
+      flushProjectionBufferedOutputsAfterTurnCompleted(
+        state,
+        completedTurnId,
+      );
+    } else {
+      onThreadInterrupted({
+        meta,
+        state,
+        threadId: decoded.threadId,
+      });
+      flushProjectionBufferedOutputs(state);
+    }
+  }
+
+  if (decoded.type === "turn/input/accepted") {
+    const clientRequest = clientRequestById.get(decoded.clientRequestId);
+    const acceptedClientRequest = acceptedClientRequestById.get(
+      decoded.clientRequestId,
+    );
+    const acceptedSteers =
+      clientRequest && acceptedClientRequest
+        ? parseAcceptedSteersFromClientRequest({
+            acceptedClientRequest,
+            decoded: clientRequest.event,
+            meta: clientRequest.meta,
+            options: args.options,
+          })
+        : [];
+    for (const acceptedSteer of acceptedSteers) {
+      appendProjectedUserMessage(state, acceptedSteer);
+    }
+    return;
+  }
+
+  if (decoded.type === "client/turn/rejected") {
+    const clientRequest = clientRequestById.get(decoded.requestId);
+    if (clientRequest) {
+      for (const rejectedMessage of parseRejectedUsersFromClientRequest({
+        decoded: clientRequest.event,
+        meta,
+        options: args.options,
+      })) {
+        appendProjectedUserMessage(state, rejectedMessage);
+      }
+    }
+    return;
+  }
+
+  if (
+    decoded.type === "client/turn/requested" &&
+    rejectedClientRequestIds.has(decoded.requestId)
+  ) {
+    return;
+  }
+
+  const acceptedClientRequest =
+    decoded.type === "client/turn/requested"
+      ? acceptedClientRequestById.get(decoded.requestId)
+      : undefined;
+  const visibleProjectionAcceptedClientRequest =
+    acceptedClientRequest &&
+    decoded.type === "client/turn/requested" &&
+    canUseAcceptedClientRequestForVisibleProjection(
+      acceptedClientRequest,
+      decoded,
+      selectedStartedTurnIds,
+    )
+      ? acceptedClientRequest
+      : undefined;
+  const usersFromClientRequest = parseUsersFromClientRequest({
+    acceptedClientRequest: visibleProjectionAcceptedClientRequest,
+    decoded,
+    meta,
+    options: args.options,
+  });
+  if (usersFromClientRequest.length > 0) {
+    for (const userFromClientRequest of usersFromClientRequest) {
+      appendProjectedUserMessage(state, userFromClientRequest);
+    }
+    return;
+  }
+
+  const providerUserMessage = parseProviderUserMessage(decoded, meta);
+  if (providerUserMessage) {
+    appendProjectedUserMessage(state, providerUserMessage);
+    return;
+  }
+
+  const legacyUserMessage = parseLegacyUserMessage(decoded, meta);
+  if (legacyUserMessage) {
+    flushToolActivityBeforeNonToolMessage(state);
+    state.messages.push(legacyUserMessage);
+    return;
+  }
+
+  if (
+    projectAssistantAndReasoningEvent({
+      decoded,
+      eventParentToolCallId,
+      eventTurnId,
+      meta,
+      shouldTrackActiveThinking,
+      state,
+    })
+  ) {
+    return;
+  }
+
+  if (parseBackgroundTaskLifecycleEvent(decoded)) {
+    flushToolActivityBeforeNonToolMessage(state);
+    upsertBackgroundTaskMessage(state, meta, decoded);
+    return;
+  }
+
+  const execEvent = parseExecLifecycleEvent(
+    decoded,
+    meta,
+    eventParentToolCallId,
+  );
+  if (execEvent) {
+    if (execEvent.kind === "begin") {
+      onExecBegin(state, meta, decoded.threadId, eventTurnId, execEvent.call);
+    } else if (execEvent.kind === "output") {
+      onExecOutput(
+        state,
+        meta,
+        execEvent.output,
+        execEvent.appendOutput,
+        execEvent.replaceOutput,
+      );
+    } else {
+      onExecEnd(state, meta, decoded.threadId, eventTurnId, execEvent.call);
+    }
+    return;
+  }
+
+  if (shouldSuppressLowValueToolCall(decoded)) {
+    return;
+  }
+
+  const toolCallEvent = parseToolCallLifecycleEvent(
+    decoded,
+    meta,
+    eventParentToolCallId,
+  );
+  if (toolCallEvent) {
+    const delegationChildRef = getDelegationChildRef(decoded);
+    if (toolCallEvent.kind !== "output") {
+      if (toolCallEvent.call.kind === "delegation" && eventTurnId) {
+        state.delegationTurnIdsByCallId.set(
+          toolCallEvent.call.callId,
+          eventTurnId,
+        );
+      }
+      if (delegationChildRef !== undefined) {
+        if (
+          delegationChildRef === eventProviderThreadId ||
+          state.delegatedTurnLinkCallIds.has(toolCallEvent.call.callId)
+        ) {
+          enqueuePendingDelegationTurnLink(
+            state,
+            eventProviderThreadId,
+            eventTurnId,
+            toolCallEvent.call.callId,
+          );
+        } else {
+          state.delegationParentToolCallIdsByProviderThreadId.set(
+            delegationChildRef,
+            toolCallEvent.call.callId,
+          );
+        }
+      }
+    }
+    if (toolCallEvent.kind === "begin") {
+      onExecBegin(
+        state,
+        meta,
+        decoded.threadId,
+        eventTurnId,
+        toolCallEvent.call,
+      );
+    } else if (toolCallEvent.kind === "output") {
+      onExecOutput(
+        state,
+        meta,
+        toolCallEvent.output,
+        toolCallEvent.appendOutput,
+        toolCallEvent.replaceOutput,
+      );
+    } else {
+      onExecEnd(
+        state,
+        meta,
+        decoded.threadId,
+        eventTurnId,
+        toolCallEvent.call,
+      );
+    }
+    return;
+  }
+
+  const webActivityEvent = parseWebActivityLifecycleEvent(
+    decoded,
+    eventParentToolCallId,
+  );
+  if (webActivityEvent) {
+    if (webActivityEvent.kind === "begin") {
+      onWebActivityBegin(
+        state,
+        meta,
+        decoded.threadId,
+        eventTurnId,
+        webActivityEvent,
+      );
+    } else {
+      onWebActivityEnd(
+        state,
+        meta,
+        decoded.threadId,
+        eventTurnId,
+        webActivityEvent,
+      );
+    }
+    return;
+  }
+
+  const fileEdit = parseFileEditFromItemEvent(decoded, eventParentToolCallId);
+  if (fileEdit) {
+    flushToolActivityBeforeNonToolMessage(state);
+    upsertFileEdit(state, meta, decoded.threadId, eventTurnId, fileEdit);
+    return;
+  }
+
+  const compactionEvent = parseCompactionLifecycleEvent(decoded, meta);
+  if (compactionEvent) {
+    flushToolActivityBeforeNonToolMessage(state);
+    if (compactionEvent.kind === "begin") {
+      onCompactionBegin(
+        state,
+        meta,
+        decoded.threadId,
+        eventTurnId,
+        compactionEvent,
+      );
+    } else {
+      onCompactionEnd(
+        state,
+        meta,
+        decoded.threadId,
+        eventTurnId,
+        compactionEvent,
+      );
+    }
+    return;
+  }
+
+  const operation = parseOperationMessage(decoded, meta, {
+    includeProviderUnhandledOperations:
+      args.options?.includeProviderUnhandledOperations,
+    providerDisplayName: args.options?.providerDisplayName,
+    threadName: args.options?.threadName ?? "",
+  });
+  if (operation) {
+    flushToolActivityBeforeNonToolMessage(state);
+    if (
+      operation.kind === "operation" &&
+      operation.opType === "thread-provisioning"
+    ) {
+      upsertProvisioningOperation(state, operation);
+      return;
+    }
+    if (operation.kind === "operation" && operation.opType === "operation") {
+      upsertThreadOperationMessage(state, operation);
+      return;
+    }
+    if (operation.kind === "permission-grant-lifecycle") {
+      upsertPermissionGrantLifecycleMessage(state, operation);
+      return;
+    }
+    if (operation.kind === "user-question-lifecycle") {
+      upsertUserQuestionLifecycleMessage(state, operation);
+      return;
+    }
+    state.messages.push(operation);
+    return;
+  }
+
+  const error = parseErrorMessage(decoded, meta);
+  if (error) {
+    flushToolActivityBeforeNonToolMessage(state);
+    state.messages.push(error);
+    return;
+  }
+}
+
+function finishFlatProjection(
+  run: FlatProjectionRun,
+): BuildFlatProjectionDataResult {
+  const { args, state } = run;
   finalizeProjectionState({ state, options: args.options });
   const messages = sortEventProjectionMessagesBySource(state.messages);
   const callMessageById = buildCallMessageById(messages);
@@ -984,6 +1024,44 @@ function buildFlatProjectionData(
     ),
     messages,
   };
+}
+
+function buildFlatProjectionData(
+  args: BuildFlatProjectionDataArgs,
+): BuildFlatProjectionDataResult {
+  const run = startFlatProjection(args);
+  for (const eventWithMeta of run.orderedEvents) {
+    projectFlatEvent(run, eventWithMeta);
+  }
+  return finishFlatProjection(run);
+}
+
+export interface CooperativeProjectionOptions {
+  /** Called every `yieldEvery` events so the caller can release the event loop. */
+  yield: () => Promise<void>;
+  yieldEvery?: number;
+}
+
+const DEFAULT_COOPERATIVE_YIELD_EVERY = 500;
+
+/**
+ * Same projection as buildFlatProjectionData, folding the events in slices
+ * and awaiting `yield` between them. The per-event body is shared, so the
+ * result is identical; only the scheduling differs.
+ */
+async function buildFlatProjectionDataCooperatively(
+  args: BuildFlatProjectionDataArgs,
+  cooperative: CooperativeProjectionOptions,
+): Promise<BuildFlatProjectionDataResult> {
+  const run = startFlatProjection(args);
+  const yieldEvery = cooperative.yieldEvery ?? DEFAULT_COOPERATIVE_YIELD_EVERY;
+  for (const [index, eventWithMeta] of run.orderedEvents.entries()) {
+    if (index > 0 && index % yieldEvery === 0) {
+      await cooperative.yield();
+    }
+    projectFlatEvent(run, eventWithMeta);
+  }
+  return finishFlatProjection(run);
 }
 
 function buildDetailedProjection(
@@ -1061,6 +1139,37 @@ export function buildEventProjectionEntries(
   });
   return buildDetailedProjection({
     activeThinking: null,
+    activeWorkflows: flatProjection.activeWorkflows,
+    activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    contextOnlyToolCallIds: options.contextOnlyToolCallIds,
+    events: orderedEvents,
+    messages: flatProjection.messages,
+    turnMessageDetail: options.turnMessageDetail,
+  });
+}
+
+export async function buildEventProjectionCooperatively(
+  events: ThreadEventWithMeta[] | undefined,
+  options: BuildEventProjectionOptions,
+  cooperative: CooperativeProjectionOptions,
+): Promise<EventProjection> {
+  if (!events || events.length === 0) {
+    return buildEventProjection(events, options);
+  }
+  const orderedEvents = getOrderedThreadEvents(events);
+  const flatProjection = await buildFlatProjectionDataCooperatively(
+    {
+      acceptedClientRequestContext:
+        options.acceptedClientRequestContext ??
+        EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      events: orderedEvents,
+      includeActiveThinking: true,
+      options,
+    },
+    cooperative,
+  );
+  return buildDetailedProjection({
+    activeThinking: flatProjection.activeThinking,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
