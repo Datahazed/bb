@@ -24,7 +24,7 @@ interface ThreadEnvironmentSummaryProps {
   onCreateNewThreadInWorktree?: () => void;
 }
 
-function OfflineMachineIcon({ compact = false }: { compact?: boolean }) {
+function OfflineMachineIcon() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -36,7 +36,7 @@ function OfflineMachineIcon({ compact = false }: { compact?: boolean }) {
         >
           <Icon
             name="AlertTriangle"
-            className={cn(compact ? "size-3.5" : "size-4", "text-warning-text")}
+            className="size-4 text-warning-text"
             aria-hidden
           />
         </span>
@@ -48,11 +48,9 @@ function OfflineMachineIcon({ compact = false }: { compact?: boolean }) {
 
 function NameDisplay({
   accessibleLabel,
-  kind,
   name,
 }: {
   accessibleLabel: string;
-  kind: "environment" | "machine";
   name: string;
 }) {
   const { elementRef, isTruncated } = useIsElementTruncated({
@@ -68,12 +66,7 @@ function NameDisplay({
           "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       )}
     >
-      <span
-        ref={elementRef}
-        className="min-w-0 truncate"
-        data-environment-name-text={kind === "environment" ? "" : undefined}
-        data-machine-name-text={kind === "machine" ? "" : undefined}
-      >
+      <span ref={elementRef} className="min-w-0 truncate">
         {name}
       </span>
     </span>
@@ -99,22 +92,16 @@ function MachineContext({
   const accessibleLabel =
     connected === false ? `Machine: ${name}, offline` : `Machine: ${name}`;
   return (
-    <span
-      data-promptbox-secondary-context=""
-      data-promptbox-offline-machine-context={connected ? undefined : ""}
-      className="inline-flex h-6 w-fit max-w-[10rem] min-w-0 shrink items-center gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
-    >
+    <span className="inline-flex h-6 w-fit max-w-[10rem] min-w-0 shrink items-center gap-1.5 px-1 text-xs leading-tight text-muted-foreground">
       {connected === false ? (
         <OfflineMachineIcon />
       ) : (
-        <Icon name="Laptop" className="size-4 shrink-0" aria-hidden />
+        <span data-promptbox-hide-tiny="" className="contents">
+          <Icon name="Laptop" className="size-4 shrink-0" aria-hidden />
+        </span>
       )}
-      <span data-promptbox-machine-name-context="" className="contents">
-        <NameDisplay
-          accessibleLabel={accessibleLabel}
-          kind="machine"
-          name={name}
-        />
+      <span data-promptbox-hide-tiny="" className="contents">
+        <NameDisplay accessibleLabel={accessibleLabel} name={name} />
       </span>
     </span>
   );
@@ -147,14 +134,9 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
   return (
-    <div
-      data-promptbox-offline-machine-summary={
-        machineName && machineConnected === false ? "" : undefined
-      }
-      className="flex min-w-0 max-w-full items-center gap-2 pr-1.5"
-    >
+    <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
       {projectName ? (
-        <span data-promptbox-secondary-context="" className="contents">
+        <span data-promptbox-hide-tiny="" className="contents">
           <OptionDisplay
             label="Project"
             value={projectName}
@@ -168,8 +150,10 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
       ) : null}
       {environmentLabel ? (
         <div
-          data-promptbox-worktree-context={isWorktree ? "" : undefined}
-          className="inline-flex h-6 w-fit max-w-full min-w-0 shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground"
+          className={cn(
+            "inline-flex h-6 w-fit max-w-full shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground",
+            isWorktree ? "min-w-20" : "min-w-0",
+          )}
         >
           {showOfflineAsPrimaryIcon ? (
             <OfflineMachineIcon />
@@ -199,17 +183,15 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           ) : null}
           {showPrimaryOffline && isWorktree ? (
             <span className="inline-flex min-w-0 shrink items-center gap-1">
-              <OfflineMachineIcon compact />
+              <OfflineMachineIcon />
               <NameDisplay
                 accessibleLabel={`Worktree: ${environmentLabel}, offline`}
-                kind="environment"
                 name={environmentLabel}
               />
             </span>
           ) : (
             <NameDisplay
               accessibleLabel={`${environmentTypeLabel ?? "Worktree"}: ${environmentLabel}${showOfflineAsPrimaryIcon ? ", offline" : ""}`}
-              kind="environment"
               name={environmentLabel}
             />
           )}
