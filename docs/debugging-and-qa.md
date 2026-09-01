@@ -87,6 +87,26 @@ payloads. Use it to reproduce performance problems that only appear at scale.
   deletes the database file first. Without `--reset` the fixture appends.
 - Example: `pnpm seed:perf -- --reset --events 400000`.
 
+## Running a server against a production database copy
+
+A copied `bb.db` carries live credentials. In particular the Connect plugin's
+`plugin_kv` row `credential` lets any server started against the copy dial the
+relay as your production bb and hijack its tunnel; `hosts` carries the
+enrolled machine identity. Before starting a server on a copy, strip them:
+
+```bash
+sqlite3 <copy>/bb.db "
+  DELETE FROM plugin_kv WHERE plugin_id = 'connect';
+  DELETE FROM plugin_settings WHERE plugin_id IN ('connect', 'github', 'usage');
+  UPDATE plugins SET enabled = 0 WHERE id IN ('connect', 'github', 'usage');
+  DELETE FROM hosts;
+  DELETE FROM host_daemon_sessions;"
+```
+
+Copy only `bb.db` (never the whole data dir, which holds plugin secrets), use a
+fresh `BB_DATA_DIR`, bind to `127.0.0.1`, and confirm the server log shows no
+`[plugin:connect] tunnel connecting` line before measuring anything.
+
 ## Provider Corpus
 
 The provider corpus is a private set of real production threads (307 threads,
