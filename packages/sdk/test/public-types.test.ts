@@ -334,6 +334,7 @@ type ExpectedSystemKey =
   | "attention"
   | "cliSkillsStatus"
   | "config"
+  | "environmentTargets"
   | "executionOptions"
   | "installCliSkills"
   | "reloadConfig"

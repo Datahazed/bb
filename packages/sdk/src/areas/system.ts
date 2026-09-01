@@ -8,6 +8,7 @@ import type {
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
+  SystemEnvironmentTargetsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemCliSkillsStatusResponse,
@@ -70,11 +71,22 @@ export interface SystemProviderStatesArgs extends SystemProvidersQuery {
   signal?: AbortSignal;
 }
 export type SystemProviderStatesResult = SystemProviderStatesResponse;
+export interface SystemEnvironmentTargetsArgs {
+  signal?: AbortSignal;
+}
+export type SystemEnvironmentTargetsResult = SystemEnvironmentTargetsResponse;
 export type SystemVersionResult = SystemVersionResponse;
 
 export interface SystemArea {
   attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
   config(args?: SystemConfigArgs): Promise<SystemConfigResult>;
+  /**
+   * The registered environment targets — plugin-provisioned places a thread
+   * can run, offered by the New Thread picker and `bb thread spawn --target`.
+   */
+  environmentTargets(
+    args?: SystemEnvironmentTargetsArgs,
+  ): Promise<SystemEnvironmentTargetsResult>;
   executionOptions(
     args?: SystemExecutionOptionsArgs,
   ): Promise<SystemExecutionOptionsResult>;
@@ -122,6 +134,14 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async config(input) {
       return transport.readJson(
         transport.api.v1.system.config.$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async environmentTargets(input) {
+      return transport.readJson(
+        transport.api.v1.system["environment-targets"].$get(
           {},
           ...signalRequestArgs(input?.signal),
         ),

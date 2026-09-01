@@ -3,8 +3,13 @@ import {
   PERSONAL_PROJECT_ID,
   threadVisibilitySchema,
   type Thread,
+  type JsonValue,
 } from "@bb/domain";
-import type { BaseBranchSpec, EnvironmentArgs } from "@bb/server-contract";
+import type {
+  BaseBranchSpec,
+  CreateThreadEnvironmentArgs,
+  EnvironmentArgs,
+} from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -40,6 +45,8 @@ interface ThreadSpawnCommandOptions {
   project?: string;
   environment?: string;
   newEnvironment?: string;
+  target?: string;
+  targetConfig?: string;
   baseBranch?: string;
   parentThread?: string;
   provider?: string;
@@ -163,6 +170,72 @@ export function buildSpawnEnvironment(args: {
   };
 }
 
+async function buildTargetSpawnEnvironment(args: {
+  serverUrl: string;
+  target: string;
+  targetConfig: string | undefined;
+  environmentValue: string | undefined;
+  newEnvironmentKind: string | undefined;
+  machineHostId: string | null;
+}): Promise<CreateThreadEnvironmentArgs> {
+  if (args.environmentValue || args.newEnvironmentKind) {
+    throw new Error(
+      "Cannot combine --target with --environment or --new-environment.",
+    );
+  }
+  const requested = args.target.trim();
+  const { targets } = await createCliBbSdk(
+    args.serverUrl,
+  ).system.environmentTargets();
+  const matches = targets.filter((target) =>
+    requested.includes("/")
+      ? `${target.pluginId}/${target.targetId}` === requested
+      : target.targetId === requested,
+  );
+  const match = matches[0];
+  if (match === undefined) {
+    const available = targets
+      .map((target) => `${target.pluginId}/${target.targetId}`)
+      .join(", ");
+    throw new Error(
+      `Unknown environment target '${requested}'.${available ? ` Available: ${available}.` : " No plugin registers one."}`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `Ambiguous target '${requested}': ${matches
+        .map((target) => `${target.pluginId}/${target.targetId}`)
+        .join(", ")}. Use the <pluginId>/<targetId> form.`,
+    );
+  }
+  let configuration: JsonValue;
+  if (args.targetConfig === undefined) {
+    configuration = match.defaultConfiguration;
+  } else {
+    try {
+      configuration = JSON.parse(args.targetConfig) as JsonValue;
+    } catch {
+      throw new Error("--target-config must be valid JSON.");
+    }
+  }
+  if (
+    match.hostScoped &&
+    args.machineHostId !== null &&
+    typeof configuration === "object" &&
+    configuration !== null &&
+    !Array.isArray(configuration) &&
+    configuration.hostId === undefined
+  ) {
+    configuration = { ...configuration, hostId: args.machineHostId };
+  }
+  return {
+    type: "plugin-target",
+    pluginId: match.pluginId,
+    targetId: match.targetId,
+    configuration,
+  };
+}
+
 export function registerSpawnCommand(
   parent: Command,
   getUrl: () => string,
@@ -224,6 +297,14 @@ export function registerSpawnCommand(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
+    .option(
+      "--target <target>",
+      "Run on a plugin environment target: <pluginId>/<targetId>, or the bare target id when unambiguous (list them with `bb curl /system/environment-targets`)",
+    )
+    .option(
+      "--target-config <json>",
+      "JSON configuration for --target; omitted uses the target's declared default",
+    )
     .option("--send-at <when>", SEND_AT_HELP)
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
@@ -256,9 +337,10 @@ export function registerSpawnCommand(
           !environmentValue &&
           !opts.newEnvironment;
         const needsHostId =
-          Boolean(opts.newEnvironment) ||
-          (!defaultPersonalWorkspace &&
-            (!environmentValue || looksLikePath(environmentValue)));
+          !opts.target &&
+          (Boolean(opts.newEnvironment) ||
+            (!defaultPersonalWorkspace &&
+              (!environmentValue || looksLikePath(environmentValue))));
         const hostId = machineTarget
           ? await resolveMachineHostId({
               serverUrl: getUrl(),
@@ -267,13 +349,22 @@ export function registerSpawnCommand(
           : needsHostId
             ? await resolveLocalHostId()
             : null;
-        const environment = buildSpawnEnvironment({
-          defaultPersonalWorkspace,
-          environmentValue,
-          newEnvironmentKind: opts.newEnvironment,
-          hostId,
-          baseBranch: opts.baseBranch,
-        });
+        const environment = opts.target
+          ? await buildTargetSpawnEnvironment({
+              serverUrl: getUrl(),
+              target: opts.target,
+              targetConfig: opts.targetConfig,
+              environmentValue,
+              newEnvironmentKind: opts.newEnvironment,
+              machineHostId: machineTarget === null ? null : hostId,
+            })
+          : buildSpawnEnvironment({
+              defaultPersonalWorkspace,
+              environmentValue,
+              newEnvironmentKind: opts.newEnvironment,
+              hostId,
+              baseBranch: opts.baseBranch,
+            });
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const permissionMode = parsePermissionMode(opts.permissionMode);
