@@ -240,8 +240,23 @@ and the narrative is red-before/green-after:
      **fails on main** for the seam cases — the red-before evidence.
    - Turn-details walk: every completed turn hydrates completely via pages;
      disjoint ranges stay disjoint.
-2. **Independent projection fixes** from #2504
-   (`restoreLateSystemRowSourceOrder`, grouping revert) with their tests.
+2. **Independent projection fixes** from #2504 — resolved during
+   implementation: neither is needed on main. The grouping revert only undid
+   #2464's unmerged policy (main already has `applySingleSummaryTurnBounds`),
+   and `restoreLateSystemRowSourceOrder` addressed segment *assignment* under
+   the old segmentation — the unwindowed projection's row order is already
+   correct on the failing prod threads (verified against `thr_7vjjsfxsns`),
+   and row-slice pagination is lossless regardless of where late system rows
+   sit. The recombination gate will surface any ordering issue if this
+   conclusion is wrong.
+
+   First red run of the oracle (main code, 2026-08-31 corpus): **21/1,132
+   threads fail recombination** (2 at production limits; up to 20 per cell at
+   reduced limits), 54 threads cannot produce an unpaginated reference at
+   all. Failure classes: whole oldest segments unreachable (late `error`/`op`
+   rows dragging the segment out of every page, e.g. `thr_7vjjsfxsns` losing
+   its seq-1 user message), `provider-unhandled` op rows vanishing wholesale,
+   duplicated user rows at seams. Full matrix runtime: ~3 minutes.
 3. **Canonical build + row-slice summary pagination** behind the existing
    route; anchor marking in the projection; delete the window machinery,
    `ensure*` family, context-only channels, and the SQL anchor predicate.
