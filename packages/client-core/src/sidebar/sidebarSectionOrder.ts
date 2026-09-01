@@ -71,6 +71,11 @@ export function normalizeSidebarSectionOrder({
   const normalized: SidebarSectionId[] = [];
   let expandedLegacyAnchor = false;
 
+  if (hasPinnedSection) {
+    seen.add("pinned");
+    normalized.push("pinned");
+  }
+
   const append = (sectionId: SidebarSectionId) => {
     if (!available.has(sectionId) || seen.has(sectionId)) {
       return;
@@ -90,11 +95,6 @@ export function normalizeSidebarSectionOrder({
     if (isSidebarSectionId(storedId)) {
       append(storedId);
     }
-  }
-
-  if (hasPinnedSection && !seen.has("pinned")) {
-    normalized.unshift("pinned");
-    seen.add("pinned");
   }
 
   const missingEntities = entitySectionIds.filter(

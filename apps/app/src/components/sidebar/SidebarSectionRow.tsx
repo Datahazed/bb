@@ -2,7 +2,6 @@ import {
   memo,
   useCallback,
   useState,
-  type CSSProperties,
   type MouseEvent,
   type MouseEventHandler,
 } from "react";
@@ -18,16 +17,13 @@ import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
-  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
-  SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -36,9 +32,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import type { CollapsedChildActivity } from "@bb/client-core";
 import {
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-  SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_STATIC_STATE_CLASS,
-  getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { CollapsedThreadStatusGlyph } from "./ThreadRow";
@@ -50,6 +44,14 @@ import {
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePluginThreadRowStatusForThreads } from "@/lib/plugin-thread-row-status";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
+import {
+  SidebarRow,
+  SidebarRowActions,
+  SidebarRowContent,
+  SidebarRowDisclosureRail,
+  SidebarRowStatusRail,
+} from "./SidebarRow";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
@@ -123,16 +125,11 @@ function SidebarSectionRowComponent({
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     stickyLevel === undefined && "relative",
-    SIDEBAR_ROW_BASE_CLASS,
     LIST_HOVER_TRANSITION,
     SIDEBAR_ROW_STATIC_STATE_CLASS,
-    COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
     dragBindings && !dragBindings.disabled && "select-none",
     isDropTargetActive && "bg-sidebar-accent text-sidebar-accent-foreground",
   );
-  const style: CSSProperties = {
-    paddingLeft: getSidebarThreadRowPaddingLeft(depth),
-  };
   const handleClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
     (event) => {
       if (!consumeClickSuppression?.()) {
@@ -145,7 +142,6 @@ function SidebarSectionRowComponent({
   );
   const content = (
     <>
-      {}
       <button
         type="button"
         aria-hidden="true"
@@ -153,32 +149,27 @@ function SidebarSectionRowComponent({
         onClick={onToggleCollapsed}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      <span className="relative z-10 flex min-w-0 flex-1 items-center text-left">
-        <span className="min-w-0 truncate">{name}</span>
-      </span>
-      <span
-        data-sidebar-collapsible-trailing-controls=""
-        className={cn(
-          SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
-          "relative z-10 shrink-0",
-          hasActions
-            ? "inline-flex items-center"
-            : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-        )}
+      <SidebarRowStatusRail
+        data-sidebar-group-status-slot=""
+        className="relative z-10"
       >
-        {showRollupIndicator ? (
-          <span
-            data-sidebar-collapsed-activity-edge=""
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-            className={cn(
-              "pointer-events-none absolute inset-0 inline-flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
-              hasActions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-            )}
-          >
-            {renderRollupIndicator()}
-          </span>
-        ) : null}
-        {hasActions ? (
+        <SidebarItemStatusSlot
+          status={showRollupIndicator ? "collapsed-rollup" : "none"}
+        >
+          {showRollupIndicator ? renderRollupIndicator() : null}
+        </SidebarItemStatusSlot>
+      </SidebarRowStatusRail>
+      <SidebarRowContent className="relative z-10 flex items-center text-left">
+        <span className="min-w-0 truncate">{name}</span>
+      </SidebarRowContent>
+      {hasActions ? (
+        <SidebarRowActions
+          data-sidebar-collapsible-trailing-controls=""
+          className={cn(
+            SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
+            "relative z-10 inline-flex shrink-0 items-center",
+          )}
+        >
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             data-sidebar-hover-actions-mobile={
@@ -191,12 +182,6 @@ function SidebarSectionRowComponent({
             )}
             onClick={stopActionsClick}
           >
-            <span
-              data-sidebar-mobile-status-slot=""
-              className="hidden h-full w-5 shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex"
-            >
-              {showRollupIndicator ? renderRollupIndicator() : null}
-            </span>
             {onCreateThread ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -268,34 +253,54 @@ function SidebarSectionRowComponent({
               </DropdownMenu>
             ) : null}
           </span>
-        ) : showRollupIndicator ? (
-          <span className="hidden size-full items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-            {renderRollupIndicator()}
-          </span>
-        ) : null}
-      </span>
-      <span
-        data-sidebar-collapse-caret-slot=""
-        className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
-      >
+        </SidebarRowActions>
+      ) : null}
+      <SidebarRowDisclosureRail data-sidebar-collapse-caret-slot="">
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${label} section`}
           collapseLabel={`Collapse ${label} section`}
           onToggle={onToggleCollapsed}
         />
-      </span>
+      </SidebarRowDisclosureRail>
     </>
   );
 
   if (stickyLevel !== undefined) {
     return (
-      <SidebarStickyTier
+      <SidebarRow
+        asChild
+        depth={depth}
+        density="compact"
+        variant="groupLabel"
+      >
+        <SidebarStickyTier
+          ref={dragBindings?.setActivatorNodeRef}
+          tier="parent"
+          level={stickyLevel}
+          className={className}
+          {...dragBindings?.attributes}
+          {...(dragBindings?.listeners ?? {})}
+          onClickCapture={
+            consumeClickSuppression ? handleClickCapture : undefined
+          }
+        >
+          {content}
+        </SidebarStickyTier>
+      </SidebarRow>
+    );
+  }
+
+  return (
+    <SidebarRow
+      asChild
+      depth={depth}
+      density="compact"
+      variant="groupLabel"
+    >
+      <div
         ref={dragBindings?.setActivatorNodeRef}
-        tier="parent"
-        level={stickyLevel}
         className={className}
-        style={style}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
         onClickCapture={
@@ -303,21 +308,8 @@ function SidebarSectionRowComponent({
         }
       >
         {content}
-      </SidebarStickyTier>
-    );
-  }
-
-  return (
-    <div
-      ref={dragBindings?.setActivatorNodeRef}
-      className={className}
-      style={style}
-      {...dragBindings?.attributes}
-      {...(dragBindings?.listeners ?? {})}
-      onClickCapture={consumeClickSuppression ? handleClickCapture : undefined}
-    >
-      {content}
-    </div>
+      </div>
+    </SidebarRow>
   );
 }
 

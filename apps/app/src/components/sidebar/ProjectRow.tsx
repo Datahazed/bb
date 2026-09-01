@@ -51,16 +51,12 @@ import {
   type EnvironmentRenameDialogTarget,
 } from "@/components/dialogs/EnvironmentRenameDialog";
 import {
-  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
-  SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -111,9 +107,8 @@ import {
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-  SIDEBAR_ROW_BASE_CLASS,
-  getSidebarThreadGroupLineLeft,
-  getSidebarThreadRowPaddingLeft,
+  SIDEBAR_TERTIARY_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_TERTIARY_ROW_ACTION_SIZE_CLASS,
 } from "./sidebarRowClasses";
 import {
   SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION,
@@ -124,6 +119,7 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import type { NeighborReorderRequest } from "@bb/client-core";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 import {
   collectSectionThreadDndLookup,
   PINNED_THREAD_PARENT_KEY,
@@ -138,6 +134,14 @@ import {
   type BuiltInSidebarSectionOptionsById,
 } from "./BuiltInSidebarSection";
 import { SectionThreadDndProvider } from "./SectionThreadDndContext";
+import {
+  SidebarRow,
+  SidebarRowActions,
+  SidebarRowContent,
+  SidebarRowDisclosureRail,
+  SidebarRowIdentityRail,
+  SidebarRowStatusRail,
+} from "./SidebarRow";
 
 const SIDEBAR_STICKY_PARENT_DEPTH_CAP = 4;
 
@@ -236,6 +240,7 @@ interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps
     content: ReactNode,
     consumeClickSuppression?: ConsumeDragClickSuppression,
   ) => ReactNode;
+  threadListLead?: ReactNode;
 }
 
 type ProjectThreadTreeVariant = "project" | "section";
@@ -578,8 +583,12 @@ function getThreadNodeStickyLevel({
 function ThreadTreeGroupLine({ parentRowDepth }: ThreadTreeGroupLineProps) {
   return (
     <span
-      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline opacity-70"
-      style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
+      className="pointer-events-none absolute bottom-0 top-0 left-[calc(var(--sidebar-row-inline-padding)+var(--sidebar-row-line-depth)*var(--sidebar-row-depth-step)+0.5rem)] z-30 w-px bg-border-hairline opacity-70"
+      style={
+        {
+          "--sidebar-row-line-depth": parentRowDepth,
+        } as CSSProperties
+      }
       aria-hidden="true"
     />
   );
@@ -590,8 +599,12 @@ function ThreadTreeLineContinuation({
 }: ThreadTreeLineContinuationProps) {
   return (
     <span
-      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline opacity-70"
-      style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
+      className="pointer-events-none absolute -bottom-0.5 top-0 left-[calc(var(--sidebar-row-inline-padding)+var(--sidebar-row-line-depth)*var(--sidebar-row-depth-step)+0.5rem)] z-[1] w-px bg-border-hairline opacity-70"
+      style={
+        {
+          "--sidebar-row-line-depth": parentRowDepth,
+        } as CSSProperties
+      }
       aria-hidden="true"
     />
   );
@@ -924,22 +937,26 @@ function EnvironmentThreadGroupHeader({
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     stickyLevel === undefined && "relative",
-    SIDEBAR_ROW_BASE_CLASS,
-    COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   );
-  const style = {
-    paddingLeft: getSidebarThreadRowPaddingLeft(rowDepth),
-  };
   const content = (
     <>
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      <span
-        className={cn(
-          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground/75",
-          COARSE_POINTER_GLYPH_BOX_CLASS,
-        )}
+      <SidebarRowStatusRail
+        data-sidebar-group-status-slot=""
+        className="relative z-10"
+      >
+        <SidebarItemStatusSlot
+          status={showRollupGlyph ? "collapsed-rollup" : "none"}
+        >
+          {showRollupGlyph ? (
+            <CollapsedThreadStatusGlyph activity={childActivity} />
+          ) : null}
+        </SidebarItemStatusSlot>
+      </SidebarRowStatusRail>
+      <SidebarRowIdentityRail
+        className="pointer-events-none relative z-10 text-subtle-foreground/75"
         aria-hidden="true"
       >
         <Icon
@@ -947,13 +964,13 @@ function EnvironmentThreadGroupHeader({
           className={COARSE_POINTER_ICON_SIZE_CLASS}
           aria-hidden="true"
         />
-      </span>
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center text-left text-subtle-foreground/80">
+      </SidebarRowIdentityRail>
+      <SidebarRowContent className="pointer-events-none relative z-10 flex items-center text-left text-subtle-foreground/80">
         <span className="min-w-0 truncate">
           <span>{displayName}</span>
         </span>
-      </span>
-      <span
+      </SidebarRowContent>
+      <SidebarRowActions
         data-sidebar-collapsible-trailing-controls=""
         className={cn(
           SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
@@ -961,42 +978,27 @@ function EnvironmentThreadGroupHeader({
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
-        {showRollupGlyph ? (
-          <span
-            data-sidebar-mobile-status=""
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-            className={cn(
-              SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:!opacity-100",
-            )}
-          >
-            <CollapsedThreadStatusGlyph activity={childActivity} />
-          </span>
-        ) : null}
-      </span>
-      <div
-        data-sidebar-mobile-row-actions=""
-        data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-        data-sidebar-hover-actions-mobile={
-          SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-        }
-        className={cn(
-          SIDEBAR_HOVER_ACTIONS_CLASS,
-          "absolute inset-y-0 right-6 z-10 flex items-center justify-end max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto",
-        )}
-      >
-        <EnvironmentThreadGroupHeaderActions
-          archiveThreadsPending={archiveThreadsPending}
-          onArchiveThreads={onArchiveThreads}
-          onCreateNewThread={onCreateNewThread}
-          onRenameEnvironment={onRenameEnvironment}
-          onOpenChange={setIsActionsOpen}
-        />
-      </div>
-      <span
-        data-sidebar-collapse-caret-slot=""
-        className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
-      >
+        <div
+          data-sidebar-mobile-row-actions=""
+          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_CLASS,
+            "absolute inset-0 flex items-center justify-end max-md:pointer-coarse:relative",
+          )}
+        >
+          <EnvironmentThreadGroupHeaderActions
+            archiveThreadsPending={archiveThreadsPending}
+            onArchiveThreads={onArchiveThreads}
+            onCreateNewThread={onCreateNewThread}
+            onRenameEnvironment={onRenameEnvironment}
+            onOpenChange={setIsActionsOpen}
+          />
+        </div>
+      </SidebarRowActions>
+      <SidebarRowDisclosureRail data-sidebar-collapse-caret-slot="">
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${displayName} threads`}
@@ -1004,27 +1006,38 @@ function EnvironmentThreadGroupHeader({
           onToggle={() => onToggleCollapsed(environmentId)}
           revealOnHover
         />
-      </span>
+      </SidebarRowDisclosureRail>
     </>
   );
 
   if (stickyLevel !== undefined) {
     return (
-      <SidebarStickyTier
-        tier="parent"
-        level={stickyLevel}
-        className={className}
-        style={style}
+      <SidebarRow
+        asChild
+        depth={rowDepth}
+        density="compact"
+        variant="groupLabel"
       >
-        {content}
-      </SidebarStickyTier>
+        <SidebarStickyTier
+          tier="parent"
+          level={stickyLevel}
+          className={className}
+        >
+          {content}
+        </SidebarStickyTier>
+      </SidebarRow>
     );
   }
 
   return (
-    <div className={className} style={style}>
-      {content}
-    </div>
+    <SidebarRow
+      asChild
+      depth={rowDepth}
+      density="compact"
+      variant="groupLabel"
+    >
+      <div className={className}>{content}</div>
+    </SidebarRow>
   );
 }
 
@@ -1119,7 +1132,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
         />
         {!isCollapsed ? (
           <div className="relative space-y-px">
-            <ThreadTreeGroupLine parentRowDepth={rowDepth} />
             <SidebarWindowedItems
               itemKeys={itemKeys}
               estimateRows={estimateRows}
@@ -1257,44 +1269,36 @@ export function DropPreviewRow({
   visible?: boolean;
 }) {
   return (
-    <div
-      aria-hidden="true"
-      data-sidebar-section-drop-preview="true"
-      data-visible={visible ? "true" : "false"}
-      style={{
-        paddingLeft: getSidebarThreadRowPaddingLeft(depth),
-        marginTop: visible ? undefined : 0,
-      }}
-      className={cn(
-        SIDEBAR_ROW_BASE_CLASS,
-        "pointer-events-none overflow-hidden transition-[height,margin,opacity,border-width] duration-150 ease-out",
-        visible
-          ? cn(
-              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-              "border border-dashed border-sidebar-border bg-sidebar-accent/40 opacity-100",
-            )
-          : "h-0 border-0 opacity-0 max-md:pointer-coarse:h-0",
-      )}
-    />
+    <SidebarRow asChild depth={depth} density="compact" variant="item">
+      <div
+        aria-hidden="true"
+        data-sidebar-section-drop-preview="true"
+        data-visible={visible ? "true" : "false"}
+        style={{ marginTop: visible ? undefined : 0 }}
+        className={cn(
+          "pointer-events-none overflow-hidden transition-[height,margin,opacity,border-width] duration-150 ease-out",
+          visible
+            ? "border border-dashed border-sidebar-border bg-sidebar-accent/40 opacity-100"
+            : "h-0 border-0 opacity-0 max-md:pointer-coarse:h-0",
+        )}
+      />
+    </SidebarRow>
   );
 }
 
 function SectionThreadDragOverlay({ thread }: { thread: ThreadListEntry }) {
   return (
-    <div
-      aria-hidden="true"
-      data-sidebar-section-drag-overlay="true"
-      style={{ paddingLeft: getSidebarThreadRowPaddingLeft(0) }}
-      className={cn(
-        SIDEBAR_ROW_BASE_CLASS,
-        COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-        "pointer-events-none bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border",
-      )}
-    >
-      <span className="min-w-0 flex-1 truncate">
-        {getThreadDisplayTitle(thread)}
-      </span>
-    </div>
+    <SidebarRow asChild density="compact" variant="item">
+      <div
+        aria-hidden="true"
+        data-sidebar-section-drag-overlay="true"
+        className="pointer-events-none bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
+      >
+        <SidebarRowContent className="truncate">
+          {getThreadDisplayTitle(thread)}
+        </SidebarRowContent>
+      </div>
+    </SidebarRow>
   );
 }
 
@@ -1431,7 +1435,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
             onClick={() => onCreateThreadInSection(section.id)}
             className={cn(
               "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              SIDEBAR_TERTIARY_ROW_ACTION_SIZE_CLASS,
             )}
           >
             <Icon
@@ -1451,6 +1455,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
                 className={cn(
                   "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                  SIDEBAR_TERTIARY_MORE_ACTION_TRIGGER_CLASS,
                 )}
               >
                 <Icon
@@ -1512,6 +1517,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     return (
       <TopLevelSidebarSection
         label={section.name}
+        rowVariant="item"
         sectionId={section.id}
         actions={topLevelActions}
         actionsAlwaysVisible
@@ -1952,6 +1958,7 @@ export const ChronologicalSectionThreadSections = memo(
     onReorderPinnedThread,
     renderPinnedSection,
     renderThreadsSection,
+    threadListLead,
   }: ChronologicalSectionThreadSectionsProps) {
     const threads =
       threadListState.status === "ready"
@@ -2167,7 +2174,10 @@ export const ChronologicalSectionThreadSections = memo(
       threads: renderThreadsSection?.(threadsContent, consumeClickSuppression),
     };
     const orderedSections = (
-      <SidebarSectionOrderList order={topLevelSectionOrder}>
+      <SidebarSectionOrderList
+        order={topLevelSectionOrder}
+        pinnedTrailingContent={threadListLead}
+      >
         {(sectionId) => {
           const builtInSection =
             builtInSections && configuredBuiltInSections
@@ -2322,7 +2332,7 @@ function ProjectRowComponent({
             }}
             className={cn(
               "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:hidden",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              SIDEBAR_TERTIARY_ROW_ACTION_SIZE_CLASS,
             )}
           >
             <Icon
@@ -2339,6 +2349,7 @@ function ProjectRowComponent({
             triggerClassName={cn(
               "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
               SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+              SIDEBAR_TERTIARY_MORE_ACTION_TRIGGER_CLASS,
             )}
           />
         </span>
@@ -2361,6 +2372,7 @@ function ProjectRowComponent({
         <TopLevelSidebarSection
           label={project.name}
           leadingIcon="Folder"
+          rowVariant="groupLabel"
           actions={projectActions}
           actionsAlwaysVisible
           actionsMobileAlways

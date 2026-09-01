@@ -357,7 +357,7 @@ describe("ThreadRow", () => {
       const splitMap = screen.getByRole("img", { name: /open in split/ });
       expect(Array.from(splitMap.classList)).toContain("animate-shine-icon");
       expect(
-        splitMap.closest("[data-sidebar-thread-trailing-indicator]"),
+        splitMap.closest("[data-sidebar-item-status-slot]"),
       ).not.toBeNull();
       expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
     },
@@ -423,13 +423,13 @@ describe("ThreadRow", () => {
     },
   );
 
-  it("puts the draft icon in the trailing status slot", () => {
+  it("puts the draft icon in the fixed status rail", () => {
     const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
     expect(
-      draftIcon?.closest("[data-sidebar-thread-trailing-indicator]"),
+      draftIcon?.closest('[data-sidebar-row-slot="status"]'),
     ).not.toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
@@ -554,7 +554,7 @@ describe("ThreadRow", () => {
     expect(Array.from(runningIcon.classList)).toContain("animate-spin");
     expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
     expect(
-      container.querySelector("[data-sidebar-thread-trailing-indicator]"),
+      container.querySelector('[data-sidebar-item-status="runtime"]'),
     ).not.toBeNull();
   });
 
@@ -777,7 +777,7 @@ describe("ThreadRow", () => {
     expect(marker?.classList.contains("text-muted-foreground/75")).toBe(true);
     expect(marker?.classList.contains("text-muted-foreground")).toBe(false);
     expect(
-      marker?.closest("[data-sidebar-thread-trailing-indicator]"),
+      marker?.closest('[data-sidebar-row-slot="status"]'),
     ).toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Thread" }).getAttribute("href"),
@@ -976,27 +976,20 @@ describe("ThreadRow", () => {
     ).toBe(true);
     const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
     const row = caretSlot?.parentElement;
-    const trailingControls = row?.querySelector(
-      "[data-sidebar-thread-trailing-controls]",
-    );
-    const statusSlot = trailingControls?.querySelector(
-      "[data-sidebar-thread-status-slot]",
-    );
-    const mobileActions = trailingControls?.querySelector(
+    const statusSlot = row?.querySelector('[data-sidebar-row-slot="status"]');
+    const mobileActions = row?.querySelector(
       "[data-sidebar-mobile-row-actions]",
     );
     const titleRegion = screen
       .getByTitle("Parent thread")
-      .closest(".bb-sidebar-collapsible-hover-actions-inset");
+      .closest('[data-sidebar-row-slot="content"]');
 
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(caretSlot?.getAttribute("data-sidebar-row-slot")).toBe(
+      "disclosure",
+    );
     expect(row?.lastElementChild).toBe(caretSlot);
-    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
     expect(
-      statusSlot?.classList.contains("bb-sidebar-collapsible-status-slot"),
-    ).toBe(true);
-    expect(
-      statusSlot!.compareDocumentPosition(mobileActions!) &
+      statusSlot!.compareDocumentPosition(caretSlot!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
@@ -1006,14 +999,14 @@ describe("ThreadRow", () => {
       mobileActions?.querySelector('[aria-label="Thread actions"]'),
     ).not.toBeNull();
     expect(
-      mobileActions
-        ?.querySelector('[aria-label="Archive thread"]')
+      statusSlot
+        ?.querySelector("[data-sidebar-item-status-hover-action]")
         ?.classList.contains("max-md:pointer-coarse:hidden"),
     ).toBe(true);
     expect(titleRegion).not.toBeNull();
-    expect(
-      titleRegion?.classList.contains("bb-sidebar-hover-actions-inset"),
-    ).toBe(false);
+    expect(titleRegion?.getAttribute("data-sidebar-row-slot")).toBe(
+      "content",
+    );
   });
 
   it("shows its desktop Command shortcut while preserving the mobile active indicator", () => {

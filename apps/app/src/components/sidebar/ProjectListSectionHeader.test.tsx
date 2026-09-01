@@ -85,7 +85,6 @@ describe("SidebarThreadListToolbar", () => {
       <Provider>
         <TooltipProvider>
           <SidebarThreadListToolbar
-            label="Projects"
             isCreatingSection={false}
             isCreatingProject={false}
             onNewProject={onNewProject}
@@ -101,6 +100,7 @@ describe("SidebarThreadListToolbar", () => {
     expect(
       screen.queryByRole("button", { name: "More thread actions" }),
     ).toBeNull();
+    expect(screen.queryByText("Projects")).toBeNull();
   });
 });
 
@@ -172,8 +172,8 @@ describe("TopLevelSidebarSection", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
-    const mobileStatusSlot = trailingControls?.querySelector(
-      "[data-sidebar-mobile-status-slot]",
+    const statusSlot = row?.querySelector(
+      '[data-sidebar-row-slot="status"]',
     );
     const action = screen.getByRole("button", { name: "Section action" });
 
@@ -189,12 +189,14 @@ describe("TopLevelSidebarSection", () => {
     expect(
       disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
     ).toBe(true);
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(caretSlot?.getAttribute("data-sidebar-row-slot")).toBe(
+      "disclosure",
+    );
     expect(row?.lastElementChild).toBe(caretSlot);
     expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(mobileStatusSlot).not.toBeNull();
+    expect(statusSlot).not.toBeNull();
     expect(
-      mobileStatusSlot!.compareDocumentPosition(action) &
+      statusSlot!.compareDocumentPosition(action) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
   });

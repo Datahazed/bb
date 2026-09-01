@@ -11,25 +11,18 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   SidebarStickyGroup,
   SidebarStickyTier,
 } from "@/components/ui/sidebar.js";
 import {
   SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
-  SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
-import {
-  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
-  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-} from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -42,6 +35,16 @@ import {
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePluginThreadRowStatusForThreads } from "@/lib/plugin-thread-row-status";
+import { SidebarItemStatusSlot } from "./SidebarItemStatus";
+import {
+  SidebarRow,
+  SidebarRowActions,
+  SidebarRowContent,
+  SidebarRowDisclosureRail,
+  SidebarRowIdentityRail,
+  SidebarRowStatusRail,
+  type SidebarRowVariant,
+} from "./SidebarRow";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
@@ -71,6 +74,7 @@ export interface TopLevelSidebarSectionProps {
   sectionStyle?: CSSProperties;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   isDropTargetActive?: boolean;
+  rowVariant?: SidebarRowVariant;
 }
 
 export function TopLevelSidebarSection({
@@ -90,6 +94,7 @@ export function TopLevelSidebarSection({
   sectionStyle,
   consumeClickSuppression,
   isDropTargetActive = false,
+  rowVariant = "groupLabel",
 }: TopLevelSidebarSectionProps) {
   const collapsedSplitIndicator = useThreadGroupSplitIndicator(
     collapsedThreads,
@@ -158,136 +163,108 @@ export function TopLevelSidebarSection({
       )}
       onClickCapture={handleClickCapture}
     >
-      <SidebarStickyTier
-        ref={dragBindings?.setActivatorNodeRef}
-        tier="label"
-        className={cn(
-          SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-          CHROME_SECTION_LABEL_CLASS,
-          SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-          "rounded-md pr-0 font-medium transition-colors",
-          dragBindings && !dragBindings.disabled && "select-none",
-        )}
-        {...dragBindings?.attributes}
-        {...(dragBindings?.listeners ?? {})}
-      >
-        <span className="relative z-10 flex min-w-0 flex-1 items-center gap-2 text-left">
+      <SidebarRow asChild density="label" variant={rowVariant}>
+        <SidebarStickyTier
+          ref={dragBindings?.setActivatorNodeRef}
+          tier="label"
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+            "rounded-md pr-0 transition-colors",
+            dragBindings && !dragBindings.disabled && "select-none",
+          )}
+          {...dragBindings?.attributes}
+          {...(dragBindings?.listeners ?? {})}
+        >
           {leadingIcon ? (
-            <span
-              className={cn(
-                SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
-                "text-subtle-foreground",
-              )}
-            >
+            <SidebarRowIdentityRail className="relative z-10 text-subtle-foreground">
               <Icon
                 name={leadingIcon}
                 className={COARSE_POINTER_ICON_SIZE_CLASS}
                 aria-hidden="true"
               />
-            </span>
+            </SidebarRowIdentityRail>
           ) : null}
-          <span className="min-w-0 truncate" title={label}>
-            {label}
-          </span>
-        </span>
-        {actions || showCollapsedIndicator ? (
-          <span
-            data-sidebar-collapsible-trailing-controls=""
-            className={cn(
-              SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
-              "relative z-20 h-6",
-              !actions && "w-7",
-            )}
-            onClick={stopActionsClick}
+          <SidebarRowContent className="relative z-10 flex items-center text-left">
+            <span className="min-w-0 truncate" title={label}>
+              {label}
+            </span>
+          </SidebarRowContent>
+          <SidebarRowStatusRail
+            data-sidebar-group-status-slot=""
+            className="relative z-20 inline-flex shrink-0 items-center"
           >
-            {showCollapsedIndicator ? (
+            {collapseControl ? (
+              <SidebarItemStatusSlot
+                status={showCollapsedIndicator ? "collapsed-rollup" : "none"}
+              >
+                {showCollapsedIndicator ? renderCollapsedIndicator() : null}
+              </SidebarItemStatusSlot>
+            ) : null}
+          </SidebarRowStatusRail>
+          {actions ? (
+            <SidebarRowActions
+              data-sidebar-collapsible-trailing-controls=""
+              className={cn(
+                SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
+                "relative z-20 h-6",
+              )}
+              onClick={stopActionsClick}
+            >
               <span
-                data-sidebar-collapsed-activity-edge=""
                 data-sidebar-hover-actions-open={
                   actionsOpen ? "true" : undefined
                 }
+                data-sidebar-hover-actions-mobile={
+                  actionsMobileAlways
+                    ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                    : undefined
+                }
                 className={cn(
-                  "pointer-events-none absolute inset-0 z-20 inline-flex items-center justify-end text-subtle-foreground",
-                  actions
-                    ? "max-md:pointer-coarse:hidden"
-                    : "max-md:pointer-coarse:relative max-md:pointer-coarse:inset-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:justify-center",
-                  actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+                  "inline-flex shrink-0 items-center",
+                  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+                  !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
                 )}
               >
-                {renderCollapsedIndicator()}
+                {actions}
               </span>
-            ) : null}
-            {actions ? (
-              <>
-                {collapseControl ? (
-                  <span
-                    data-sidebar-mobile-status-slot=""
-                    className="hidden h-full w-5 shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex"
-                  >
-                    {showCollapsedIndicator
-                      ? renderCollapsedIndicator()
-                      : null}
-                  </span>
-                ) : null}
-                <span
-                  data-sidebar-hover-actions-open={
-                    actionsOpen ? "true" : undefined
-                  }
-                  data-sidebar-hover-actions-mobile={
-                    actionsMobileAlways
-                      ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-                      : undefined
-                  }
-                  className={cn(
-                    "inline-flex shrink-0 items-center",
-                    SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-                    !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
-                  )}
-                >
-                  {actions}
-                </span>
-              </>
-            ) : null}
-          </span>
-        ) : null}
-        {collapseControl ? (
-          <span
-            data-sidebar-collapse-caret-slot=""
-            className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
-          >
-            <button
-              type="button"
-              data-sidebar-collapse-caret=""
-              aria-expanded={!collapseControl.isCollapsed}
-              data-sidebar-hover-actions-mobile={
-                SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-              }
-              aria-label={
-                collapseControl.isCollapsed
-                  ? `Expand ${label} section`
-                  : `Collapse ${label} section`
-              }
-              className={cn(
-                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground/75 outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
-                LIST_HOVER_TRANSITION,
-              )}
-              onClick={handleCollapseControlClick}
-              onPointerDown={stopCollapseControlPointerDown}
-              onKeyDown={stopCollapseControlKeyDown}
-            >
-              <Icon
-                name="ChevronRight"
+            </SidebarRowActions>
+          ) : null}
+          {collapseControl ? (
+            <SidebarRowDisclosureRail data-sidebar-collapse-caret-slot="">
+              <button
+                type="button"
+                data-sidebar-collapse-caret=""
+                aria-expanded={!collapseControl.isCollapsed}
+                data-sidebar-hover-actions-mobile={
+                  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                }
+                aria-label={
+                  collapseControl.isCollapsed
+                    ? `Expand ${label} section`
+                    : `Collapse ${label} section`
+                }
                 className={cn(
-                  "size-3 transition-transform duration-150",
-                  !collapseControl.isCollapsed && "rotate-90",
+                  !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
+                  "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground/75 outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+                  LIST_HOVER_TRANSITION,
                 )}
-                aria-hidden="true"
-              />
-            </button>
-          </span>
-        ) : null}
-      </SidebarStickyTier>
+                onClick={handleCollapseControlClick}
+                onPointerDown={stopCollapseControlPointerDown}
+                onKeyDown={stopCollapseControlKeyDown}
+              >
+                <Icon
+                  name="ChevronRight"
+                  className={cn(
+                    "size-3 transition-transform duration-150",
+                    !collapseControl.isCollapsed && "rotate-90",
+                  )}
+                  aria-hidden="true"
+                />
+              </button>
+            </SidebarRowDisclosureRail>
+          ) : null}
+        </SidebarStickyTier>
+      </SidebarRow>
       {collapseControl?.isCollapsed || children == null ? null : (
         <div className="mt-1">{children}</div>
       )}

@@ -166,7 +166,7 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
   const edgeSlot = screen
     .getAllByLabelText(label)
     .map((indicator) =>
-      indicator.closest("[data-sidebar-collapsed-activity-edge]"),
+      indicator.closest('[data-sidebar-row-slot="status"]'),
     )
     .find((slot) => slot !== null);
 
@@ -197,6 +197,9 @@ describe("ProjectRow interactions", () => {
       "[data-sidebar-sticky-project-item]",
     );
     const projectIcon = projectGroup?.querySelector('[data-icon="Folder"]');
+    const projectStatusSlot = projectGroup?.querySelector(
+      "[data-sidebar-group-status-slot]",
+    );
     const newThread = screen.getByRole("button", {
       name: "New thread in Test project",
     });
@@ -209,15 +212,23 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
-      (threadLink?.parentElement as HTMLElement | null)?.style.paddingLeft,
-    ).toBe("8px");
+      threadLink?.parentElement?.getAttribute("data-sidebar-row-depth"),
+    ).toBe("0");
     expect(projectGroup?.getAttribute("data-sidebar-project-id")).toBe(
       "proj_test",
     );
     expect(projectIcon).not.toBeNull();
+    expect(projectStatusSlot).not.toBeNull();
+    expect(projectStatusSlot?.getAttribute("data-sidebar-row-slot")).toBe(
+      "status",
+    );
+    expect(
+      projectIcon?.closest('[data-sidebar-row-slot="identity"]'),
+    ).not.toBeNull();
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
     expect(
-      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
+      newThread.compareDocumentPosition(more) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
       true,
@@ -424,7 +435,8 @@ describe("ProjectRow interactions", () => {
       name: "Collapse Active work section",
     });
     expect(
-      newThread.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING,
+      newThread.compareDocumentPosition(more) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(newThread.classList.contains("max-md:pointer-coarse:hidden")).toBe(
       true,
@@ -439,9 +451,7 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
 
-    fireEvent.click(
-      disclosure,
-    );
+    fireEvent.click(disclosure);
 
     expect(
       screen
@@ -623,14 +633,15 @@ describe("ProjectRow interactions", () => {
     const trailingControls = row?.querySelector(
       "[data-sidebar-collapsible-trailing-controls]",
     );
-    const mobileActions = row?.querySelector(
+    const mobileActions = trailingControls?.querySelector(
       "[data-sidebar-mobile-row-actions]",
     );
 
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(caretSlot?.getAttribute("data-sidebar-row-slot")).toBe(
+      "disclosure",
+    );
     expect(row?.lastElementChild).toBe(caretSlot);
-    expect(trailingControls?.nextElementSibling).toBe(mobileActions);
-    expect(mobileActions?.nextElementSibling).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
     expect(
       mobileActions?.getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
