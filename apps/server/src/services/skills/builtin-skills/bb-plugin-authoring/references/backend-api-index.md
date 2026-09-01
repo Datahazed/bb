@@ -49,6 +49,12 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalOpenFixedTabOptions`
 - `ExperimentalPermissionModePickerProps`
 - `ExperimentalPluginFixedTabReference`
+- `experimental_BranchPicker` — the host's branch picker with its options
+  loading; the worktree target's configuration control
+- `ExperimentalBranchPickerProps`
+- `PluginEnvironmentTargetConfigurationProps` — props of an
+  `app.slots.experimental_environmentTargetConfiguration` component
+- `PluginEnvironmentTargetConfigurationRegistration`
 - `ExperimentalProviderModelPickerProps`
 - `ExperimentalProviderModelPickerRouting`
 - `ExperimentalProviderModelPickerValue`

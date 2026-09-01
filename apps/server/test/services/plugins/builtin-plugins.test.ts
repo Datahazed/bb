@@ -231,6 +231,7 @@ describe("builtin plugin reconciliation", () => {
       ["plugin-api-tester", "Beaker"],
       ["inline-vis", "AppWindow"],
       ["keep-awake", "Coffee"],
+      ["worktree", "GitBranch"],
       ["monaco-editor", "Code"],
       ["pdf-preview", "FileText"],
       ["provider-acp", "./icons/acp.svg"],

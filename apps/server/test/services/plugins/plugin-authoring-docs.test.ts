@@ -22,6 +22,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelProps,
   type PluginPendingInteractionProps,
+  type PluginEnvironmentTargetConfigurationProps,
   type PluginProviderIconRegistration,
   type PluginTimelineRendererProps,
   type PluginSettingDescriptor,
@@ -258,6 +259,7 @@ type SlotPropsByName = {
   commandPaletteAction: PluginCommandPaletteActionContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
+  experimental_environmentTargetConfiguration: PluginEnvironmentTargetConfigurationProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -367,6 +369,11 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "presentation",
     "thread",
     "Original",
+  ],
+  experimental_environmentTargetConfiguration: [
+    "projectId",
+    "value",
+    "onChange",
   ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];

@@ -153,6 +153,12 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: false,
     category: "Workflow management",
   },
+  {
+    name: "worktree",
+    pluginId: "worktree",
+    defaultEnabled: true,
+    category: "Host access",
+  },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
   autoInstall: true,

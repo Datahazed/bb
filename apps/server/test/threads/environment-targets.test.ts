@@ -7,6 +7,7 @@ import type { JsonValue } from "@bb/domain";
 import type {
   PluginEnvironmentProvisionContext,
   PluginEnvironmentProvisionDecision,
+  PluginHookName,
 } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
@@ -181,7 +182,7 @@ describe("plugin environment targets at the dispatch checkpoint", () => {
     await withTestHarness(async (harness) => {
       const hookEnvironments: Array<string | null> = [];
       const registry: {
-        "message.dispatch": PluginHookRegistration<"message.dispatch">[];
+        [K in PluginHookName]: PluginHookRegistration<K>[];
       } = { "message.dispatch": [] };
       registry["message.dispatch"].push({
         pluginId: "observer",

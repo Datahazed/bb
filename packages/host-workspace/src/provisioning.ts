@@ -53,6 +53,7 @@ interface CreateWorkspaceArgs {
   branchName: string;
   baseBranch: string | null;
   timeoutMs: number;
+  setupScriptName?: string;
   shellPath?: string;
   onProgress?: ProgressCallback;
   pruneEmptyParent?: boolean;
@@ -62,6 +63,7 @@ interface CreateWorkspaceArgs {
 interface RunSetupScriptArgs {
   workspacePath: string;
   timeoutMs: number;
+  scriptName?: string;
   shellPath?: string;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
@@ -70,6 +72,7 @@ interface RunSetupScriptArgs {
 interface RunTeardownScriptArgs {
   workspacePath: string;
   timeoutMs: number;
+  scriptName?: string;
   /** Resolved user-shell PATH. Falls back to the daemon process PATH. */
   shellPath?: string;
   onProgress?: ProgressCallback;
@@ -79,6 +82,7 @@ interface RemoveWorktreeArgs {
   path: string;
   /** Teardown script timeout in ms. Controlled by the server. */
   timeoutMs: number;
+  teardownScriptName?: string;
   force?: boolean;
   pruneEmptyParent?: boolean;
   shellPath?: string;
@@ -257,14 +261,14 @@ export function buildSetupScriptCommand(
   if (args.platform === "win32") {
     throw new WorkspaceError(
       "setup_script_failed",
-      `POSIX shell setup scripts are not supported on Windows: ${DEFAULT_ENV_SETUP_SCRIPT_NAME}`,
+      `POSIX shell setup scripts are not supported on Windows: ${path.basename(args.scriptPath)}`,
     );
   }
 
   return {
     command: "env",
     args: ["bash", args.scriptPath],
-    text: `env bash ${DEFAULT_ENV_SETUP_SCRIPT_NAME}`,
+    text: `env bash ${path.basename(args.scriptPath)}`,
   };
 }
 
@@ -272,14 +276,14 @@ function buildTeardownScriptCommand(args: BuildLifecycleScriptCommandArgs) {
   if (args.platform === "win32") {
     throw new WorkspaceError(
       "setup_script_failed",
-      `POSIX shell teardown scripts are not supported on Windows: ${DEFAULT_ENV_TEARDOWN_SCRIPT_NAME}`,
+      `POSIX shell teardown scripts are not supported on Windows: ${path.basename(args.scriptPath)}`,
     );
   }
 
   return {
     command: "env",
     args: ["bash", args.scriptPath],
-    text: `env bash ${DEFAULT_ENV_TEARDOWN_SCRIPT_NAME}`,
+    text: `env bash ${path.basename(args.scriptPath)}`,
   };
 }
 
@@ -589,6 +593,9 @@ export async function createWorktree(
     await runSetupScript({
       workspacePath: args.targetPath,
       timeoutMs: args.timeoutMs,
+      ...(args.setupScriptName !== undefined
+        ? { scriptName: args.setupScriptName }
+        : {}),
       shellPath: args.shellPath,
       onProgress: args.onProgress,
       signal: args.signal,
@@ -886,13 +893,14 @@ export function runSetupScript(
   return runLifecycleScript({
     ...args,
     kind: "setup",
-    scriptName: DEFAULT_ENV_SETUP_SCRIPT_NAME,
+    scriptName: args.scriptName ?? DEFAULT_ENV_SETUP_SCRIPT_NAME,
   });
 }
 
 export async function runTeardownScript(
   args: RunTeardownScriptArgs,
 ): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
+  const scriptName = args.scriptName ?? DEFAULT_ENV_TEARDOWN_SCRIPT_NAME;
   const startedAt = Date.now();
   let failureReported = false;
   const onProgress: ProgressCallback = (entry) => {
@@ -906,14 +914,14 @@ export async function runTeardownScript(
       ...args,
       onProgress,
       kind: "teardown",
-      scriptName: DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
+      scriptName,
     });
   } catch (error) {
     if (!failureReported) {
       emitStep({
         onProgress: args.onProgress,
         key: "teardown-failed",
-        text: `${DEFAULT_ENV_TEARDOWN_SCRIPT_NAME} failed`,
+        text: `${scriptName} failed`,
         status: "failed",
         startedAt,
         metadata: { durationMs: Date.now() - startedAt },
@@ -942,6 +950,9 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   await runTeardownScript({
     workspacePath,
     timeoutMs: args.timeoutMs,
+    ...(args.teardownScriptName !== undefined
+      ? { scriptName: args.teardownScriptName }
+      : {}),
     ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
     ...(args.onProgress !== undefined ? { onProgress: args.onProgress } : {}),
   });

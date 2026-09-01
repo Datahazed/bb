@@ -9,6 +9,8 @@ export type {
   ProvisionWorkspaceArgs,
 } from "./provision.js";
 
+export { createWorktree, removeWorktree } from "./provisioning.js";
+
 export type { PullRequestActionOptions } from "./workspace.js";
 export type { GitHostCliOptions } from "./git-host.js";
 export { withGitRefMutationLock } from "./git-ref-mutation-lock.js";
