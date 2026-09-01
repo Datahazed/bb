@@ -1,12 +1,11 @@
-import { getAppSettings, getThread, listStoredThreadEventExtents } from "@bb/db";
+import { getThread, listStoredThreadEventExtents } from "@bb/db";
 import type { AppDeps } from "../../types.js";
-import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
 import {
   buildThreadTimelineCooperatively,
-  THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
+  hasFreshPersistedTimelineProjection,
 } from "./timeline.js";
-import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "./timeline-output-truncation.js";
+import { resolveSummaryTimelineBuildOptions } from "./timeline-build-options.js";
 
 type WarmupDeps = Pick<
   AppDeps,
@@ -29,24 +28,12 @@ export async function warmThreadTimeline(
   if (!thread) {
     return;
   }
+  const options = resolveSummaryTimelineBuildOptions(deps, thread);
+  if (hasFreshPersistedTimelineProjection(deps.db, thread, options)) {
+    return;
+  }
   await runEventLoopWork(`timeline-warmup ${threadId}`, () =>
-    buildThreadTimelineCooperatively(deps.db, thread, {
-      appVersion: deps.config.appVersion,
-      includeProviderUnhandledOperations:
-        deps.config.isDevelopment ||
-        getAppSettings(deps.db).showUnhandledProviderEvents,
-      includeNestedRows: false,
-      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      maxSeq: 0,
-      page: { kind: "latest", segmentLimit: THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT },
-      providerDisplayName: deps.providerRegistry.get(thread.providerId)?.info
-        .displayName,
-      planCommand: resolveProviderPlanCommand(
-        deps.providerRegistry,
-        thread.providerId,
-      ),
-      summaryOnly: false,
-    }),
+    buildThreadTimelineCooperatively(deps.db, thread, options),
   );
 }
 

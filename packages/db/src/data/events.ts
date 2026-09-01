@@ -1142,6 +1142,7 @@ export interface ListStoredTimelineWindowEventRowsArgs {
   maxInlineOutputChars: InlineOutputCharLimit;
   sequenceStart: number;
   threadId: string;
+  limit?: number;
 }
 
 export type GetStoredTimelineWindowEventDataBytesArgs =
@@ -2615,6 +2616,7 @@ export function listStoredTimelineWindowEventRows(
     .from(events)
     .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)
+    .limit(args.limit ?? -1)
     .all();
 }
 

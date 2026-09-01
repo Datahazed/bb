@@ -1,7 +1,10 @@
 import path from "node:path";
 import { createTimelineRefreshThrottle } from "../../services/threads/timeline-refresh-throttle.js";
 import {
-  getAppSettings,
+  resolveIncludeProviderUnhandledOperations,
+  resolveThreadProviderDisplayName,
+} from "../../services/threads/timeline-build-options.js";
+import {
   getLatestThreadSequence,
   getLatestStoredConversationOutlineSequence,
   listQueuedThreadMessages,
@@ -86,12 +89,6 @@ import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
-function resolveThreadProviderDisplayName(
-  deps: Pick<AppDeps, "providerRegistry">,
-  providerId: string,
-): string | undefined {
-  return deps.providerRegistry.get(providerId)?.info.displayName;
-}
 
 function validateFilePath(filePath: string): void {
   if (
@@ -322,8 +319,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       thread.providerId,
     );
     const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+      resolveIncludeProviderUnhandledOperations(deps);
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,
@@ -441,8 +437,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   get(routes.timelineTurnSummaryDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+      resolveIncludeProviderUnhandledOperations(deps);
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
         includeProviderUnhandledOperations,
@@ -460,8 +455,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   get(routes.timelineTurnDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+      resolveIncludeProviderUnhandledOperations(deps);
     return context.json(
       buildTimelineTurnDetailsPage(deps.db, thread, {
         ...(query.cursor ? { cursor: query.cursor } : {}),

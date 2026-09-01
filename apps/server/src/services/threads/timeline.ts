@@ -997,6 +997,33 @@ function resolveTimelineProjectionKeys(
   };
 }
 
+/**
+ * Whether the thread's persisted projection matches the current tip and the
+ * given options, without parsing its payload. Warmup uses it to skip threads
+ * that are already ready.
+ */
+export function hasFreshPersistedTimelineProjection(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadTimelineOptions,
+): boolean {
+  const keys = resolveTimelineProjectionKeys(db, thread, options);
+  if (keys.tip === null || keys.persistedKey === null) {
+    return false;
+  }
+  if (keys.cacheKey !== null && getCachedTimelineProjection(keys.cacheKey)) {
+    return true;
+  }
+  const persisted = getThreadTimelineCheckpointRecord(db, thread.id);
+  return (
+    persisted !== null &&
+    persisted.checkpointKey === keys.persistedKey &&
+    persisted.eventId === keys.tip.id &&
+    persisted.sequence === keys.tip.sequence &&
+    persisted.eventCount === keys.tip.eventCount
+  );
+}
+
 function readCachedTimelineProjection(
   db: DbConnection,
   thread: Thread,
@@ -1261,7 +1288,8 @@ function buildThreadTimelineInternal(
   return assembleTimelineResponse(cached.timeline, options, profile);
 }
 
-const COOPERATIVE_READ_CHUNK_SEQUENCES = 4_000;
+/** Rows per cooperative read slice; bounds one synchronous SQL call + decode. */
+const COOPERATIVE_READ_CHUNK_ROWS = 250;
 
 async function yieldToEventLoop(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -1288,31 +1316,53 @@ async function buildThreadTimelineCooperativelyInternal(
   let cached = readCachedTimelineProjection(db, thread, keys);
   if (cached === undefined && keys.tip !== null) {
     const tip = keys.tip;
-    const readStart = performance.now();
-    const rawEventRows: StoredEventRow[] = [];
-    for (
-      let sequenceStart = 0;
-      sequenceStart <= tip.sequence;
-      sequenceStart += COOPERATIVE_READ_CHUNK_SEQUENCES
-    ) {
-      rawEventRows.push(
-        ...listStoredTimelineWindowEventRows(db, {
-          beforeSequence: Math.min(
-            sequenceStart + COOPERATIVE_READ_CHUNK_SEQUENCES,
-            tip.sequence + 1,
-          ),
-          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-          maxInlineOutputChars: options.maxInlineOutputChars,
-          sequenceStart,
-          threadId: thread.id,
-        }),
-      );
+    let readMs = 0;
+    let decodeMs = 0;
+    let eventDataBytes = 0;
+    let eventRowCount = 0;
+    const decodedRawEvents: ThreadEventWithMeta[] = [];
+    const contextRows: StoredEventRow[] = [];
+    let sequenceStart = 0;
+    for (;;) {
+      const readStart = performance.now();
+      const chunk = listStoredTimelineWindowEventRows(db, {
+        beforeSequence: tip.sequence + 1,
+        excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+        limit: COOPERATIVE_READ_CHUNK_ROWS,
+        maxInlineOutputChars: options.maxInlineOutputChars,
+        sequenceStart,
+        threadId: thread.id,
+      });
+      readMs += performance.now() - readStart;
+      if (chunk.length === 0) {
+        break;
+      }
+      const decodeStart = performance.now();
+      for (const row of chunk) {
+        eventDataBytes += Buffer.byteLength(row.data, "utf8");
+        decodedRawEvents.push(toThreadEventWithMeta(row));
+        if (
+          row.type === "client/turn/requested" ||
+          row.type === "turn/input/accepted" ||
+          row.type === "client/turn/rejected"
+        ) {
+          contextRows.push(row);
+        }
+      }
+      decodeMs += performance.now() - decodeStart;
+      eventRowCount += chunk.length;
+      sequenceStart = chunk[chunk.length - 1]!.sequence + 1;
       await yieldToEventLoop();
     }
-    profile?.stageTimings.push({
-      durationMs: performance.now() - readStart,
-      stage: "event-query",
-    });
+    profile?.stageTimings.push(
+      { durationMs: readMs, stage: "event-query" },
+      { durationMs: decodeMs, stage: "event-json-decode" },
+    );
+    if (profile) {
+      profile.eventDataBytes = eventDataBytes;
+      profile.eventRowCount = eventRowCount;
+      profile.decodedEventCount = decodedRawEvents.length;
+    }
     const tipAfterRead = getLatestStoredEventTip(db, { threadId: thread.id });
     const tipReplaced =
       tipAfterRead === null ||
@@ -1321,11 +1371,24 @@ async function buildThreadTimelineCooperativelyInternal(
     if (tipReplaced && attempt === 0) {
       return buildThreadTimelineCooperativelyInternal(db, thread, options, 1);
     }
-    const inputs = buildProjectionInputs(db, thread, rawEventRows, profile);
+    const acceptedClientRequestContextRows = selectClientRequestContextRows(db, {
+      rows: contextRows,
+      threadId: thread.id,
+    });
+    const inputs = finishProjectionInputs(db, thread, decodedRawEvents, profile);
     const projectionStart = performance.now();
     const timeline = await buildThreadTimelineFromEventsCooperatively(
       {
-        acceptedClientRequestContext: inputs.acceptedClientRequestContext,
+        acceptedClientRequestContext: {
+          acceptedClientRequestEvents:
+            acceptedClientRequestContextRows.acceptedRows.map((row) =>
+              toThreadEventWithMeta(row),
+            ),
+          rejectedClientRequestEvents:
+            acceptedClientRequestContextRows.rejectedRows.map((row) =>
+              toThreadEventWithMeta(row),
+            ),
+        },
         contextWindowEvents: inputs.contextWindowEvents,
         events: inputs.events,
         options: projectionOptionsFor(thread, keys, options),
@@ -1336,11 +1399,7 @@ async function buildThreadTimelineCooperativelyInternal(
       durationMs: performance.now() - projectionStart,
       stage: "thread-view-projection",
     });
-    cached = {
-      eventDataBytes: inputs.eventDataBytes,
-      eventRowCount: inputs.eventRowCount,
-      timeline,
-    };
+    cached = { eventDataBytes, eventRowCount, timeline };
     if (!tipReplaced) {
       rememberTimelineProjection(db, thread, keys, cached);
     }
