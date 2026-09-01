@@ -296,6 +296,67 @@ question a retry policy asks without replaying the event log, and note that
 attempt caps are entirely the plugin's: core enforces no ceiling on retry chains
 beyond one live retry row per original request.
 
+## `bb.experimental_environments` (`registerTarget`, `recheck`)
+
+**What it does.** Environment targets: plugin-provisioned places a thread can
+run (plans/plugin-environment-targets.md). `registerTarget({ id, title, icon,
+hostScoped, defaultConfiguration, provision })` declares one and carries its
+behaviour: `provision` is asked at the dispatch checkpoint on a `pending`
+thread's first attempt and every re-attempt (drain, restart, Send now) until
+it answers `ready` with ordinary `EnvironmentArgs` (resolved through the same
+placement policy creation uses), `wait` (the existing plugin wait row, with
+`sendAt` as the retry timer), or `reject`. It runs inside the same failure
+isolation and decision box as a `message.dispatch` hook, invoked targeted —
+only the plugin the thread's intent names — rather than as a chain; an
+unavailable plugin yields a core-authored wait with a 30s backoff. `recheck()`
+asks core to re-attempt this plugin's waiting rows now, exactly like
+`experimental_hooks.recheck`. Selections travel as the
+`{ type: "plugin-target", pluginId, targetId, configuration }` member of the
+create-environment union, so `threads.spawn`, `bb thread spawn --target`, the
+New Thread picker and automations all accept them. First-party consumers:
+`plugins/worktree` (host-scoped, synchronous `ready`).
+
+**Audit before stabilizing.**
+
+1. **Targeted invocation.** Confirm one-plugin targeting (vs. the
+   `message.dispatch` chain) stays the right model once several
+   target-offering plugins ship, and that the "not available" wait + backoff
+   is the right degradation for an uninstalled plugin.
+2. **`configuration` opacity.** The server reads exactly one key from the
+   opaque JSON (`hostId`, for host-scoped targets — pool accounting and the
+   model catalog). Decide whether that loose parse should become a declared
+   field before freezing.
+3. **Decision reuse.** The decision vocabulary is duplicated from the hook
+   (schema in `thread-environment-targets.ts`); decide whether the two should
+   share one schema/module when the prefix drops.
+4. **`recheck` scope.** Both recheck methods schedule the same global drain.
+   Confirm per-plugin scoping stays unnecessary.
+
+## `app.slots.experimental_environmentTargetConfiguration` and `experimental_BranchPicker` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** The picker-side half of environment targets. The slot
+registers the control the New Thread environment picker renders beside this
+plugin's selected target (`{ targetId, component }`; props
+`{ projectId, value, onChange }` over the selection's JSON configuration;
+`onChange(null)` blocks submit with "Configure <title>"; no registration
+submits the target's `defaultConfiguration` unchanged).
+`experimental_BranchPicker` is the host's branch picker with its
+branch-options loading (`{ hostId, projectId, value, onChange, disabled }`),
+exported so `plugins/worktree` can render bb's own "Branch from:" control as
+its target configuration — the same additive-versioning exception as
+`experimental_ProviderModelPicker`.
+
+**Audit before stabilizing.**
+
+1. **Slot placement.** The control renders where the branch picker sits
+   today. Confirm that stays the right place for targets with larger
+   configuration (a dialog escape hatch?) before freezing.
+2. **Validity channel.** `null` = incomplete is the whole protocol. Decide
+   whether a reason string belongs on it rather than the host composing
+   "Configure <title>".
+3. **BranchPicker breadth.** Confirm the props stay sufficient for the only
+   consumer, or fold the component into a broader picker-export story.
+
 ## `bb.branding.experimental_icons` (manifest) and namespaced presentation glyphs
 
 **What it does.** A plugin ships SVG files and declares a name → file map in

@@ -47,6 +47,9 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Resolve names and IDs with a list or show command before mutation.
 - Pass an explicit project when a command can act across projects.
 - Pass an environment or machine selector when the default host is uncertain.
+- Spawn onto a plugin-provisioned environment with `bb thread spawn --target
+  <pluginId>/<targetId>` (list them via `GET /system/environment-targets`);
+  `--target-config <json>` overrides the target's declared default.
 - Query provider models on the machine that will run the thread.
 - Prefer non-interactive commands and machine-readable output for automation.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.

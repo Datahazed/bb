@@ -12,6 +12,7 @@ bb.events.on("thread.deleted", ({ thread }) => { ... });
 bb.events.on("message.queued", ({ entry }) => { ... });                    // entry: ThreadQueuedMessage
 bb.events.on("message.dispatched", ({ entry }) => { ... });
 bb.events.on("turn.failed", (event) => { ... });                           // ids + failure facts
+bb.events.on("message.cancelled", ({ entry }) => { ... });                 // row deleted before dispatch
 ```
 
 **Events are announcements core makes.** Something already happened, your
@@ -26,6 +27,12 @@ that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
 `message.queued` fires again when a row's wait is rewritten, because a row that
 moved from one wait to another is news to whoever was waiting on the old one.
+
+`message.cancelled` fires when the user removes a queued row before it ever
+dispatched — the only signal for that removal. A plugin holding external
+resources for a waiting message (a sandbox mid-provision via an environment
+target, a reserved slot) releases them here; archive/delete of the whole
+thread fires the thread event instead.
 
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
@@ -149,6 +156,36 @@ other condition your waits depend on. The walk re-attempts every plugin-queued
 row in queue order, running the full hook pass over each, so an unwarranted call
 is safe. Bursts coalesce into one walk and per-thread pacing keeps a plugin that
 stays blocked from being re-asked in a loop.
+
+### bb.experimental_environments — environment targets
+
+```ts
+bb.experimental_environments.registerTarget({
+  id: "container",
+  title: "Docker container",
+  icon: "Container",
+  defaultConfiguration: { image: "node:22" },   // null when nothing to configure
+  provision: async ({ thread, project, configuration, queuedMessage }) => {
+    // asked on the first dispatch attempt and every re-attempt; answer from
+    // remembered state in milliseconds, do the work in the background keyed
+    // by thread.id, and be idempotent per thread
+    return { action: "wait", reason: "Starting container…", sendAt: Date.now() + 30_000 };
+    // or { action: "ready", environment: { type: "host", hostId, workspace: { type: "unmanaged", path } } }
+    // or { action: "reject", message: "Choose a container image." }
+  },
+});
+await bb.experimental_environments.recheck(); // re-attempt my waiting rows now
+```
+
+A target is a place threads can run that this plugin provisions. The user
+picks it in the New Thread picker or `bb thread spawn --target
+<pluginId>/<targetId>`; the thread is created `pending`, its first message
+waits on the card with your `reason`, and a `ready` answer flows into the
+ordinary dispatch checkpoint against the real environment. `hostScoped: true`
+lists the target once per enrolled machine with `configuration.hostId`
+pre-filled. Failure handling is the `wait` arm: put the error in `reason` and
+the retry time in `sendAt`. Release external resources on
+`message.cancelled` / `thread.archived` / `thread.deleted`.
 
 ### bb.http — HTTP routes
 

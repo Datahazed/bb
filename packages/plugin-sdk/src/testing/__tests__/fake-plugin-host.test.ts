@@ -12,7 +12,11 @@ import {
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
   RESERVED_BB_CLI_COMMANDS,
 } from "../../internal/host-policy.js";
-import { createFakePluginHost, makeThreadResponse } from "../index.js";
+import {
+  createFakePluginHost,
+  makeQueueEntry,
+  makeThreadResponse,
+} from "../index.js";
 
 describe("ui.requestInput", () => {
   it("settles a blocking request through the harness", async () => {
@@ -1524,5 +1528,65 @@ describe("experimental_aiServices.register", () => {
     expect(() => bb.experimental_aiServices.register(declaration)).toThrow(
       /needs a bb\.host entry to run on: this plugin declares none/u,
     );
+  });
+});
+
+describe("environment targets", () => {
+  it("normalizes a registration and exposes it to the harness", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const provision = () => ({ action: "wait", reason: "Starting…" }) as const;
+    bb.experimental_environments.registerTarget({
+      id: "container",
+      title: "  Docker container  ",
+      defaultConfiguration: null,
+      provision,
+    });
+    const target = harness.registrations.environmentTargets.get("container");
+    expect(target).toMatchObject({
+      id: "container",
+      title: "Docker container",
+      icon: null,
+      hostScoped: false,
+      defaultConfiguration: null,
+    });
+    expect(target?.provision).toBe(provision);
+    await bb.experimental_environments.recheck();
+    expect(harness.recheckCount).toBe(1);
+  });
+
+  it("refuses a declaration without defaultConfiguration or provision", () => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.experimental_environments.registerTarget({
+        id: "bad id!",
+        title: "x",
+        defaultConfiguration: null,
+        provision: () => ({ action: "wait", reason: "…" }),
+      }),
+    ).toThrow(/invalid environment target id/);
+    expect(() =>
+      bb.experimental_environments.registerTarget(
+        // @ts-expect-error deliberately missing defaultConfiguration
+        { id: "ok", title: "x", provision: () => ({ action: "wait", reason: "…" }) },
+      ),
+    ).toThrow(/defaultConfiguration/);
+    expect(() =>
+      bb.experimental_environments.registerTarget(
+        // @ts-expect-error deliberately missing provision
+        { id: "ok", title: "x", defaultConfiguration: null },
+      ),
+    ).toThrow(/provision/);
+  });
+
+  it("delivers message.cancelled to a listener", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const seen: string[] = [];
+    bb.events.on("message.cancelled", ({ entry }) => {
+      seen.push(entry.id);
+    });
+    await harness.emitThreadEvent("message.cancelled", {
+      entry: makeQueueEntry({ id: "qm_1" }),
+    });
+    expect(seen).toEqual(["qm_1"]);
   });
 });

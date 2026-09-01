@@ -668,6 +668,27 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "environment-targets",
+        tagline: "Provision where a thread runs",
+        title: "Environment targets",
+        summary:
+          "Offers plugin-provisioned places a thread can run, picked like any environment. With this, a plugin can:",
+        bullets: [
+          "Declare a target with a title, icon and default configuration, picked in New Thread or bb thread spawn --target",
+          "Answer where the thread runs — ready with an ordinary environment, wait with a visible reason and retry time, or reject",
+          "Render its own configuration control beside the picker and re-ask core the moment a launch advances",
+        ],
+        apiSymbols: [
+          "PluginEnvironments",
+          "PluginEnvironmentTargetDeclaration",
+          "PluginEnvironmentProvisionContext",
+          "PluginEnvironmentProvisionDecision",
+          "PluginEnvironmentTargetConfigurationRegistration",
+        ],
+        firstParty: ["Worktree"],
+        experimental: true,
+      },
+      {
         id: "host-workers",
         tagline: "Run code on enrolled machines",
         title: "Host workers",

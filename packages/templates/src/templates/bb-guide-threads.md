@@ -24,6 +24,11 @@ Spawning:
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
     --base-branch <branch>         Exact Git ref for a new managed worktree
+    --target <target>              Run on a plugin environment target: <pluginId>/<targetId>,
+                                   or the bare target id when unambiguous. The thread is
+                                   created pending and the plugin provisions where it runs.
+    --target-config <json>         JSON configuration for --target; omitted uses the
+                                   target's declared default
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
