@@ -17,7 +17,7 @@ import {
 } from "./sidebarRowClasses";
 
 const SIDEBAR_ROW_GEOMETRY_CLASS =
-  "[--sidebar-row-accessory-margin:var(--sidebar-row-column-gap)] [--sidebar-row-action-gap:0.125rem] [--sidebar-row-body-inset:calc(var(--sidebar-row-column-gap)+var(--sidebar-row-depth)*var(--sidebar-row-depth-step))] [--sidebar-row-column-gap:0.5rem] [--sidebar-row-content-inset:0px] [--sidebar-row-depth:0] [--sidebar-row-depth-step:0.75rem] [--sidebar-row-disclosure-rail:1.5rem] [--sidebar-row-identity-inset:0px] [--sidebar-row-identity-justify:flex-end] [--sidebar-row-identity-padding:var(--sidebar-row-identity-inset)] [--sidebar-row-identity-rail:1rem] [--sidebar-row-identity-slot-width:100%] [--sidebar-row-inline-padding:0.5rem] [--sidebar-row-status-rail:0.875rem] max-md:pointer-coarse:[--sidebar-row-identity-rail:1.25rem] max-md:pointer-coarse:[--sidebar-row-status-rail:1.25rem]";
+  "[--sidebar-row-accessory-margin:var(--sidebar-row-column-gap)] [--sidebar-row-action-gap:0.125rem] [--sidebar-row-body-inset:calc(var(--sidebar-row-depth)*var(--sidebar-row-depth-step))] [--sidebar-row-column-gap:0.5rem] [--sidebar-row-content-inset:0px] [--sidebar-row-depth:0] [--sidebar-row-depth-step:0.75rem] [--sidebar-row-disclosure-rail:1.5rem] [--sidebar-row-identity-inset:0px] [--sidebar-row-identity-justify:flex-end] [--sidebar-row-identity-padding:var(--sidebar-row-identity-inset)] [--sidebar-row-identity-rail:1rem] [--sidebar-row-identity-slot-width:100%] [--sidebar-row-inline-padding:0.5rem] [--sidebar-row-status-rail:0.875rem] max-md:pointer-coarse:[--sidebar-row-identity-rail:1.25rem] max-md:pointer-coarse:[--sidebar-row-status-rail:1.25rem]";
 
 const SIDEBAR_TREE_ROW_GRID_CLASS =
   "!grid [grid-template-areas:'status_body_actions_disclosure'] [grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]";
@@ -148,7 +148,7 @@ export function SidebarRowBody({ className, ...props }: SidebarRowRailProps) {
     <SidebarRowRail
       data-sidebar-row-slot="body"
       className={cn(
-        "[--sidebar-row-accessory-margin:0px] [--sidebar-row-content-inset:0px] [--sidebar-row-identity-justify:center] [--sidebar-row-identity-padding:0px] [--sidebar-row-identity-slot-width:var(--sidebar-row-identity-rail)] [grid-area:body] inline-flex h-full min-w-0 items-center gap-[var(--sidebar-row-column-gap)] pl-[var(--sidebar-row-body-inset)]",
+        "[--sidebar-row-accessory-margin:0px] [--sidebar-row-content-inset:0px] [--sidebar-row-identity-justify:center] [--sidebar-row-identity-padding:0px] [--sidebar-row-identity-slot-width:var(--sidebar-row-identity-rail)] [grid-area:body] [grid-template-areas:'identity_content_accessory'] [grid-template-columns:var(--sidebar-row-identity-rail)_minmax(0,1fr)_auto] inline-grid h-full min-w-0 items-center gap-[var(--sidebar-row-column-gap)] pl-[var(--sidebar-row-body-inset)]",
         className,
       )}
       {...props}
