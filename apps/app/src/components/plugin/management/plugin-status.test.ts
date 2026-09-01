@@ -53,6 +53,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
     expect(pluginRowSignal(plugin({ availableVersion: "1.7.0" }))).toEqual({
       kind: "update",
       version: "1.7.0",
+      retry: false,
     });
   });
 

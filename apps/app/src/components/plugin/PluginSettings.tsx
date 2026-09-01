@@ -22,6 +22,7 @@ import {
   ResourceDetailPanel,
   ResourceDetailStack,
 } from "@bb/shared-ui/resource-detail";
+import { ResourceShelfAction } from "@bb/shared-ui/resource-list";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -310,7 +311,13 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
-export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
+export function PluginSettingsPage({
+  pluginId,
+  onBack,
+}: {
+  pluginId: string;
+  onBack?: () => void;
+}) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
     listQuery.data?.plugins.find(
@@ -330,8 +337,15 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
       </p>
     );
   }
+  const pluginName = plugin.name ?? plugin.id;
   return (
     <div className="mx-auto w-full max-w-5xl">
+      {onBack === undefined ? null : (
+        <ResourceShelfAction type="button" className="-ml-2" onClick={onBack}>
+          <Icon name="ChevronLeft" className="size-3" aria-hidden />
+          Plugin details
+        </ResourceShelfAction>
+      )}
       <div className="flex items-center gap-3">
         <div className="size-9 shrink-0">
           <PluginIcon
@@ -341,8 +355,8 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
           />
         </div>
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold text-foreground">
-            {plugin.name ?? plugin.id}
+          <h1 className="truncate text-lg font-semibold text-foreground focus-visible:outline-none">
+            {onBack === undefined ? pluginName : `${pluginName} settings`}
           </h1>
           {plugin.description ? (
             <p className="truncate text-xs text-subtle-foreground">
@@ -355,25 +369,27 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
         <ResourceDetailConfigurationSection label="Configuration">
           <PluginSettingsDetail plugin={plugin} />
         </ResourceDetailConfigurationSection>
-        <ResourceDetailOverviewSection label="Plugin details">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            Release, capabilities, and health live on{" "}
-            <Link
-              to={getPluginDetailRoutePath({
-                pluginId,
-                view: "installed",
-              })}
-              className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              its plugin page
-              <Icon
-                name="ChevronRight"
-                className="size-3.5 no-underline"
-                aria-hidden
-              />
-            </Link>
-          </p>
-        </ResourceDetailOverviewSection>
+        {onBack === undefined ? (
+          <ResourceDetailOverviewSection label="Plugin details">
+            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+              Release, capabilities, and health live on{" "}
+              <Link
+                to={getPluginDetailRoutePath({
+                  pluginId,
+                  view: "installed",
+                })}
+                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                its plugin page
+                <Icon
+                  name="ChevronRight"
+                  className="size-3.5 no-underline"
+                  aria-hidden
+                />
+              </Link>
+            </p>
+          </ResourceDetailOverviewSection>
+        ) : null}
       </ResourceDetailStack>
     </div>
   );

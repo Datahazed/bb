@@ -31,10 +31,16 @@ const entry: PluginListingDraftEntry = {
 
 const lifecycleCases: Array<{
   lifecycle: PluginListingLifecycle;
-  actionIds: string[];
+  actions: Array<[id: string, variant: string]>;
 }> = [
-  { lifecycle: { status: "not-published" }, actionIds: ["submit"] },
-  { lifecycle: { status: "draft", entry }, actionIds: ["submit"] },
+  {
+    lifecycle: { status: "not-published" },
+    actions: [["submit", "outline"]],
+  },
+  {
+    lifecycle: { status: "draft", entry },
+    actions: [["submit", "outline"]],
+  },
   {
     lifecycle: {
       status: "in-review",
@@ -44,7 +50,7 @@ const lifecycleCases: Array<{
         openedAt: 1,
       },
     },
-    actionIds: ["update-submission"],
+    actions: [["update-submission", "default"]],
   },
   {
     lifecycle: {
@@ -52,7 +58,10 @@ const lifecycleCases: Array<{
       entryId: entry.id,
       publishedAt: 1,
     },
-    actionIds: ["publish-update", "edit-listing"],
+    actions: [
+      ["publish-update", "default"],
+      ["edit-listing", "outline"],
+    ],
   },
 ];
 
@@ -120,15 +129,15 @@ describe("authored plugin listing prompts", () => {
 
   it.each(lifecycleCases)(
     "exposes only $lifecycle.status actions",
-    ({ lifecycle, actionIds }) => {
+    ({ lifecycle, actions }) => {
       expect(
         pluginListingActions({
           lifecycle,
           name: entry.displayName,
           path: "~/code/provider-usage",
           publishedSource: "git:https://github.com/a/b.git@semver:^0.2.0",
-        }).map((action) => action.id),
-      ).toEqual(actionIds);
+        }).map((action) => [action.id, action.variant]),
+      ).toEqual(actions);
     },
   );
 });

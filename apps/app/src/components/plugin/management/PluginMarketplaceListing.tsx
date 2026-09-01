@@ -20,6 +20,10 @@ import {
   ResourceShelfAction,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  getWrappedImageIndex,
+  ImageLightbox,
+} from "@/components/ui/image-lightbox";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
@@ -52,15 +56,12 @@ export function PluginMarketplaceHeaderMetadata({
         github={entry.author.github}
         size="detail"
       />
-      <span className="min-w-0">
-        By{" "}
-        <PluginAuthorLink
-          authorId={authorId}
-          className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {entry.author.name}
-        </PluginAuthorLink>
-      </span>
+      <PluginAuthorLink
+        authorId={authorId}
+        className="min-w-0 truncate rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        {entry.author.name}
+      </PluginAuthorLink>
     </span>
   );
 }
@@ -132,10 +133,10 @@ export function PluginMarketplaceDetails({
             </TooltipProvider>
           </PluginDetailMetadataItem>
         )}
+        {children}
         <PluginDetailMetadataItem label="Marketplace">
           {entry.publisherLabel}
         </PluginDetailMetadataItem>
-        {children}
       </dl>
     </ResourceDefinitionSection>
   );
@@ -159,7 +160,7 @@ function PluginMarketplaceSource({
         {githubSource ? (
           <Icon
             name="GithubFilled"
-            className="size-4 shrink-0 fill-current [&_*]:stroke-0"
+            className="size-4.5 shrink-0 fill-current [&_*]:stroke-0"
             aria-hidden
           />
         ) : null}
@@ -183,7 +184,7 @@ function isGitHubUrl(url: string): boolean {
 }
 
 const PLUGIN_SCREENSHOT_ROW_HEIGHT = 420;
-const PLUGIN_SCREENSHOT_MAX_ASPECT = 2;
+const PLUGIN_SCREENSHOT_MIN_ROW_HEIGHT = 176;
 
 function PluginScreenshotGallery({
   entry,
@@ -192,6 +193,7 @@ function PluginScreenshotGallery({
 }) {
   const [api, setApi] = useState<CarouselApi>();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (api === undefined) return;
@@ -205,6 +207,22 @@ function PluginScreenshotGallery({
     };
   }, [api]);
 
+  const showLightboxImage = (index: number) => {
+    setLightboxIndex(index);
+    api?.scrollTo(index);
+  };
+
+  const moveLightbox = (direction: "next" | "previous") => {
+    if (lightboxIndex === null) return;
+    showLightboxImage(
+      getWrappedImageIndex({
+        currentIndex: lightboxIndex,
+        direction,
+        itemCount: entry.screenshots.length,
+      }),
+    );
+  };
+
   if (entry.screenshots.length === 0) return null;
   return (
     <>
@@ -213,22 +231,26 @@ function PluginScreenshotGallery({
         opts={{ align: "start", containScroll: "trimSnaps" }}
         aria-label={`${entry.displayName} screenshots`}
         className={cn("w-full", entry.screenshots.length > 1 && "px-11")}
+        style={{ containerType: "inline-size" }}
       >
-        <CarouselContent
-          className="-ml-3 items-center"
-          style={{ minHeight: `${PLUGIN_SCREENSHOT_ROW_HEIGHT}px` }}
-        >
+        <CarouselContent className="-ml-3 items-center">
           {entry.screenshots.map((screenshot, index) => (
-            <CarouselItem key={screenshot} className="basis-auto pl-3">
-              <img
-                src={screenshot}
-                alt={`${entry.displayName} screenshot ${index + 1}`}
-                className="h-auto w-auto rounded-md border border-border object-contain"
+            <CarouselItem key={screenshot} className="pl-3">
+              <button
+                type="button"
+                aria-label={`Open ${entry.displayName} screenshot ${index + 1} full size`}
+                className="flex w-full cursor-zoom-in items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 style={{
-                  maxHeight: `${PLUGIN_SCREENSHOT_ROW_HEIGHT}px`,
-                  maxWidth: `${PLUGIN_SCREENSHOT_ROW_HEIGHT * PLUGIN_SCREENSHOT_MAX_ASPECT}px`,
+                  height: `clamp(${PLUGIN_SCREENSHOT_MIN_ROW_HEIGHT}px, 50cqw, ${PLUGIN_SCREENSHOT_ROW_HEIGHT}px)`,
                 }}
-              />
+                onClick={() => showLightboxImage(index)}
+              >
+                <img
+                  src={screenshot}
+                  alt={`${entry.displayName} screenshot ${index + 1}`}
+                  className="h-auto w-auto max-h-full max-w-full rounded-md border border-border object-contain"
+                />
+              </button>
             </CarouselItem>
           ))}
         </CarouselContent>
@@ -259,6 +281,27 @@ function PluginScreenshotGallery({
           ))}
         </div>
       ) : null}
+      <ImageLightbox
+        imageSrc={
+          lightboxIndex === null
+            ? null
+            : (entry.screenshots[lightboxIndex] ?? null)
+        }
+        imageAlt={
+          lightboxIndex === null
+            ? ""
+            : `${entry.displayName} screenshot ${lightboxIndex + 1}`
+        }
+        title={
+          lightboxIndex === null
+            ? `${entry.displayName} screenshot`
+            : `${entry.displayName} screenshot ${lightboxIndex + 1} of ${entry.screenshots.length}`
+        }
+        hasMultipleImages={entry.screenshots.length > 1}
+        onPrevious={() => moveLightbox("previous")}
+        onNext={() => moveLightbox("next")}
+        onClose={() => setLightboxIndex(null)}
+      />
     </>
   );
 }
@@ -356,15 +399,24 @@ export function PluginMoreFromAuthorSection({
 
 export function PluginMarketplaceListingSections({
   entry,
+  sourceSection,
+  beforeDetails,
   details,
 }: {
   entry: PluginCatalogSearchEntry;
+  sourceSection?: ReactNode;
+  beforeDetails?: ReactNode;
   details?: ReactNode;
 }) {
   return (
     <>
       <PluginMarketplaceOverview entry={entry} />
-      <PluginMarketplaceSource entry={entry} />
+      {sourceSection === undefined ? (
+        <PluginMarketplaceSource entry={entry} />
+      ) : (
+        sourceSection
+      )}
+      {beforeDetails}
       <PluginMarketplaceDetails entry={entry}>
         {details}
       </PluginMarketplaceDetails>

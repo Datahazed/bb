@@ -16,31 +16,51 @@ type PluginCatalogInstallControlProps = {
   displayName: string;
   disabled?: boolean;
   count?: PluginCatalogInstallCount;
-} & ({ installed: true } | { installed: false; onInstall: () => void });
+} & (
+  | { installed: true; included?: boolean }
+  | { installed: false; onInstall: () => void }
+);
 
 export function PluginCatalogInstallControl(
   props: PluginCatalogInstallControlProps,
 ) {
   const { displayName, installed, disabled = false, count } = props;
+  const included =
+    props.installed && props.included === true && count === undefined;
   const visualContent = (
     <>
-      <Icon name="Download" className="size-3.5" aria-hidden />
-      {count === undefined ? null : <span aria-hidden>{count.display}</span>}
+      <Icon
+        name={included ? "Check" : "Download"}
+        className="size-3.5"
+        aria-hidden
+      />
+      {included ? (
+        <span aria-hidden>Included</span>
+      ) : count === undefined ? null : (
+        <span aria-hidden>{count.display}</span>
+      )}
     </>
   );
 
   if (installed) {
-    const tooltip =
-      count === undefined ? "Installed" : `Installed — ${count.accessibleLabel}`;
+    const tooltip = included
+      ? "Included with bb"
+      : count === undefined
+        ? "Installed"
+        : `Installed — ${count.accessibleLabel}`;
     return (
       <TooltipProvider delayDuration={250}>
         <Tooltip>
           <TooltipTrigger asChild>
             <span
               tabIndex={0}
-              aria-label={`${displayName} installed${
-                count === undefined ? "" : ` — ${count.accessibleLabel}`
-              }`}
+              aria-label={
+                included
+                  ? `${displayName} included with bb`
+                  : `${displayName} installed${
+                      count === undefined ? "" : ` — ${count.accessibleLabel}`
+                    }`
+              }
               className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs text-subtle-foreground"
             >
               {visualContent}

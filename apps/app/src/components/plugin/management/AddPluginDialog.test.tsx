@@ -216,8 +216,10 @@ describe("AddPluginDialog", () => {
     });
   });
 
-  it("keeps catalog confirmation compact while showing the exact source", () => {
+  it("keeps catalog confirmation compact while making the exact source scrollable and copyable", async () => {
     stubFetch();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
     const { unmount } = renderDialog({
       entryId: "linear",
       marketplace: "bb-community",
@@ -244,10 +246,21 @@ describe("AddPluginDialog", () => {
       source: "git:https://github.com/brsbl/bb-plugins@b173b67",
     });
     expect(
-      screen.getByText(
-        "git:https://github.com/brsbl/bb-plugins@b173b67",
-      ),
+      screen.getByText("git:https://github.com/brsbl/bb-plugins@b173b67"),
     ).not.toBeNull();
+    const sourceRegion = screen.getByRole("region", {
+      name: "Plugin source",
+    });
+    expect(sourceRegion.classList.contains("transient-scrollbar")).toBe(true);
+    expect(sourceRegion.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+    fireEvent.scroll(sourceRegion);
+    expect(sourceRegion.dataset.scrollbarScrolling).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Copy plugin source" }));
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        "git:https://github.com/brsbl/bb-plugins@b173b67",
+      );
+    });
     expect(screen.queryByText(/listed source repository/u)).toBeNull();
     git.unmount();
 

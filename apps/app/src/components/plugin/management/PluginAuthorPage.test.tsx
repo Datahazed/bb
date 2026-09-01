@@ -146,7 +146,7 @@ describe("PluginAuthorPage", () => {
     expect(document.body.textContent).not.toContain("Other");
 
     const authorBylines = screen.getAllByRole("link", {
-      name: "By: Pat Lee",
+      name: "By Pat Lee",
     });
     expect(authorBylines).toHaveLength(4);
     expect(authorBylines[0]?.getAttribute("href")).toBe(

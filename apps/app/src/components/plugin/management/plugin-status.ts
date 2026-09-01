@@ -213,7 +213,7 @@ export function installedPluginProblemLine(
 }
 
 export type PluginRowSignal =
-  | { kind: "update"; version: string }
+  | { kind: "update"; version: string; retry: boolean }
   | {
       kind: "status";
       icon: IconName;
@@ -258,7 +258,11 @@ export function pluginRowSignal(
     };
   }
   if (state.availableVersion !== null) {
-    return { kind: "update", version: state.availableVersion };
+    return {
+      kind: "update",
+      version: state.availableVersion,
+      retry: false,
+    };
   }
   return null;
 }

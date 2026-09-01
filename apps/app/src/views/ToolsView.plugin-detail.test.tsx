@@ -100,6 +100,16 @@ function ComposeRouteState() {
   );
 }
 
+function CurrentRoute() {
+  const location = useLocation();
+  return (
+    <output data-testid="current-route">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
@@ -485,9 +495,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.getByText("About")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Details" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Release" })).toBeNull();
-    expect(
-      screen.queryByRole("heading", { name: "Configuration" }),
-    ).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
@@ -823,6 +831,66 @@ describe("BB Official plugin detail routing", () => {
     ).toBeTruthy();
     expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
   });
+
+  it("opens plugin settings in the current detail tab and returns to details", async () => {
+    const configuredPlugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      hasSettings: true,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({ enabled: true, plugins: [configuredPlugin] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({
+              results: [{ ...GITHUB_CATALOG_ENTRY, installed: true }],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+        <Routes>
+          <Route
+            path="/extensions/plugins/:pluginId"
+            element={<ToolsView pluginId="github" />}
+          />
+        </Routes>
+        <CurrentRoute />
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Configure GitHub" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "GitHub settings" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("current-route").textContent).toBe(
+      "/extensions/plugins/github",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
+    expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
+    expect(screen.getByTestId("current-route").textContent).toBe(
+      "/extensions/plugins/github",
+    );
+  });
 });
 
 describe("plugin removal confirmation", () => {
@@ -900,6 +968,77 @@ describe("plugin removal confirmation", () => {
     );
     expect(description.textContent).toContain("source files stay on disk");
     expect(description.textContent).toContain("install the new path instead");
+  });
+
+  it("keeps a catalog plugin detail route open after uninstalling", async () => {
+    let installed = true;
+    const managedPlugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      source: "git:https://github.com/example/github.git@^0.1.0",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/v1/plugins/github" && init?.method === "DELETE") {
+          installed = false;
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({
+              enabled: true,
+              plugins: installed ? [managedPlugin] : [],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=github") {
+          return new Response(
+            JSON.stringify({
+              results: [{ ...GITHUB_CATALOG_ENTRY, installed }],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter
+        initialEntries={["/extensions/plugins/github?view=installed"]}
+      >
+        <Routes>
+          <Route
+            path="/extensions/plugins/:pluginId"
+            element={<ToolsView pluginId="github" />}
+          />
+        </Routes>
+        <CurrentRoute />
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Uninstall" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Install GitHub" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("current-route").textContent).toBe(
+      "/extensions/plugins/github?view=installed",
+    );
   });
 });
 

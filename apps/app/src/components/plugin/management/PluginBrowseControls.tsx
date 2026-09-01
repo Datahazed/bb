@@ -4,6 +4,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ResourceSortMenu } from "@bb/shared-ui/resource-list";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import type {
   PluginBrowseSort,
@@ -48,6 +49,35 @@ export function pluginBrowseSortOptions(hasInstallCounts: boolean) {
     label: PLUGIN_BROWSE_SORT_LABELS[sort],
     leading: <Icon name={PLUGIN_BROWSE_SORT_ICONS[sort]} className="size-4" />,
   }));
+}
+
+export function PluginSortControl({
+  value,
+  direction,
+  hasInstallCounts,
+  onChange,
+  onClear,
+}: {
+  value: PluginBrowseSort | null;
+  direction: PluginBrowseSortDirection;
+  hasInstallCounts: boolean;
+  onChange: (value: PluginBrowseSort) => void;
+  onClear: () => void;
+}) {
+  return (
+    <ResourceSortMenu
+      value={value}
+      direction={direction}
+      options={pluginBrowseSortOptions(hasInstallCounts)}
+      compact
+      placeholderLabel="Sort plugins"
+      onClear={onClear}
+      onChange={(nextValue) => {
+        const sort = pluginBrowseSort(nextValue);
+        if (sort !== null) onChange(sort);
+      }}
+    />
+  );
 }
 
 export interface PluginBrowseCategoryOption {
@@ -249,8 +279,6 @@ export function PluginBrowseCategoryFilter(
           <Icon name="ChevronDown" className="size-3 shrink-0" aria-hidden />
         </Button>
       </PopoverTrigger>
-      {
-}
       <PopoverContent
         align="end"
         mobileTitle="Filter plugins by category"
@@ -342,9 +370,7 @@ export function PluginBrowseCategoryFilter(
                     <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                       {option.label}
                     </span>
-                    <CategoryOptionCheckbox
-                      enabled={selected.has(option.id)}
-                    />
+                    <CategoryOptionCheckbox enabled={selected.has(option.id)} />
                   </button>
                 );
               })

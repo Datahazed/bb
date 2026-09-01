@@ -55,7 +55,10 @@ it("uses a tokenized category treatment without making the label interactive", (
     />,
   );
 
-  const pill = view.getByText("Memory & Context");
+  const label = view.getByText("Memory & Context");
+  const pill = label.closest<HTMLElement>("[data-plugin-category-label]");
+  expect(pill).not.toBeNull();
+  if (pill === null) throw new Error("Category pill missing");
   expect(pill.style.background).toBe(
     "color-mix(in oklab, var(--plugin-category-family-agent-work) 16%, var(--canvas))",
   );
@@ -66,6 +69,8 @@ it("uses a tokenized category treatment without making the label interactive", (
     "color-mix(in oklab, var(--plugin-category-family-agent-work) 52%, var(--ink))",
   );
   expect(pill.classList.contains("border")).toBe(true);
+  expect(pill.classList.contains("inline-flex")).toBe(true);
+  expect(label.classList.contains("truncate")).toBe(true);
   expect(pill.closest("a, button")).toBeNull();
 });
 

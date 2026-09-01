@@ -14,7 +14,7 @@ export const PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS = "w-40 md:w-48";
 export const PLUGIN_DETAIL_HEADER_CELL_CLASS = "bg-surface-recessed/55";
 
 const DETAIL_ROW_GRID =
-  "grid grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]";
+  "grid w-full min-w-0 grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]";
 
 export function PluginDetailTable({ children }: { children: ReactNode }) {
   return (
@@ -114,17 +114,20 @@ export function PluginDetailRow({
   nameClassName,
   mono = false,
   detail,
+  detailCollapsible = false,
 }: {
   glyph: ReactNode;
   name: ReactNode;
   nameClassName?: string;
   mono?: boolean;
   detail: ReactNode;
+  detailCollapsible?: boolean;
 }) {
   const hasDetail = detail !== null && detail !== undefined && detail !== "";
   const detailId = useId();
   const [expanded, setExpanded] = useState(false);
-  const isLongDescription = typeof detail === "string" && detail.length > 180;
+  const isLongDescription =
+    detailCollapsible || (typeof detail === "string" && detail.length > 180);
   return (
     <tr className={hasDetail ? DETAIL_ROW_GRID : "grid grid-cols-1"}>
       <th
@@ -132,7 +135,7 @@ export function PluginDetailRow({
         className={cn(
           CELL,
           PLUGIN_DETAIL_HEADER_CELL_CLASS,
-          "flex items-center text-left font-normal",
+          "flex items-start text-left font-normal",
           hasDetail ? "border-r border-border pl-4 pr-2" : "px-4",
         )}
         colSpan={hasDetail ? undefined : 2}
@@ -156,12 +159,12 @@ export function PluginDetailRow({
           id={detailId}
           className={cn(
             CELL,
-            "pl-2 pr-4 text-xs leading-normal text-muted-foreground",
+            "min-w-0 overflow-hidden pl-2 pr-4 text-xs leading-normal text-muted-foreground",
           )}
         >
           <div
             className={cn(
-              "space-y-2 break-words leading-relaxed",
+              "min-w-0 space-y-2 break-words leading-relaxed",
               isLongDescription && !expanded && "line-clamp-3",
             )}
           >

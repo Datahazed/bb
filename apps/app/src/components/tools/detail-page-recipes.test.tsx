@@ -149,6 +149,8 @@ function renderPlugin(
     skills?: SkillSummary[];
     seedSkillsCache?: boolean;
     catalogEntry?: PluginCatalogSearchEntry;
+    openSourceDisabled?: boolean;
+    onOpenSource?: (plugin: PluginListItem) => void;
   },
 ) {
   const { wrapper: QueryClientWrapper, queryClient } =
@@ -165,10 +167,10 @@ function renderPlugin(
           isLoading={false}
           plugin={plugin}
           pending={false}
-          openSourceDisabled
+          openSourceDisabled={options?.openSourceDisabled ?? true}
           onToggle={() => {}}
           onEdit={() => {}}
-          onOpenSource={() => {}}
+          onOpenSource={options?.onOpenSource ?? (() => {})}
           onDelete={() => {}}
           catalogEntry={options?.catalogEntry}
         />
@@ -238,6 +240,14 @@ describe("Plugin detail recipe", () => {
     ).toBeNull();
     expect(screen.queryByText("Category")).toBeNull();
     expect(screen.getByText("BB Community")).toBeTruthy();
+    const detailsSection = screen
+      .getByRole("heading", { name: "Details" })
+      .closest('[data-resource-detail-section="definition"]');
+    expect(
+      [...(detailsSection?.querySelectorAll("dt") ?? [])].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(["Last updated", "Version", "Delivery", "Marketplace"]);
     const sourceLink = screen.getByRole("link", {
       name: /github.com\/get-bb\/bb/u,
     });
@@ -259,7 +269,7 @@ describe("Plugin detail recipe", () => {
     ).toBeNull();
   });
 
-  it("keeps paths for community and local plugins", () => {
+  it("hides managed paths and gives local sources compact open and copy actions", () => {
     const communityEntry: PluginCatalogSearchEntry = {
       entryId: "github",
       pluginId: "github",
@@ -294,24 +304,41 @@ describe("Plugin detail recipe", () => {
       { catalogEntry: communityEntry },
     );
 
-    expect(
-      screen.getByRole("button", { name: /Copy plugin path/u }),
-    ).toBeTruthy();
+    expect(screen.queryByText("/managed/plugins/github")).toBeNull();
+    expect(screen.queryByText("Local source")).toBeNull();
 
     unmount();
-    renderPlugin(
+    const localPath = "/Users/test/dev/plugin";
+    const onOpenSource = vi.fn();
+    const { container } = renderPlugin(
       {
         ...PLUGIN,
         provenance: "direct",
-        source: "path:/Users/test/dev/plugin",
-        rootDir: "/Users/test/dev/plugin",
+        source: `path:${localPath}`,
+        rootDir: localPath,
       },
-      { catalogEntry: { ...communityEntry, official: true } },
+      {
+        catalogEntry: { ...communityEntry, official: true },
+        openSourceDisabled: false,
+        onOpenSource,
+      },
     );
 
+    expect(screen.getAllByText("~/dev/plugin")).toHaveLength(1);
+    expect(screen.getByText("Local source")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open local source" }));
+    expect(onOpenSource).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole("button", { name: /Copy plugin path/u }),
+      screen.getByRole("button", { name: "Copy local source path" }),
     ).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: /github.com\/community\/github/u }),
+    ).toBeNull();
+    expect(renderedRecipe(container).slice(0, 3)).toEqual([
+      ["overview", "About"],
+      ["definition", "Source"],
+      ["definition", "Details"],
+    ]);
   });
 
   it("omits Includes when the plugin has no user-facing additions", () => {
@@ -323,12 +350,17 @@ describe("Plugin detail recipe", () => {
     ]);
   });
 
-  it("keeps Settings in the header without treating it as an included feature", () => {
+  it("keeps Configure in the header without treating settings as an included feature", () => {
     const { container } = renderPlugin({ ...PLUGIN, hasSettings: true });
 
     expect(
-      screen.getByRole("link", { name: "Settings" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "Configure GitHub" })
+        .getAttribute("href"),
     ).toBe("/settings/plugins/github");
+    expect(
+      screen.getByRole("link", { name: "Configure GitHub" }).textContent,
+    ).toBe("Configure");
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
       ["definition", "Details"],
@@ -488,6 +520,46 @@ describe("Plugin detail recipe", () => {
     renderPlugin({ ...PLUGIN, app: { hasApp: true, bundle: null } });
 
     expect(screen.getByText("Issues")).toBeTruthy();
+  });
+
+  it("bounds long structured capability details until requested", () => {
+    const extensions = Array.from(
+      { length: 80 },
+      (_value, index) => `extension-${index}`,
+    );
+    setPluginSlotRegistrations("github", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [
+        {
+          id: "file-editor",
+          title: "File Editor",
+          extensions,
+          component: () => null,
+        },
+      ],
+      messageDirectives: [],
+    });
+    renderPlugin({ ...PLUGIN, app: { hasApp: true, bundle: null } });
+
+    const detail = screen.getByText(/\.extension-0/u).parentElement;
+    expect(detail?.className).toContain("line-clamp-3");
+    const disclosure = screen.getByRole("button", {
+      name: "Show full description",
+    });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(disclosure);
+
+    expect(detail?.className).not.toContain("line-clamp-3");
+    expect(
+      screen
+        .getByRole("button", { name: "Show less" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("links every capability with a stable destination to its owning surface", () => {
@@ -691,7 +763,11 @@ describe("Plugin detail recipe", () => {
       ],
     });
 
-    expect(renderedRecipe(container)).toContainEqual(["includes", "Includes"]);
+    expect(renderedRecipe(container).slice(0, 3)).toEqual([
+      ["overview", "About"],
+      ["includes", "Includes"],
+      ["definition", "Details"],
+    ]);
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
   });
 

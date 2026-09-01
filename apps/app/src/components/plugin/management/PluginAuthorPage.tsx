@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import {
   PLUGIN_CATALOG_CATEGORIES,
   defaultPluginDiscoverySortDirection,
@@ -17,7 +17,6 @@ import {
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
-import { getPluginsRoutePath } from "@/lib/route-paths";
 import {
   sortPluginEntries,
   type PluginBrowseSort,
@@ -26,6 +25,7 @@ import { entriesByMarketplaceAuthor } from "./plugin-marketplace-author";
 import { AddPluginDialog, type AddPluginInitial } from "./AddPluginDialog";
 import { PluginCatalogGrid } from "./BrowsePluginsTab";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
+import { PluginAuthorBackLink } from "./PluginAuthorLink";
 import {
   PluginBrowseCategoryFilter,
   pluginBrowseSort,
@@ -170,13 +170,12 @@ export function PluginAuthorPage({
       >
         <div className={cn("space-y-6", TOOLS_PAGE_BAND_CLASSES)}>
           <div className="space-y-1">
-            <Link
-              to={getPluginsRoutePath()}
+            <PluginAuthorBackLink
               className="-ml-1 inline-flex items-center gap-1 rounded-sm px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <Icon name="ChevronLeft" className="size-3" aria-hidden />
               Browse plugins
-            </Link>
+            </PluginAuthorBackLink>
             {author === null ? null : (
               <div className="flex items-center gap-3">
                 <PluginAuthorAvatar

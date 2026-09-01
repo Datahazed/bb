@@ -55,8 +55,12 @@ export function PluginRowSignalView({
       : null;
     const updateDescription =
       readableVersion === null
-        ? "Update available"
-        : `Update to ${readableVersion}`;
+        ? signal.retry
+          ? "Retry update"
+          : "Update available"
+        : signal.retry
+          ? `Retry update to ${readableVersion}`
+          : `Update to ${readableVersion}`;
     return (
       <TooltipProvider delayDuration={250}>
         <Tooltip>
@@ -70,7 +74,11 @@ export function PluginRowSignalView({
               aria-label={updateDescription}
               onClick={onUpdateClick}
             >
-              <Icon name={UPDATE_ACTION_ICON} className="size-4" aria-hidden />
+              <Icon
+                name={signal.retry ? "RotateCcw" : UPDATE_ACTION_ICON}
+                className="size-4"
+                aria-hidden
+              />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{updateDescription}</TooltipContent>

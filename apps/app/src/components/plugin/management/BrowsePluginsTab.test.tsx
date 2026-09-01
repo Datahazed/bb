@@ -527,7 +527,7 @@ describe("BrowsePluginsTab", () => {
         .closest('[class~="px-[var(--resource-source-shelf-inset)]"]'),
     ).toBeNull();
     expect(screen.queryByText("Acme Plugins")).toBeNull();
-    const authorLink = screen.getByRole("link", { name: "By: Acme" });
+    const authorLink = screen.getByRole("link", { name: "By Acme" });
     expect(authorLink?.getAttribute("href")).toBe(
       "/extensions/plugins/authors/12%3Aacme-plugins%3Agithub%3Aacme",
     );
@@ -629,6 +629,10 @@ describe("BrowsePluginsTab", () => {
         "memory-and-context",
       )}) 55%, var(--canvas))`,
     );
+    expect(
+      memoryShelf.querySelector("[data-plugin-category-label]"),
+    ).toBeNull();
+    expect(memoryShelf.textContent).toContain("8 plugins");
     const shelfCard = within(memoryShelf)
       .getAllByRole("button", { name: /^Open Official .* details$/u })[0]
       ?.closest("div");
@@ -680,6 +684,9 @@ describe("BrowsePluginsTab", () => {
     expect(shelfTitle.classList.contains("hover:text-muted-foreground")).toBe(
       true,
     );
+    expect(shelfTitle.querySelector("[data-plugin-category-accent]")).toBe(
+      categoryAccent,
+    );
     expect(shelfTitle.classList.contains("hover:underline")).toBe(false);
     expect(shelfTitle.classList.contains("focus-visible:bg-state-hover")).toBe(
       false,
@@ -717,7 +724,7 @@ describe("BrowsePluginsTab", () => {
     );
     fireEvent.click(viewAll);
     expect(screen.getByTestId("location").textContent).toBe(
-      "?category=memory-and-context",
+      "?category=memory-and-context&shelf=memory-and-context",
     );
     const pluginCount = screen.getByText("8 plugins");
     expect(pluginCount.style.background).toBe(
@@ -981,7 +988,7 @@ describe("BrowsePluginsTab", () => {
       name: "Filter plugins by category: Security, Memory & Context",
     });
     expect(multiCategoryTrigger.textContent).toContain("2 categories");
-    expect(screen.queryByRole("heading", { name: "2 categories" })).toBeNull();
+    expect(document.querySelector("[data-plugin-list-header]")).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Memory & Context" }),
     ).toBeTruthy();
@@ -1030,6 +1037,7 @@ describe("BrowsePluginsTab", () => {
       screen.getByRole("heading", { name: "Code & Reviews" }),
     ).toBeTruthy();
     expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(2);
+    expect(document.querySelector("[data-plugin-list-header]")).toBeNull();
     expect(
       screen
         .getByRole("textbox", { name: "Search plugins" })
@@ -1039,8 +1047,9 @@ describe("BrowsePluginsTab", () => {
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(0);
-    expect(screen.getAllByText("Memory & Context")).toHaveLength(1);
-    expect(screen.getAllByText("Code & Reviews")).toHaveLength(1);
+    expect(screen.getAllByText("Memory & Context").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("Code & Reviews").length).toBeGreaterThan(1);
+    expect(document.querySelector("[data-plugin-list-header]")).toBeNull();
 
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.pointerDown(
@@ -1051,6 +1060,80 @@ describe("BrowsePluginsTab", () => {
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
     expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(2);
+  });
+
+  it("keeps one and multiple category filters in the same shelf layout", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: [MEMORY_ENTRY, GITHUB_ENTRY] });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    function LocationProbe() {
+      return <span data-testid="location">{useLocation().search}</span>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/?category=memory-and-context"]}>
+        <LocationProbe />
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    const memoryHeading = await screen.findByRole("heading", {
+      name: "Memory & Context",
+    });
+    expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(1);
+    expect(document.querySelector("[data-plugin-list-header]")).toBeNull();
+    expect(
+      screen
+        .getByRole("textbox", { name: "Search plugins" })
+        .closest('[class~="px-[var(--resource-source-shelf-inset)]"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: Memory & Context",
+      }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: /Code & Reviews/u }));
+
+    expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(2);
+    expect(document.querySelector("[data-plugin-list-header]")).toBeNull();
+    expect(
+      screen
+        .getByRole("textbox", { name: "Search plugins" })
+        .closest('[class~="px-[var(--resource-source-shelf-inset)]"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("option", { name: /Code & Reviews/u }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    const memoryShelf = memoryHeading.closest("section");
+    if (memoryShelf === null) throw new Error("Memory shelf missing");
+    fireEvent.click(
+      within(memoryShelf).getByRole("button", { name: /View all/u }),
+    );
+
+    expect(screen.getByTestId("location").textContent).toBe(
+      "?category=memory-and-context&shelf=memory-and-context",
+    );
+    expect(document.querySelectorAll("[data-plugin-shelf]")).toHaveLength(0);
+    expect(document.querySelector("[data-plugin-list-header]")).not.toBeNull();
   });
 
   it("sorts dropdown categories by plugin count", async () => {
@@ -1174,10 +1257,37 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findAllByText("Memory");
-    fireEvent.change(screen.getByRole("textbox", { name: "Search plugins" }), {
+    const searchInput = screen.getByRole("textbox", {
+      name: "Search plugins",
+    });
+    expect(
+      screen.queryByRole("button", { name: "Clear plugin search" }),
+    ).toBeNull();
+    fireEvent.change(searchInput, {
       target: { value: "unknown" },
     });
     await screen.findAllByText("Unknown search result");
+    const clearSearch = screen.getByRole("button", {
+      name: "Clear plugin search",
+    });
+    clearSearch.focus();
+    fireEvent.click(clearSearch);
+    expect((searchInput as HTMLInputElement).value).toBe("");
+    expect(document.activeElement).toBe(searchInput);
+    expect(
+      screen.queryByRole("button", { name: "Clear plugin search" }),
+    ).toBeNull();
+    await screen.findAllByText("Memory");
+
+    fireEvent.change(searchInput, { target: { value: "unknown" } });
+    await screen.findAllByText("Unknown search result");
+    searchInput.focus();
+    fireEvent.keyDown(searchInput, { key: "Escape" });
+    expect((searchInput as HTMLInputElement).value).toBe("");
+    expect(document.activeElement).toBe(searchInput);
+    expect(
+      screen.queryByRole("button", { name: "Clear plugin search" }),
+    ).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "Filter plugins by category: All categories",

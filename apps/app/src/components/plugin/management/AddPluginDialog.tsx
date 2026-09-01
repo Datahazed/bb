@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type UIEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
@@ -17,6 +17,12 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
@@ -29,6 +35,7 @@ import {
   installPlugin,
   useCatalogInstallPlan,
 } from "@/hooks/queries/plugin-catalog-queries";
+import { useClipboardCopy } from "@/lib/clipboard";
 import { CatalogEntryIcon, FullTrustWarning } from "./plugin-ui";
 
 export type AddPluginInitial = {
@@ -211,6 +218,72 @@ function ThirdPartySourceDisclosure({
   );
 }
 
+const SOURCE_SCROLLBAR_IDLE_DELAY_MS = 600;
+
+function InstallSource({ source }: { source: string }) {
+  const scrollbarIdleRef = useRef<number | null>(null);
+  const { copied, copy } = useClipboardCopy({
+    text: source,
+    errorMessage: "Failed to copy plugin source.",
+  });
+
+  useEffect(
+    () => () => {
+      if (scrollbarIdleRef.current !== null) {
+        window.clearTimeout(scrollbarIdleRef.current);
+      }
+    },
+    [],
+  );
+
+  const revealScrollbarWhileScrolling = (event: UIEvent<HTMLDivElement>) => {
+    const sourceRegion = event.currentTarget;
+    if (sourceRegion.dataset.scrollbarScrolling !== "true") {
+      sourceRegion.dataset.scrollbarScrolling = "true";
+    }
+    if (scrollbarIdleRef.current !== null) {
+      window.clearTimeout(scrollbarIdleRef.current);
+    }
+    scrollbarIdleRef.current = window.setTimeout(() => {
+      scrollbarIdleRef.current = null;
+      sourceRegion.removeAttribute("data-scrollbar-scrolling");
+    }, SOURCE_SCROLLBAR_IDLE_DELAY_MS);
+  };
+
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <div
+        role="region"
+        aria-label="Plugin source"
+        tabIndex={0}
+        className="transient-scrollbar min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-sm font-mono text-2xs text-subtle-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onScroll={revealScrollbarWhileScrolling}
+      >
+        {source}
+      </div>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0"
+              aria-label={
+                copied ? "Plugin source copied" : "Copy plugin source"
+              }
+              onClick={() => void copy()}
+            >
+              <Icon name={copied ? "Check" : "Copy"} className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copied ? "Copied" : "Copy source"}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
 function AddPluginDialogContent({
   initial,
   onOpenChange,
@@ -279,9 +352,7 @@ function AddPluginDialogContent({
                 {initial.displayName}
               </span>
             </div>
-            <p className="overflow-x-auto whitespace-nowrap font-mono text-2xs text-subtle-foreground">
-              {initial.source}
-            </p>
+            <InstallSource source={initial.source} />
           </div>
         ) : (
           <div>

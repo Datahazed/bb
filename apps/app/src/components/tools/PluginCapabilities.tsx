@@ -121,6 +121,7 @@ interface PluginCapabilityItem {
   key: string;
   label: ReactNode;
   detail?: ReactNode;
+  detailCollapsible?: boolean;
   mono?: boolean;
   destinationPath?: string;
 }
@@ -298,24 +299,28 @@ function pluginAppSurfaceItems(
       ]),
     ...slots.fileOpeners
       .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) => ({
-        ...namedSurface(
-          "file",
-          slot.id,
-          slot.title,
-          "File viewer",
-          "Opens supported files in a plugin-provided viewer.",
-          getSettingsRoutePath("files"),
-        ),
-        detail: (
-          <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span>Opens these files in a plugin-provided viewer:</span>
-            <span className="font-mono">
-              {slot.extensions.map((extension) => `.${extension}`).join(", ")}
-            </span>
-          </span>
-        ),
-      })),
+      .map((slot) => {
+        const extensions = slot.extensions
+          .map((extension) => `.${extension}`)
+          .join(", ");
+        return {
+          ...namedSurface(
+            "file",
+            slot.id,
+            slot.title,
+            "File viewer",
+            "Opens supported files in a plugin-provided viewer.",
+            getSettingsRoutePath("files"),
+          ),
+          detail: (
+            <>
+              <span>Opens these files in a plugin-provided viewer:</span>{" "}
+              <span className="font-mono">{extensions}</span>
+            </>
+          ),
+          detailCollapsible: extensions.length > 180,
+        };
+      }),
     ...slots.messageDirectives
       .filter((slot) => slot.pluginId === pluginId)
       .map((slot) => ({
@@ -449,6 +454,7 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
               nameClassName="text-xs"
               mono={item.mono}
               detail={item.detail}
+              detailCollapsible={item.detailCollapsible ?? false}
             />
           ))}
         </PluginDetailTable>

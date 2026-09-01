@@ -80,6 +80,48 @@ describe("UpdatePluginDialog", () => {
     ).toBe("false");
   });
 
+  it("dismisses without starting an update and leaves the available update intact", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const onOpenChange = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({ availableVersion: "1.7.0" })}
+        open
+        onOpenChange={onOpenChange}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("names the in-progress state while an update is running", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({ availableVersion: "1.7.0" })}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    const updating = await screen.findByRole("button", { name: "Updating…" });
+    expect((updating as HTMLButtonElement).disabled).toBe(true);
+    expect(updating.getAttribute("aria-busy")).toBe("true");
+  });
+
   it("renders the incompatible variant pre-expanded with Update disabled", () => {
     vi.stubGlobal("fetch", vi.fn());
     const { wrapper } = createQueryClientTestHarness();
@@ -213,7 +255,7 @@ describe("UpdatePluginDialog", () => {
     ).toBeTruthy();
   });
 
-  it("treats a malformed 2xx update response as an error, never success", async () => {
+  it("keeps a malformed 2xx response recoverable in the dialog", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ status: "ok" })),
@@ -230,13 +272,14 @@ describe("UpdatePluginDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
-    await vi.waitFor(() => {
-      expect(
-        (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false);
-    });
-    expect(screen.getByText("Update Linear to 1.7.0?")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Update failed" })).toBeNull();
+    expect(
+      await screen.findByRole("heading", { name: "Update failed" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("bb couldn’t complete or confirm the update."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Retry update to 1.7.0" }),
+    ).toBeTruthy();
   });
 });

@@ -68,7 +68,6 @@ function UpdatePluginDialogContent({
   const update = useMutation({
     mutationFn: () => applyPluginUpdate(fetch, plugin.id),
     onSuccess: (result) => {
-      invalidatePluginList({ queryClient });
       if (result.outcome === "rolled-back") {
         setRolledBack(result);
         return;
@@ -90,6 +89,7 @@ function UpdatePluginDialogContent({
         description: pluginAdminErrorMessage(error),
       });
     },
+    onSettled: () => invalidatePluginList({ queryClient }),
   });
 
   const fromLine = `Currently ${displayPluginVersion(plugin.version)}`;
@@ -97,6 +97,7 @@ function UpdatePluginDialogContent({
   const failure =
     rolledBack !== null
       ? {
+          kind: "rolled-back" as const,
           version:
             rolledBack.to?.display ??
             state.availableVersion ??
@@ -104,9 +105,16 @@ function UpdatePluginDialogContent({
           at: null,
           detail: rolledBack.detail ?? "",
         }
-      : persistedFailure === null
-        ? null
-        : persistedFailure;
+      : update.error !== null
+        ? {
+            kind: "request" as const,
+            version: state.availableVersion ?? "The new version",
+            at: null,
+            detail: pluginAdminErrorMessage(update.error),
+          }
+        : persistedFailure === null
+          ? null
+          : { kind: "persisted" as const, ...persistedFailure };
 
   if (failure !== null) {
     const retryVersion = state.availableVersion;
@@ -115,9 +123,11 @@ function UpdatePluginDialogContent({
         <DialogHeader>
           <DialogTitle>Update failed</DialogTitle>
           <DialogDescription>
-            {failure.at === null
-              ? "The update couldn’t be completed."
-              : `Failed on ${formatAbsoluteDate(failure.at)}.`}
+            {failure.kind === "request"
+              ? "bb couldn’t complete or confirm the update."
+              : failure.at === null
+                ? "The update couldn’t be completed."
+                : `Failed on ${formatAbsoluteDate(failure.at)}.`}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -128,8 +138,18 @@ function UpdatePluginDialogContent({
               aria-hidden
             />
             <span>
-              bb couldn&rsquo;t activate {displayPluginVersion(failure.version)}
-              . It restored {displayPluginVersion(plugin.version)} and its data.
+              {failure.kind === "request" ? (
+                <>
+                  {displayPluginVersion(plugin.version)} remains available.
+                  Review the details before retrying.
+                </>
+              ) : (
+                <>
+                  bb couldn&rsquo;t activate{" "}
+                  {displayPluginVersion(failure.version)}. It restored{" "}
+                  {displayPluginVersion(plugin.version)} and its data.
+                </>
+              )}
             </span>
           </div>
           {failure.detail.length > 0 ? (
@@ -174,7 +194,7 @@ function UpdatePluginDialogContent({
               {update.isPending ? (
                 <Icon name="Spinner" className="animate-spin" />
               ) : null}
-              Retry update
+              {update.isPending ? "Retrying…" : "Retry update"}
             </Button>
           )}
         </DialogFooter>
@@ -188,7 +208,6 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            {}
             Update {name} to {displayPluginVersion(candidate)}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
@@ -234,7 +253,7 @@ function UpdatePluginDialogContent({
             ) : (
               <Icon name={UPDATE_ACTION_ICON} aria-hidden />
             )}
-            Update
+            {update.isPending ? "Updating…" : "Update"}
           </Button>
         </DialogFooter>
       </>
@@ -263,7 +282,6 @@ function UpdatePluginDialogContent({
               bb
             </span>
           </div>
-          {}
           <DetailsDisclosure summary="Details" defaultExpanded>
             <div className="space-y-1.5">
               {state.blockedReasons.length > 0 ? (

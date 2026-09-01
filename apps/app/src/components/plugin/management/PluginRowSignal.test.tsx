@@ -11,7 +11,7 @@ describe("PluginRowSignalView", () => {
   it("uses the shared update-action icon", () => {
     render(
       <PluginRowSignalView
-        signal={{ kind: "update", version: "1.9.0" }}
+        signal={{ kind: "update", version: "1.9.0", retry: false }}
         onUpdateClick={vi.fn()}
         onStatusClick={vi.fn()}
       />,
@@ -24,6 +24,7 @@ describe("PluginRowSignalView", () => {
         })
         .querySelector('[data-icon="Download"]'),
     ).not.toBeNull();
+    expect(screen.queryByText("Update")).toBeNull();
   });
 
   it("keeps runtime health icon-only until hover or focus and opens details", async () => {
@@ -59,7 +60,7 @@ describe("PluginRowSignalView", () => {
   it("names readable versions and hides commit hashes in the update control", () => {
     const { rerender } = render(
       <PluginRowSignalView
-        signal={{ kind: "update", version: "1.2.0" }}
+        signal={{ kind: "update", version: "1.2.0", retry: false }}
         onUpdateClick={vi.fn()}
         onStatusClick={vi.fn()}
       />,
@@ -73,6 +74,7 @@ describe("PluginRowSignalView", () => {
         signal={{
           kind: "update",
           version: "a985e1d5523398e9c7459d35679142cc4339771e",
+          retry: false,
         }}
         onUpdateClick={vi.fn()}
         onStatusClick={vi.fn()}
@@ -80,6 +82,22 @@ describe("PluginRowSignalView", () => {
     );
     const button = screen.getByRole("button", { name: "Update available" });
     expect(button.getAttribute("aria-label")).not.toContain("a985e1d");
+  });
+
+  it("makes a failed update's next action an explicit retry", () => {
+    render(
+      <PluginRowSignalView
+        signal={{ kind: "update", version: "1.9.0", retry: true }}
+        onUpdateClick={vi.fn()}
+        onStatusClick={vi.fn()}
+      />,
+    );
+
+    const retry = screen.getByRole("button", {
+      name: "Retry update to 1.9.0",
+    });
+    expect(retry.textContent).toBe("");
+    expect(retry.querySelector('[data-icon="RotateCcw"]')).not.toBeNull();
   });
 });
 

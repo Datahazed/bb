@@ -235,6 +235,26 @@ describe("plugin discovery detail panel", () => {
     );
     expect(memoryTab.getAttribute("aria-pressed")).toBe("true");
 
+    fireEvent.click(screen.getByRole("link", { name: "Browse plugins" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/extensions/plugins/memory?sort=name",
+      );
+    });
+    expect(screen.getByRole("button", { name: "GitHub" })).toBe(githubTab);
+    expect(screen.getByRole("button", { name: "Memory" })).toBe(memoryTab);
+    expect(screen.getByRole("heading", { name: "Memory" })).toBe(
+      memoryDetailHeading,
+    );
+    expect(memoryTab.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByRole("link", { name: "Pat Lee" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/extensions/plugins/memory?sort=name&author=12%3Abb-community%3Agithub%3Apatlee",
+      );
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
     await waitFor(() => {
       expect(screen.getByTestId("location").textContent).toBe(

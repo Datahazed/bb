@@ -33,6 +33,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPage";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -66,7 +67,6 @@ import {
 } from "@/lib/route-paths";
 import { buildEditInstalledPluginPrompt } from "@/lib/plugin-listing-prompts";
 import {
-  getToolsOwnedCollectionRoutePath,
   resolveToolsSection,
   type ToolsSectionId,
 } from "@/components/tools/tools-navigation";
@@ -294,6 +294,7 @@ function PluginDetailToolView({
 }) {
   const navigate = useNavigate();
   const detailRootRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<"details" | "settings">("details");
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
@@ -342,7 +343,6 @@ function PluginDetailToolView({
           : "Plugin uninstalled",
       );
       setDeleteTarget(null);
-      navigate(getToolsOwnedCollectionRoutePath("plugins"));
       return listQuery.refetch();
     },
     onError: (error) => {
@@ -375,15 +375,17 @@ function PluginDetailToolView({
   useEffect(() => {
     if (!focusHeading || !identityReady) return;
     const frame = window.requestAnimationFrame(() => {
-      const heading = detailRootRef.current?.querySelector<HTMLHeadingElement>(
-        "h1",
-      );
+      const heading =
+        detailRootRef.current?.querySelector<HTMLHeadingElement>("h1");
       if (heading === undefined || heading === null) return;
       if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
       heading.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focusHeading, identityReady, pluginId]);
+  }, [focusHeading, identityReady, pluginId, view]);
+  useEffect(() => {
+    setView("details");
+  }, [pluginId]);
   useResourceRouteLabel(
     selectedPlugin?.name ??
       selectedPlugin?.id ??
@@ -423,7 +425,14 @@ function PluginDetailToolView({
   );
 
   let detailContent: ReactNode;
-  if (selectedPlugin !== null) {
+  if (selectedPlugin !== null && view === "settings") {
+    detailContent = (
+      <PluginSettingsPage
+        pluginId={selectedPlugin.id}
+        onBack={() => setView("details")}
+      />
+    );
+  } else if (selectedPlugin !== null) {
     detailContent = (
       <PluginDetail
         isLoading={false}
@@ -434,6 +443,7 @@ function PluginDetailToolView({
         onEdit={handleEditPlugin}
         onOpenSource={handleOpenPluginSource}
         onDelete={setDeleteTarget}
+        onConfigure={() => setView("settings")}
         catalogEntry={selectedCatalogEntry}
         catalogEntries={catalogEntries}
         onOpenPlugin={onOpenPlugin}

@@ -8,7 +8,10 @@ import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { InstalledPluginRow } from "./InstalledPluginsTab";
+import {
+  InstalledPluginCard,
+  InstalledPluginsTab,
+} from "./InstalledPluginsTab";
 
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   return {
@@ -45,12 +48,12 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   };
 }
 
-function renderRow(item: PluginListItem) {
+function renderCard(item: PluginListItem) {
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <QueryClientWrapper>
-        <InstalledPluginRow plugin={item} onUpdateClick={vi.fn()} />
+        <InstalledPluginCard plugin={item} onUpdateClick={vi.fn()} />
       </QueryClientWrapper>
     </MemoryRouter>,
   );
@@ -60,14 +63,14 @@ afterEach(() => {
   cleanup();
 });
 
-describe("InstalledPluginRow", () => {
+describe("InstalledPluginCard", () => {
   it("opens the shared detail panel through the collection callback", () => {
     const onOpenPlugin = vi.fn();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
         <QueryClientWrapper>
-          <InstalledPluginRow
+          <InstalledPluginCard
             plugin={plugin()}
             onUpdateClick={vi.fn()}
             onOpenPlugin={onOpenPlugin}
@@ -84,7 +87,7 @@ describe("InstalledPluginRow", () => {
   });
 
   it("replaces the description with one compact problem line", () => {
-    renderRow(
+    renderCard(
       plugin({
         status: "incompatible",
         statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
@@ -101,16 +104,18 @@ describe("InstalledPluginRow", () => {
       "Not running — requires bb >=0.38.0 <0.39.0, this is 0.39.0 · just now",
     );
     expect(screen.queryByText("Incompatible")).toBeNull();
-    const resourceRow = screen
-      .getByTestId("plugin-row-notify")
-      .querySelector("[data-resource-row]");
-    expect(resourceRow?.classList.contains("bg-surface-destructive")).toBe(
+    const resourceCard = screen
+      .getByTestId("plugin-card-notify")
+      .querySelector(".rounded-lg");
+    expect(resourceCard?.classList.contains("bg-surface-destructive")).toBe(
       true,
     );
     expect(
-      resourceRow?.classList.contains("border-surface-destructive-border"),
+      resourceCard?.classList.contains("border-surface-destructive-border"),
     ).toBe(true);
-    expect(resourceRow?.classList.contains("text-destructive-text")).toBe(true);
+    expect(resourceCard?.classList.contains("text-destructive-text")).toBe(
+      true,
+    );
     expect(
       screen
         .getByRole("switch", {
@@ -121,7 +126,7 @@ describe("InstalledPluginRow", () => {
   });
 
   it("renders a running plugin's durable error count as one attention pill", () => {
-    renderRow(
+    renderCard(
       plugin({
         handlerStats: {
           count: 5,
@@ -148,8 +153,8 @@ describe("InstalledPluginRow", () => {
     );
   });
 
-  it("does not repeat provenance or category as row pills", () => {
-    renderRow(
+  it("uses the Browse card's category footer without repeating provenance", () => {
+    renderCard(
       plugin({
         provenance: "catalog",
         publisherLabel: "BB Community",
@@ -158,13 +163,13 @@ describe("InstalledPluginRow", () => {
       }),
     );
 
-    const row = screen.getByTestId("plugin-row-notify");
-    expect(row.textContent).not.toContain("BB Community");
-    expect(row.textContent).not.toContain("Security");
+    const card = screen.getByTestId("plugin-card-notify");
+    expect(card.textContent).not.toContain("BB Community");
+    expect(card.textContent).toContain("Security");
   });
 
   it("shows a rolled-back update beside a still-available update", () => {
-    renderRow(
+    renderCard(
       plugin({
         updateState: {
           ...EMPTY_PLUGIN_UPDATE_STATE,
@@ -184,12 +189,13 @@ describe("InstalledPluginRow", () => {
       }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Update to 0.3.0" }),
+      screen.getByRole("button", { name: "Retry update to 0.3.0" }),
     ).toBeTruthy();
+    expect(screen.queryByText("Retry")).toBeNull();
   });
 
   it("shows when update checks need attention", () => {
-    renderRow(
+    renderCard(
       plugin({
         updateState: {
           ...EMPTY_PLUGIN_UPDATE_STATE,
@@ -207,5 +213,63 @@ describe("InstalledPluginRow", () => {
     expect(
       screen.queryByRole("button", { name: /^Update(?: to| available)/u }),
     ).toBeNull();
+  });
+
+  it("keeps a current plugin quiet", () => {
+    renderCard(plugin());
+
+    expect(screen.queryByText("Update")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^Update(?: to| available)/u }),
+    ).toBeNull();
+  });
+});
+
+describe("InstalledPluginsTab", () => {
+  it("renders installed plugins in one flat Browse-style card grid", () => {
+    const securityPlugins = Array.from({ length: 7 }, (_, index) =>
+      plugin({
+        id: `security-${index}`,
+        name: `Security ${index}`,
+        categoryId: "security",
+        category: "Security",
+      }),
+    );
+    const memoryPlugins = Array.from({ length: 2 }, (_, index) =>
+      plugin({
+        id: `memory-${index}`,
+        name: `Memory ${index}`,
+        categoryId: "memory-and-context",
+        category: "Memory & Context",
+      }),
+    );
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <InstalledPluginsTab
+            plugins={[...securityPlugins, ...memoryPlugins]}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const securityCards = screen.getAllByTestId(/^plugin-card-security-/u);
+    expect(securityCards).toHaveLength(7);
+    expect(screen.getAllByTestId(/^plugin-card-memory-/u)).toHaveLength(2);
+    expect(securityCards[0]?.parentElement?.classList.contains("grid")).toBe(
+      true,
+    );
+    expect(
+      document.querySelectorAll("[data-resource-list-panel]"),
+    ).toHaveLength(0);
+    expect(
+      document.querySelector("[data-installed-plugin-shelves]"),
+    ).toBeNull();
+    expect(
+      document.querySelector("[data-installed-plugin-category-header]"),
+    ).toBeNull();
+    expect(screen.getAllByText("Security")).toHaveLength(7);
+    expect(screen.getAllByText("Memory & Context")).toHaveLength(2);
   });
 });

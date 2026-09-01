@@ -1,20 +1,28 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  Navigate,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  PLUGIN_CATALOG_CATEGORIES,
+  defaultPluginDiscoverySortDirection,
+  sortPluginDiscoveryEntries,
+  type PluginCatalogCategoryId,
+  type PluginDiscoveryEntryAccessors,
+} from "@bb/domain";
+import {
+  RESOURCE_GRID_PAGE_SIZE,
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
-  useResourceViewportPageSize,
 } from "@bb/shared-ui/resource-pagination";
 import {
-  ResourceCollectionPage,
   ResourceCollectionViewport,
-  ResourceFilterMenu,
   ResourceListState,
-  ResourceSortMenu,
-  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
+import { Button } from "@bb/shared-ui/button";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import {
@@ -22,17 +30,34 @@ import {
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
-import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
-import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
+import {
+  InstalledPluginsTab,
+  UNCATEGORIZED_PLUGIN_CATEGORY,
+} from "@/components/plugin/management/InstalledPluginsTab";
 import { MyPluginsTab } from "@/components/plugin/management/MyPluginsTab";
 import { OpenPluginGuideButton } from "@/components/plugin/management/OpenPluginGuideButton";
 import {
-  PLUGIN_SOURCE_FILTER_OPTIONS,
-  pluginSourceFilterId,
-  type PluginSourceFilter,
-} from "@/components/plugin/plugin-provenance";
+  PluginCollectionToolbar,
+  PluginCreateControl,
+} from "@/components/plugin/management/PluginCollectionControls";
+import {
+  PluginBrowseCategoryFilter,
+  PluginSortControl,
+  type PluginBrowseCategoryOption,
+} from "@/components/plugin/management/PluginBrowseControls";
+import type {
+  PluginBrowseSort,
+  PluginBrowseSortDirection,
+} from "@/components/plugin/management/plugin-browse-discovery";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
-import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import {
+  usePluginCatalogSearch,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
+import {
+  usePluginList,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginDetailRoutePath,
   getPluginsRoutePath,
@@ -40,24 +65,30 @@ import {
 } from "@/lib/route-paths";
 
 type PluginsCollectionMode = "installed" | "browse" | "my";
-type InstalledStateFilter = "enabled" | "disabled";
-type InstalledSourceFilter = Exclude<PluginSourceFilter, "all">;
 
-const INSTALLED_STATE_FILTER_OPTIONS = [
-  { id: "enabled", label: "Enabled" },
-  { id: "disabled", label: "Disabled" },
-] satisfies readonly { id: InstalledStateFilter; label: string }[];
+interface InstalledPluginSortEntry {
+  plugin: PluginListItem;
+  catalogEntry: PluginCatalogSearchEntry | null;
+}
 
-const INSTALLED_SOURCE_FILTER_OPTIONS = PLUGIN_SOURCE_FILTER_OPTIONS.filter(
-  (
-    option,
-  ): option is {
-    id: InstalledSourceFilter;
-    label: string;
-  } => option.id !== "all",
-);
+interface InstalledPluginSortCategory {
+  id: PluginCatalogCategoryId;
+}
 
-const UNCATEGORIZED_CATEGORY_FILTER = "__uncategorized__";
+const INSTALLED_PLUGIN_SORT_ACCESSORS = {
+  entryId: (entry: InstalledPluginSortEntry) => entry.plugin.id,
+  displayName: (entry: InstalledPluginSortEntry) =>
+    entry.plugin.name ?? entry.plugin.id,
+  category: () => undefined,
+  categoryId: (category: InstalledPluginSortCategory) => category.id,
+  installs: (entry: InstalledPluginSortEntry) =>
+    entry.catalogEntry?.installs ?? undefined,
+  publishedAt: (entry: InstalledPluginSortEntry) =>
+    entry.catalogEntry?.publishedAt,
+} satisfies PluginDiscoveryEntryAccessors<
+  InstalledPluginSortEntry,
+  InstalledPluginSortCategory
+>;
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   if (value === "installed") return value;
@@ -70,52 +101,70 @@ export function PluginsOverview({
 }: {
   onOpenPlugin?: (pluginId: string, view: PluginsCollectionMode) => void;
 }) {
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const activeMode = modeFromSearchParams(searchParams.get("view"));
   const listQuery = usePluginList({ enabled: true });
+  const installedCatalogQuery = usePluginCatalogSearch("", {
+    enabled: activeMode === "installed",
+  });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
     [listQuery.data?.plugins],
   );
+  const emptyInstalledCollection =
+    activeMode === "installed" && listQuery.isSuccess && plugins.length === 0;
+  const renderedMode = emptyInstalledCollection ? "browse" : activeMode;
   const pluginGuide = plugins.find((plugin) => plugin.id === "plugin-api-docs");
-  const activeMode = modeFromSearchParams(searchParams.get("view"));
   const [installedQuery, setInstalledQuery] = useState("");
-  const [installedViewport, setInstalledViewport] =
-    useState<HTMLDivElement | null>(null);
-  const [installedSortDirection, setInstalledSortDirection] = useState<
-    "asc" | "desc"
-  >("asc");
-  const [installedSort, setInstalledSort] = useState<"alpha" | null>(null);
-  const [stateFilters, setStateFilters] = useState<InstalledStateFilter[]>([]);
-  const [sourceFilters, setSourceFilters] = useState<InstalledSourceFilter[]>(
-    [],
+  const [installedSortDirection, setInstalledSortDirection] =
+    useState<PluginBrowseSortDirection>("desc");
+  const [installedSort, setInstalledSort] = useState<PluginBrowseSort | null>(
+    null,
   );
   const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
   const categoryOptions = useMemo(() => {
-    const byId = new Map<string, string>();
-    let hasUncategorized = false;
+    const counts = new Map<string, number>();
     for (const plugin of plugins) {
-      if (plugin.categoryId != null && plugin.category != null) {
-        byId.set(plugin.categoryId, plugin.category);
-      } else {
-        hasUncategorized = true;
-      }
+      const id =
+        plugin.categoryId === null || plugin.category === null
+          ? UNCATEGORIZED_PLUGIN_CATEGORY
+          : plugin.categoryId;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
     }
-    const declaredCategories = [...byId.entries()]
-      .map(([id, label]) => ({ id, label }))
-      .sort((left, right) => left.label.localeCompare(right.label));
-    return [
-      ...declaredCategories,
-      ...(hasUncategorized
-        ? [
-            {
-              id: UNCATEGORIZED_CATEGORY_FILTER,
-              label: "Uncategorized",
-            },
-          ]
-        : []),
-    ];
+    const options: PluginBrowseCategoryOption[] =
+      PLUGIN_CATALOG_CATEGORIES.flatMap((category) => {
+        const count = counts.get(category.id) ?? 0;
+        return count === 0
+          ? []
+          : [{ id: category.id, label: category.displayName, count }];
+      });
+    if ((counts.get(UNCATEGORIZED_PLUGIN_CATEGORY) ?? 0) > 0) {
+      options.push({
+        id: UNCATEGORIZED_PLUGIN_CATEGORY,
+        label: "Uncategorized",
+        count: counts.get(UNCATEGORIZED_PLUGIN_CATEGORY) ?? 0,
+      });
+    }
+    return options.sort(
+      (left, right) =>
+        right.count - left.count || left.label.localeCompare(right.label),
+    );
   }, [plugins]);
+  const installedCatalogEntries = useMemo(
+    () =>
+      (installedCatalogQuery.data ?? []).filter((entry) => entry.compatible),
+    [installedCatalogQuery.data],
+  );
+  const installedCatalogEntriesByPluginId = useMemo(
+    () =>
+      new Map(installedCatalogEntries.map((entry) => [entry.pluginId, entry])),
+    [installedCatalogEntries],
+  );
+  const installedCatalogHasInstallCounts = installedCatalogEntries.some(
+    (entry) => entry.installs !== null,
+  );
   const activeCategoryFilters = useMemo(
     () =>
       categoryFilters.filter((categoryId) =>
@@ -123,22 +172,14 @@ export function PluginsOverview({
       ),
     [categoryFilters, categoryOptions],
   );
-  const filtersAreDefault =
-    stateFilters.length === 0 &&
-    sourceFilters.length === 0 &&
-    activeCategoryFilters.length === 0;
+  const filtersAreDefault = activeCategoryFilters.length === 0;
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const installedResetKey = [
     normalizedInstalledQuery,
     installedSort ?? "default",
     installedSortDirection,
-    stateFilters.join(","),
-    sourceFilters.join(","),
     activeCategoryFilters.join(","),
   ].join("\u0000");
-  const installedPageSize = useResourceViewportPageSize(installedViewport, {
-    resetKey: installedResetKey,
-  });
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
@@ -155,76 +196,70 @@ export function PluginsOverview({
             }),
       ));
 
-  const visiblePlugins = useMemo(
-    () =>
-      plugins
-        .filter((plugin) => {
-          if (
-            stateFilters.length > 0 &&
-            !stateFilters.includes(plugin.enabled ? "enabled" : "disabled")
-          ) {
-            return false;
-          }
-          if (
-            sourceFilters.length > 0 &&
-            !sourceFilters.includes(pluginSourceFilterId(plugin))
-          ) {
-            return false;
-          }
-          const categoryId =
-            plugin.categoryId != null && plugin.category != null
-              ? plugin.categoryId
-              : UNCATEGORIZED_CATEGORY_FILTER;
-          if (
-            activeCategoryFilters.length > 0 &&
-            !activeCategoryFilters.includes(categoryId)
-          ) {
-            return false;
-          }
-          if (normalizedInstalledQuery.length === 0) return true;
-          return [
-            plugin.id,
-            plugin.name ?? "",
-            plugin.description ?? "",
-            plugin.version,
-            plugin.sourceDisplay,
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(normalizedInstalledQuery);
-        })
-        .sort((left, right) => {
-          const enabledResult = Number(!left.enabled) - Number(!right.enabled);
-          if (enabledResult !== 0) return enabledResult;
-          if (left.enabled) {
-            const leftPublisher = left.publisherLabel;
-            const rightPublisher = right.publisherLabel;
-            const publisherResult =
-              Number(leftPublisher === null) - Number(rightPublisher === null);
-            if (publisherResult !== 0) return publisherResult;
-          }
-          const result = (left.name ?? left.id).localeCompare(
-            right.name ?? right.id,
-          );
-          if (result !== 0) {
-            return installedSortDirection === "asc" ? result : -result;
-          }
-          return left.id.localeCompare(right.id);
-        }),
-    [
-      activeCategoryFilters,
-      installedSortDirection,
-      normalizedInstalledQuery,
-      plugins,
-      sourceFilters,
-      stateFilters,
-    ],
-  );
+  const visiblePlugins = useMemo(() => {
+    const filteredPlugins = plugins.filter((plugin) => {
+      const categoryId =
+        plugin.categoryId != null && plugin.category != null
+          ? plugin.categoryId
+          : UNCATEGORIZED_PLUGIN_CATEGORY;
+      if (
+        activeCategoryFilters.length > 0 &&
+        !activeCategoryFilters.includes(categoryId)
+      ) {
+        return false;
+      }
+      if (normalizedInstalledQuery.length === 0) return true;
+      return [
+        plugin.id,
+        plugin.name ?? "",
+        plugin.description ?? "",
+        plugin.version,
+        plugin.sourceDisplay,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedInstalledQuery);
+    });
+    if (installedSort !== null) {
+      return sortPluginDiscoveryEntries(
+        filteredPlugins.map((plugin) => ({
+          plugin,
+          catalogEntry:
+            installedCatalogEntriesByPluginId.get(plugin.id) ?? null,
+        })),
+        installedSort,
+        INSTALLED_PLUGIN_SORT_ACCESSORS,
+        installedSortDirection,
+      ).map((entry) => entry.plugin);
+    }
+    return filteredPlugins.sort((left, right) => {
+      const nameResult = (left.name ?? left.id).localeCompare(
+        right.name ?? right.id,
+      );
+      const enabledResult = Number(!left.enabled) - Number(!right.enabled);
+      if (enabledResult !== 0) return enabledResult;
+      if (left.enabled) {
+        const leftPublisher = left.publisherLabel;
+        const rightPublisher = right.publisherLabel;
+        const publisherResult =
+          Number(leftPublisher === null) - Number(rightPublisher === null);
+        if (publisherResult !== 0) return publisherResult;
+      }
+      if (nameResult !== 0) return nameResult;
+      return left.id.localeCompare(right.id);
+    });
+  }, [
+    activeCategoryFilters,
+    installedCatalogEntriesByPluginId,
+    installedSortDirection,
+    installedSort,
+    normalizedInstalledQuery,
+    plugins,
+  ]);
   const installedList = useResourceInfiniteItems(visiblePlugins, {
-    pageSize: installedPageSize,
+    pageSize: RESOURCE_GRID_PAGE_SIZE,
     resetKey: installedResetKey,
   });
-
   const startCreatePlugin = (prompt?: string) => {
     navigate(getRootComposeRoutePath(), {
       state: {
@@ -247,34 +282,19 @@ export function PluginsOverview({
     );
   }
 
-  if (
-    activeMode === "installed" &&
-    listQuery.isSuccess &&
-    plugins.length === 0
-  ) {
+  if (emptyInstalledCollection && location.pathname === getPluginsRoutePath()) {
     return <Navigate to={getPluginsRoutePath()} replace />;
   }
 
   const installedActions = (
-    <>
-      {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
-      <CreateWithTemplatesButton
-        kind="plugin"
-        label="Create a plugin"
-        menuActions={[
-          {
-            label: "Install from source",
-            icon: "Download",
-            onSelect: () => setAddDialog({ open: true, initial: null }),
-          },
-        ]}
-        onCreate={startCreatePlugin}
-      />
-    </>
+    <PluginCreateControl
+      onCreate={() => navigate(`${getPluginsRoutePath()}?view=create`)}
+      onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
+    />
   );
 
   let content: ReactNode;
-  if (activeMode === "browse") {
+  if (renderedMode === "browse") {
     content = (
       <BrowsePluginsTab
         onInstall={(initial) => setAddDialog({ open: true, initial })}
@@ -282,93 +302,95 @@ export function PluginsOverview({
         onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
       />
     );
-  } else if (activeMode === "installed") {
+  } else if (renderedMode === "installed") {
     content = (
       <ResourceCollectionViewport
         scrollId="plugins-installed-results"
-        viewportRef={setInstalledViewport}
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
         contentClassName="[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full"
         toolbar={
-          plugins.length > 0 ? (
-            <ResourceToolbar
+          <div className="space-y-6">
+            <div className="space-y-1" data-installed-plugins-header>
+              <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
+                <span>Installed plugins</span>
+                <span
+                  data-installed-plugin-count
+                  className="rounded-md bg-muted px-2 py-1 text-2xs font-medium tabular-nums text-subtle-foreground"
+                >
+                  {plugins.length.toLocaleString()}{" "}
+                  {plugins.length === 1 ? "plugin" : "plugins"}
+                </span>
+              </h1>
+              <p className="text-xs text-subtle-foreground">
+                {PLUGINS_INSTALLED_DESCRIPTION}
+              </p>
+            </div>
+            <PluginCollectionToolbar
               searchValue={installedQuery}
               searchPlaceholder="Search installed plugins"
+              searchClearLabel="Clear installed plugin search"
               onSearchChange={setInstalledQuery}
               action={installedActions}
-              controls={
-                <>
-                  <ResourceFilterMenu
-                    compact
-                    engaged={!filtersAreDefault}
-                    groups={[
-                      {
-                        id: "state",
-                        label: "State",
-                        options: INSTALLED_STATE_FILTER_OPTIONS,
-                        selectedValues: stateFilters,
-                        onChange: (values) =>
-                          setStateFilters(
-                            values.filter(
-                              (value): value is InstalledStateFilter =>
-                                value === "enabled" || value === "disabled",
-                            ),
-                          ),
-                      },
-                      {
-                        id: "source",
-                        label: "Source",
-                        options: INSTALLED_SOURCE_FILTER_OPTIONS,
-                        selectedValues: sourceFilters,
-                        onChange: (values) =>
-                          setSourceFilters(
-                            values.filter(
-                              (value): value is InstalledSourceFilter =>
-                                value === "builtin" ||
-                                value === "catalog" ||
-                                value === "direct",
-                            ),
-                          ),
-                      },
-                      {
-                        id: "category",
-                        label: "Category",
-                        options: categoryOptions,
-                        selectedValues: activeCategoryFilters,
-                        onChange: setCategoryFilters,
-                      },
-                    ]}
-                  />
-                  <ResourceSortMenu
+              sort={
+                plugins.length === 0 ? undefined : (
+                  <PluginSortControl
                     value={installedSort}
                     direction={installedSortDirection}
-                    compact
-                    options={[{ id: "alpha", label: "Plugin name" }]}
-                    placeholderLabel="Sort plugins"
+                    hasInstallCounts={installedCatalogHasInstallCounts}
                     onClear={() => {
                       setInstalledSort(null);
-                      setInstalledSortDirection("asc");
+                      setInstalledSortDirection("desc");
                     }}
-                    onChange={() => {
-                      if (installedSort === "alpha") {
+                    onChange={(sort) => {
+                      if (installedSort === sort) {
                         setInstalledSortDirection((current) =>
                           current === "asc" ? "desc" : "asc",
                         );
                         return;
                       }
-                      setInstalledSort("alpha");
-                      setInstalledSortDirection("asc");
+                      setInstalledSort(sort);
+                      setInstalledSortDirection(
+                        defaultPluginDiscoverySortDirection(sort),
+                      );
                     }}
                   />
-                </>
+                )
+              }
+              filter={
+                plugins.length === 0 ? undefined : (
+                  <PluginBrowseCategoryFilter
+                    selectionMode="multiple"
+                    value={activeCategoryFilters}
+                    options={categoryOptions}
+                    onChange={setCategoryFilters}
+                  />
+                )
               }
               controlsClassName="max-w-full flex-wrap justify-end"
             />
-          ) : undefined
+          </div>
         }
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
-          {listQuery.isError ? (
+          {listQuery.isError && plugins.length > 0 ? (
+            <div
+              className="flex flex-wrap items-center gap-2 text-xs text-warning-text"
+              role="status"
+            >
+              <span>
+                Showing installed plugins from the last successful refresh.
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void listQuery.refetch()}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : null}
+          {listQuery.isError && plugins.length === 0 ? (
             <ResourceListState
               state="error"
               message="Couldn't load plugins."
@@ -376,7 +398,7 @@ export function PluginsOverview({
             />
           ) : listQuery.isFetching && listQuery.data === undefined ? (
             <ResourceListState state="loading" message="Loading plugins" />
-          ) : plugins.length > 0 && visiblePlugins.length === 0 ? (
+          ) : visiblePlugins.length === 0 ? (
             <ResourceListState
               state="empty"
               message={
@@ -390,6 +412,7 @@ export function PluginsOverview({
           ) : (
             <>
               <InstalledPluginsTab
+                catalogEntriesByPluginId={installedCatalogEntriesByPluginId}
                 plugins={installedList.items}
                 onOpenPlugin={(pluginId) => openPlugin(pluginId, "installed")}
               />
@@ -431,17 +454,7 @@ export function PluginsOverview({
 
   return (
     <>
-      {activeMode === "installed" ? (
-        <ResourceCollectionPage
-          id="plugins-collection"
-          description={PLUGINS_INSTALLED_DESCRIPTION}
-          bandClassName={TOOLS_PAGE_BAND_CLASSES}
-        >
-          {content}
-        </ResourceCollectionPage>
-      ) : (
-        <div className="flex h-full min-h-0 flex-col">{content}</div>
-      )}
+      <div className="flex h-full min-h-0 flex-col">{content}</div>
       <AddPluginDialog
         open={addDialog.open}
         initial={addDialog.initial}

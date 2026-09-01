@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import { Button } from "../button";
 import {
   DropdownMenu,
@@ -24,6 +24,7 @@ export function ResourceToolbar({
   searchValue,
   searchPlaceholder,
   searchLabel,
+  searchClearLabel,
   onSearchChange,
   controls,
   controlsClassName,
@@ -32,11 +33,20 @@ export function ResourceToolbar({
   searchValue: string;
   searchPlaceholder: string;
   searchLabel?: string;
+  searchClearLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
   controlsClassName?: string;
   action?: ReactNode;
 }) {
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const clearSearch = () => {
+    onSearchChange("");
+    searchInputRef.current?.focus();
+  };
+  const canClearSearch =
+    searchClearLabel !== undefined && searchValue.length > 0;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="relative min-w-0 flex-1">
@@ -46,12 +56,31 @@ export function ResourceToolbar({
           aria-hidden
         />
         <Input
+          ref={searchInputRef}
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || !canClearSearch) return;
+            event.preventDefault();
+            event.stopPropagation();
+            clearSearch();
+          }}
           placeholder={searchPlaceholder}
           aria-label={searchLabel ?? searchPlaceholder}
-          className="h-8 pl-8"
+          className={cn("h-8 pl-8", canClearSearch && "pr-8")}
         />
+        {canClearSearch ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={searchClearLabel}
+            className="absolute right-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            onClick={clearSearch}
+          >
+            <Icon name="X" className="size-3.5" aria-hidden />
+          </Button>
+        ) : null}
       </div>
       {controls ? (
         <div
@@ -328,12 +357,18 @@ export function ResourceFilterMenu({
   groups,
   compact = false,
   engaged,
+  contentClassName,
+  clearLabel = "Clear filters",
+  onClear,
 }: {
   label?: string;
   icon?: IconName;
   groups: readonly ResourceFilterGroup[];
   compact?: boolean;
   engaged?: boolean;
+  contentClassName?: string;
+  clearLabel?: string;
+  onClear?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const renderedGroups = groups
@@ -369,12 +404,14 @@ export function ResourceFilterMenu({
       <DropdownMenuContent
         align="end"
         mobileTitle={label}
-        className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
+        className={cn(
+          compact ? "w-max max-w-64 md:p-0.5" : "min-w-44",
+          contentClassName,
+        )}
       >
         {renderedGroups.map(({ group, selected }, groupIndex) => (
           <Fragment key={group.id}>
             {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-            {}
             <DropdownMenuGroup aria-label={group.label}>
               <DropdownMenuLabel
                 className={cn(
@@ -407,6 +444,23 @@ export function ResourceFilterMenu({
             </DropdownMenuGroup>
           </Fragment>
         ))}
+        {onClear === undefined || !hasActiveFilter ? null : (
+          <>
+            <DropdownMenuSeparator className={cn(compact && "md:my-0.5")} />
+            <DropdownMenuItem
+              className={cn(
+                "text-muted-foreground",
+                compact && "md:gap-2 md:px-1.5 md:py-1",
+              )}
+              onSelect={(event) => {
+                event.preventDefault();
+                onClear();
+              }}
+            >
+              {clearLabel}
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -445,7 +499,6 @@ export function ResourceSortMenu({
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
-      {}
       <ResourceMenuTrigger
         label={sortStateLabel}
         icon="ArrowUpDown"
@@ -488,8 +541,6 @@ export function ResourceSortMenu({
                 compact={compact}
                 labelClassName="font-medium text-foreground"
               />
-              {
-}
               <Icon
                 name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
                 aria-hidden

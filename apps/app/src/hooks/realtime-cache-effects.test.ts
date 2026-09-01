@@ -21,6 +21,7 @@ import {
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
   projectsQueryKey,
+  pluginListQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -243,6 +244,8 @@ describe("createRealtimeCacheEffects", () => {
       providerId: "codex",
     });
     queryClient.setQueryData(executionOptionsKey, {});
+    const installedPluginsKey = pluginListQueryKey(true);
+    queryClient.setQueryData(installedPluginsKey, { plugins: [] });
 
     effects.handleChanged({
       type: "changed",
@@ -258,6 +261,9 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
       false,
     );
+    expect(
+      queryClient.getQueryState(installedPluginsKey)?.isInvalidated,
+    ).toBe(true);
   });
 
   it("invalidates provider pickers on provider registration changes", () => {

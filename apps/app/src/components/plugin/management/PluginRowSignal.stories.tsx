@@ -65,19 +65,26 @@ export const UpdateStates = () => (
   <div className="flex max-w-xl flex-col gap-3 p-4">
     <StateRow label="Semver update — button names the version">
       <PluginRowSignalView
-        signal={{ kind: "update", version: "1.2.0" }}
+        signal={{ kind: "update", version: "1.2.0", retry: false }}
         onUpdateClick={() => {}}
         onStatusClick={() => {}}
       />
     </StateRow>
     <StateRow label="Git update — hash never shows in the row">
       <PluginRowSignalView
-        signal={{ kind: "update", version: FULL_HASH }}
+        signal={{ kind: "update", version: FULL_HASH, retry: false }}
         onUpdateClick={() => {}}
         onStatusClick={() => {}}
       />
     </StateRow>
     <StateRow label="No update available — the slot stays empty">{}</StateRow>
+    <StateRow label="Failed update — the next action is Retry">
+      <PluginRowSignalView
+        signal={{ kind: "update", version: "1.2.0", retry: true }}
+        onUpdateClick={() => {}}
+        onStatusClick={() => {}}
+      />
+    </StateRow>
     <StateRow label="Status signal (unrelated failure) keeps its tone">
       <PluginRowSignalView
         signal={{

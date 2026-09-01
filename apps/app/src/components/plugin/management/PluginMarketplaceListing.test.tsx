@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CatalogPluginDetail } from "@/components/tools/PluginDetail";
@@ -111,6 +111,21 @@ describe("PluginMarketplaceListing", () => {
     const screenshot = screen.getByRole("img", {
       name: "Usage screenshot 1",
     });
+    const screenshotButton = screen.getByRole("button", {
+      name: "Open Usage screenshot 1 full size",
+    });
+    expect(
+      screenshotButton.closest('[aria-roledescription="slide"]')?.className,
+    ).not.toContain("basis-auto");
+    expect(screenshot.className).toContain("max-w-full");
+    expect(screenshot.className).toContain("max-h-full");
+    fireEvent.click(screenshotButton);
+    expect(
+      screen.getByRole("dialog", { name: "Usage screenshot 1 of 2" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close image preview" }),
+    );
     const aboutHeading = screen.getByRole("heading", { name: "About" });
     expect(
       screenshot.compareDocumentPosition(aboutHeading) &
@@ -155,6 +170,7 @@ describe("PluginMarketplaceListing", () => {
     });
     const sourceIcon = sourceLink.querySelector('[data-icon="GithubFilled"]');
     expect(sourceIcon).not.toBeNull();
+    expect(sourceIcon?.classList.contains("size-4.5")).toBe(true);
     expect(sourceIcon?.classList.contains("fill-current")).toBe(true);
     expect(sourceIcon?.getAttribute("class")).toContain("[&_*]:stroke-0");
     const viewAllCaret = screen
@@ -162,7 +178,7 @@ describe("PluginMarketplaceListing", () => {
       .querySelector('[data-icon="ChevronRight"]');
     expect(viewAllCaret).not.toBeNull();
     expect(viewAllCaret?.className).not.toContain("group-hover:translate-x-1");
-    expect(screen.queryByText("By: Pat Lee")).toBeNull();
+    expect(screen.getAllByRole("link", { name: "Pat Lee" })).toHaveLength(1);
     expect(screen.getAllByText("Token Usage & Limits")).toHaveLength(2);
     const recommendationAction = screen.getByRole("button", {
       name: "Open Headroom details",
@@ -189,7 +205,7 @@ describe("PluginMarketplaceListing", () => {
     ).toBe("");
     expect(
       screen
-        .getAllByRole("link", { name: /Pat Lee/u })[0]
+        .getAllByRole("link", { name: "Pat Lee" })[0]
         ?.getAttribute("href"),
     ).toBe("/extensions/plugins/authors/12%3Abb-community%3Agithub%3Apatlee");
 

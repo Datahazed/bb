@@ -119,7 +119,7 @@ export function buildEditInstalledPluginPrompt(args: {
 }
 
 export type PluginListingAction =
-  | { id: "submit"; label: "Submit"; prompt: string; variant: "default" }
+  | { id: "submit"; label: "Submit"; prompt: string; variant: "outline" }
   | {
       id: "update-submission";
       label: "Update submission";
@@ -156,7 +156,7 @@ export function pluginListingActions(args: {
             path: args.path,
             category: null,
           }),
-          variant: "default",
+          variant: "outline",
         },
       ];
     case "draft":
@@ -169,7 +169,7 @@ export function pluginListingActions(args: {
             path: args.path,
             category: pluginListingCategoryLabel(args.lifecycle.entry.category),
           }),
-          variant: "default",
+          variant: "outline",
         },
       ];
     case "in-review":

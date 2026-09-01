@@ -42,10 +42,7 @@ export function pluginCatalogCategoryPillStyle(
         color: neutral(55),
       }
     : {
-        background: accentTint(
-          accentToken,
-          PLUGIN_CATEGORY_PILL_FILL_PERCENT,
-        ),
+        background: accentTint(accentToken, PLUGIN_CATEGORY_PILL_FILL_PERCENT),
         borderColor: accentTint(
           accentToken,
           PLUGIN_CATEGORY_PILL_BORDER_PERCENT,
@@ -161,10 +158,42 @@ export function PluginCategoryLabel({
 }) {
   return (
     <span
-      className="shrink-0 truncate rounded border px-2 py-1 text-2xs leading-none"
+      data-plugin-category-label
+      className="inline-flex max-w-full min-w-0 shrink-0 items-center rounded border px-2 py-1 text-2xs leading-none"
       style={pluginCatalogCategoryPillStyle(categoryId)}
     >
-      {label}
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+export function PluginCategoryShelfLabel({
+  categoryId,
+  className,
+  label,
+}: {
+  categoryId: string | undefined;
+  className?: string;
+  label: string;
+}) {
+  const accentStyle = pluginCatalogCategoryMutedAccentStyle(categoryId);
+  const focusAccentStyle = pluginCatalogCategoryAccentStyle(categoryId);
+  return (
+    <span className={cn("inline-flex min-w-0 items-center gap-2", className)}>
+      {accentStyle === undefined ? null : (
+        <span
+          data-plugin-category-accent={categoryId}
+          className="relative block h-4 w-0.5 shrink-0 overflow-hidden rounded-full"
+          style={accentStyle}
+          aria-hidden
+        >
+          <span
+            className="absolute inset-0 opacity-0 transition-opacity group-focus-visible:opacity-100"
+            style={focusAccentStyle}
+          />
+        </span>
+      )}
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -213,8 +242,6 @@ function PlaceholderBadge({
         className,
       )}
     >
-      {
-}
       <Icon name={iconName} className="size-full" />
     </span>
   );
@@ -297,8 +324,8 @@ export function FullTrustWarning() {
     >
       <Icon name="Lock" className="mt-0.5 size-3 shrink-0" />
       <span>
-        Plugins have full access to your computer. Install only from sources
-        you trust.
+        Plugins have full access to your computer. Install only from sources you
+        trust.
       </span>
     </p>
   );
