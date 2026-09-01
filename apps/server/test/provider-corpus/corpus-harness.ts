@@ -13,7 +13,6 @@ import {
   upsertHost,
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
-import { defaultFeatureFlags } from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { CorpusThread } from "@bb/test-helpers";
@@ -156,8 +155,6 @@ export interface BuildRouteTimelinePageArgs {
   registry: ProviderRegistryService;
   thread: Thread;
   variant: TimelineVariant;
-  /** Overrides the production event budget (defaults to the feature flag). */
-  eventBudget?: number;
 }
 
 export function buildRouteTimelinePage(
@@ -171,8 +168,6 @@ export function buildRouteTimelinePage(
     args.db,
     args.thread,
     {
-      eventBudget:
-        args.eventBudget ?? defaultFeatureFlags.timelineWindowEventBudget,
       includeProviderUnhandledOperations: true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,

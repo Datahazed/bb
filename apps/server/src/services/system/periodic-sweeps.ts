@@ -36,6 +36,7 @@ import {
   recoverOrphanedEnvironmentDestroyRequests,
   runEnvironmentCleanupAdvance,
 } from "../environments/environment-cleanup-internal.js";
+import { clearTimelineProjectionCache } from "../threads/timeline-projection-cache.js";
 import {
   isCommandTimeoutError,
   isHostUnavailableError,
@@ -472,6 +473,8 @@ function runCompletedEventOutputTruncationSweep(
     limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
     truncatedAt: now,
   });
+  // In-place event mutation is invisible to tip-keyed projection caching.
+  clearTimelineProjectionCache();
 }
 
 function runClosedSessionPruneSweep(

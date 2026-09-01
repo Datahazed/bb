@@ -1,22 +1,18 @@
 /**
  * The pagination invariant: walking every timeline summary page of a thread
  * and concatenating the results (oldest → newest) must exactly equal the
- * unpaginated projection, for any segment limit and any event budget.
- * Limits may only change how many requests a walk takes, never what the
- * combined result is.
+ * unpaginated projection, for any segment limit. Limits may only change how
+ * many requests a walk takes, never what the combined result is.
  *
- * The reference build uses an effectively unlimited segment limit and event
- * budget. Threads whose stored event data exceeds the hard 4 MiB byte limit
- * cannot produce an unpaginated reference at all under the windowed
- * implementation; they are reported (not silently skipped) so the count is
- * visible evidence rather than a blind spot.
+ * The reference build uses an effectively unlimited segment limit. Pages are
+ * slices of the same canonical projection, so this holds by construction;
+ * this gate keeps it that way.
  */
 import {
   corpusAvailable,
   listCorpusThreads,
   loadCorpusThread,
 } from "@bb/test-helpers";
-import { defaultFeatureFlags } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
@@ -32,10 +28,11 @@ const PER_THREAD_TIMEOUT_MS = 5 * 60_000;
 const UNLIMITED_SEGMENT_LIMIT = 1_000_000;
 
 const MATRIX = [
-  { segmentLimit: 2, eventBudget: defaultFeatureFlags.timelineWindowEventBudget },
-  { segmentLimit: 20, eventBudget: defaultFeatureFlags.timelineWindowEventBudget },
-  { segmentLimit: 2, eventBudget: 250 },
-  { segmentLimit: 20, eventBudget: 250 },
+  { segmentLimit: 1 },
+  { segmentLimit: 2 },
+  { segmentLimit: 3 },
+  { segmentLimit: 8 },
+  { segmentLimit: 20 },
 ] as const;
 
 function rowIdCounts(rows: readonly TimelineRow[]): Map<string, number> {
@@ -88,7 +85,6 @@ describe.skipIf(!available)("timeline page recombination", () => {
   let registry: ProviderRegistryService | null = null;
   const totals = {
     threads: 0,
-    referenceCapped: [] as string[],
     failedCells: new Map<string, string[]>(),
   };
 
@@ -103,7 +99,6 @@ describe.skipIf(!available)("timeline page recombination", () => {
     console.info(
       [
         `page recombination: ${totals.threads} threads checked`,
-        `reference byte-capped (no unpaginated build possible): ${totals.referenceCapped.length}`,
         cells.length > 0 ? `failing cells:\n${cells}` : "all cells green",
       ].join("\n"),
     );
@@ -124,24 +119,21 @@ describe.skipIf(!available)("timeline page recombination", () => {
           registry,
           thread: loaded.thread,
           variant: "default",
-          eventBudget: Number.MAX_SAFE_INTEGER,
           page: { kind: "latest", segmentLimit: UNLIMITED_SEGMENT_LIMIT },
         });
-        if (reference.response.timelinePage.hasOlderRows) {
-          totals.referenceCapped.push(threadId);
-          return;
-        }
+        // Every thread must have an unpaginated reference: nothing may cap
+        // the canonical projection.
+        expect(reference.response.timelinePage.hasOlderRows).toBe(false);
         const referenceRows = normalizeJson(reference.response.rows);
 
         const failures: string[] = [];
         for (const cell of MATRIX) {
-          const cellKey = `segmentLimit=${cell.segmentLimit} eventBudget=${cell.eventBudget}`;
+          const cellKey = `segmentLimit=${cell.segmentLimit}`;
           const pages = buildAllRouteTimelinePages({
             db: loaded.db,
             registry,
             thread: loaded.thread,
             variant: "default",
-            eventBudget: cell.eventBudget,
             segmentLimit: cell.segmentLimit,
           });
           const combined = [...pages]

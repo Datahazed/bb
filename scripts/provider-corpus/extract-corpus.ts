@@ -109,8 +109,42 @@ const selectEvents = db.prepare(
     ORDER BY sequence`,
 );
 
-fs.rmSync(args.out, { recursive: true, force: true });
+// Preserve snapshots/ (row + perf baselines) across re-extractions.
+fs.rmSync(path.join(args.out, "threads"), { recursive: true, force: true });
+fs.rmSync(path.join(args.out, "manifest.json"), { force: true });
+fs.rmSync(path.join(args.out, "profile.json"), { force: true });
 fs.mkdirSync(path.join(args.out, "threads"), { recursive: true });
+
+// The perf gate (timeline-perf.test.ts) measures threads tagged "largest":
+// the 10 highest-event threads per provider, matching the original corpus.
+const LARGEST_PER_PROVIDER = 10;
+const eventCounts = new Map<string, number>(
+  (
+    db
+      .prepare(
+        `SELECT thread_id, COUNT(*) AS events FROM events GROUP BY thread_id`,
+      )
+      .all() as { thread_id: string; events: number }[]
+  ).map((row) => [row.thread_id, row.events]),
+);
+const largestThreadIds = new Set<string>();
+{
+  const byProvider = new Map<string, ThreadRow[]>();
+  for (const thread of threadRows) {
+    const list = byProvider.get(thread.provider_id) ?? [];
+    list.push(thread);
+    byProvider.set(thread.provider_id, list);
+  }
+  for (const providerThreads of byProvider.values()) {
+    const ranked = [...providerThreads].sort(
+      (left, right) =>
+        (eventCounts.get(right.id) ?? 0) - (eventCounts.get(left.id) ?? 0),
+    );
+    for (const thread of ranked.slice(0, LARGEST_PER_PROVIDER)) {
+      largestThreadIds.add(thread.id);
+    }
+  }
+}
 
 interface ManifestThread {
   id: string;
@@ -129,6 +163,9 @@ for (const thread of threadRows) {
     (sum, event) => sum + Buffer.byteLength(event.data),
     0,
   );
+  const reasons = largestThreadIds.has(thread.id)
+    ? ["full-export", "largest"]
+    : ["full-export"];
   const ndjson = events
     .map((event) =>
       JSON.stringify({
@@ -172,7 +209,7 @@ for (const thread of threadRows) {
           reasoning_level_override: thread.reasoning_level_override,
         },
         features: { event_rows: events.length, data_bytes: dataBytes },
-        reasons: ["full-export"],
+        reasons,
         event_rows: events.length,
       },
       null,
@@ -183,7 +220,7 @@ for (const thread of threadRows) {
     id: thread.id,
     provider: thread.provider_id,
     events: events.length,
-    reasons: ["full-export"],
+    reasons,
   });
   totalEvents += events.length;
 }

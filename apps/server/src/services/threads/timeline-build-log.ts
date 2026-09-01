@@ -70,7 +70,6 @@ export function createSlowThreadTimelineBuildLogger(
           totalDurationMs: profile.totalDurationMs,
           thresholdMs: SLOW_THREAD_TIMELINE_BUILD_LOG_THRESHOLD_MS,
           suppressedSinceLastLog,
-          selectionStrategy: profile.selectionStrategy,
           pageKind: profile.pageKind,
           segmentLimit: profile.segmentLimit,
           eventRowCount: profile.eventRowCount,

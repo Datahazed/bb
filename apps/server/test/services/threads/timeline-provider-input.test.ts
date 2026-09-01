@@ -155,7 +155,6 @@ describe("timeline pages with provider-recorded input", () => {
     seedExtensionTriggeredTurn(db, thread);
 
     const { response } = buildThreadTimelineWithProfile(db, thread, {
-      eventBudget: 1_000_000,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,

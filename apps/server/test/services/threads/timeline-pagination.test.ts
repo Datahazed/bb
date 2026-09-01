@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   TimelineRow,
+  TimelineSystemRow,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
 import { paginateTimelineRows } from "../../../src/services/threads/timeline-pagination.js";
@@ -31,6 +32,23 @@ function userRow(args: {
   };
 }
 
+function systemRow(args: { id: string; seq: number }): TimelineSystemRow {
+  return {
+    id: args.id,
+    threadId: "thread-1",
+    turnId: null,
+    sourceSeqStart: args.seq,
+    sourceSeqEnd: args.seq,
+    startedAt: args.seq,
+    createdAt: args.seq,
+    kind: "system",
+    systemKind: "debug",
+    title: "system",
+    detail: null,
+    status: null,
+  };
+}
+
 describe("paginateTimelineRows", () => {
   it("keeps grouped user rows from one request in the same segment", () => {
     const rows: TimelineRow[] = [
@@ -57,8 +75,6 @@ describe("paginateTimelineRows", () => {
     ];
 
     const page = paginateTimelineRows({
-      sequenceWindowStart: null,
-      knownHasOlderSegments: null,
       page: { kind: "latest", segmentLimit: 2 },
       rows,
     });
@@ -72,5 +88,76 @@ describe("paginateTimelineRows", () => {
       anchorId: "thread-1:user-seed:2",
       anchorSeq: 2,
     });
+  });
+
+  it("walks every page and recombines to the full row list", () => {
+    const rows: TimelineRow[] = [
+      systemRow({ id: "thread-1:op:prelude", seq: 1 }),
+      userRow({ id: "thread-1:user-seed:2", seq: 2, text: "one" }),
+      systemRow({ id: "thread-1:op:mid", seq: 3 }),
+      userRow({ id: "thread-1:user-seed:4", seq: 4, text: "two" }),
+      userRow({ id: "thread-1:user-seed:5", seq: 5, text: "three" }),
+      userRow({ id: "thread-1:user-seed:6", seq: 6, text: "four" }),
+    ];
+
+    const collected: TimelineRow[][] = [];
+    let page = paginateTimelineRows({
+      page: { kind: "latest", segmentLimit: 2 },
+      rows,
+    });
+    collected.push(page.rows);
+    while (page.hasOlderRows && page.olderCursor !== null) {
+      page = paginateTimelineRows({
+        page: {
+          kind: "older",
+          segmentLimit: 2,
+          beforeCursor: page.olderCursor,
+        },
+        rows,
+      });
+      collected.push(page.rows);
+    }
+
+    // The prelude segment before the first user anchor stays reachable.
+    expect(collected.length).toBe(3);
+    expect(collected.reverse().flat()).toEqual(rows);
+  });
+
+  it("rejects a cursor that names no current segment", () => {
+    const rows: TimelineRow[] = [
+      userRow({ id: "thread-1:user-seed:1", seq: 1, text: "one" }),
+      userRow({ id: "thread-1:user-seed:2", seq: 2, text: "two" }),
+    ];
+
+    expect(() =>
+      paginateTimelineRows({
+        page: {
+          kind: "older",
+          segmentLimit: 2,
+          beforeCursor: { anchorId: "thread-1:user-seed:9", anchorSeq: 9 },
+        },
+        rows,
+      }),
+    ).toThrowError("Timeline pagination cursor is no longer available");
+  });
+
+  it("returns an empty page for a cursor at the oldest segment", () => {
+    const rows: TimelineRow[] = [
+      userRow({ id: "thread-1:user-seed:1", seq: 1, text: "one" }),
+      userRow({ id: "thread-1:user-seed:2", seq: 2, text: "two" }),
+    ];
+
+    const page = paginateTimelineRows({
+      page: {
+        kind: "older",
+        segmentLimit: 2,
+        beforeCursor: { anchorId: "thread-1:user-seed:1", anchorSeq: 1 },
+      },
+      rows,
+    });
+
+    expect(page.rows).toEqual([]);
+    expect(page.hasOlderRows).toBe(false);
+    expect(page.olderCursor).toBeNull();
   });
 });

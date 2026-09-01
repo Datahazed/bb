@@ -6,49 +6,6 @@ import { ApiError } from "../../errors.js";
 
 export type ThreadTimelinePageKind = "latest" | "older";
 
-export interface TimelineSequenceWindowStart {
-  kind: "byte" | "event";
-  sequenceStart: number;
-  threadId: string;
-}
-
-const SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR = ":in-turn:";
-const BYTE_CURSOR_ANCHOR_ID_SEPARATOR = ":byte-window:";
-
-function buildSequenceCursorAnchorId(
-  args: TimelineSequenceWindowStart,
-): string {
-  const separator =
-    args.kind === "byte"
-      ? BYTE_CURSOR_ANCHOR_ID_SEPARATOR
-      : SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR;
-  return `${args.threadId}${separator}${args.sequenceStart}`;
-}
-
-export function readSequenceCursor(
-  cursor: TimelinePaginationCursor,
-  threadId: string,
-): Pick<TimelineSequenceWindowStart, "kind" | "sequenceStart"> | null {
-  const eventPrefix = `${threadId}${SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR}`;
-  const bytePrefix = `${threadId}${BYTE_CURSOR_ANCHOR_ID_SEPARATOR}`;
-  const kind = cursor.anchorId.startsWith(bytePrefix) ? "byte" : "event";
-  const prefix = kind === "byte" ? bytePrefix : eventPrefix;
-  if (!cursor.anchorId.startsWith(prefix)) {
-    return null;
-  }
-  if (
-    cursor.anchorId.slice(prefix.length) !== String(cursor.anchorSeq) ||
-    !Number.isInteger(cursor.anchorSeq)
-  ) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "Timeline pagination cursor is no longer available",
-    );
-  }
-  return { kind, sequenceStart: cursor.anchorSeq };
-}
-
 interface LatestThreadTimelinePageRequest {
   kind: "latest";
   segmentLimit: number;
@@ -129,31 +86,43 @@ function buildTimelineLogicalSegments(
 }
 
 interface PaginateTimelineRowsArgs {
-  sequenceWindowStart: TimelineSequenceWindowStart | null;
-  knownHasOlderSegments: boolean | null;
   page: ThreadTimelinePageRequest;
   rows: readonly TimelineRow[];
 }
 
+/**
+ * Slices the canonical projected row list into a page of logical segments.
+ *
+ * Every page is a slice of the same full projection, so concatenating all
+ * pages oldest → newest reproduces it exactly, whatever the segment limit.
+ * An older-page cursor names the segment the previous page started with;
+ * it is resolved against the recomputed segments, so it stays valid as the
+ * thread grows and turns 400 only when the event suffix was replaced.
+ */
 export function paginateTimelineRows(
   args: PaginateTimelineRowsArgs,
 ): PaginatedTimelineRowsResult {
-  const { knownHasOlderSegments, page, rows, sequenceWindowStart } = args;
+  const { page, rows } = args;
   const segments = buildTimelineLogicalSegments(rows);
-  if (sequenceWindowStart !== null) {
-    return {
-      hasOlderRows: true,
-      olderCursor: {
-        anchorSeq: sequenceWindowStart.sequenceStart,
-        anchorId: buildSequenceCursorAnchorId(sequenceWindowStart),
-      },
-      returnedSegmentCount: segments.length,
-      rows: [...rows],
-    };
+  let eligibleSegments = segments;
+  if (page.kind === "older") {
+    const cursor = page.beforeCursor;
+    const cursorIndex = segments.findIndex(
+      (segment) =>
+        segment.cursor.anchorId === cursor.anchorId &&
+        segment.cursor.anchorSeq === cursor.anchorSeq,
+    );
+    if (cursorIndex === -1) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Timeline pagination cursor is no longer available",
+      );
+    }
+    eligibleSegments = segments.slice(0, cursorIndex);
   }
-  const selectedSegments = segments.slice(-page.segmentLimit);
-  const hasOlderRows =
-    knownHasOlderSegments ?? segments.length > selectedSegments.length;
+  const selectedSegments = eligibleSegments.slice(-page.segmentLimit);
+  const hasOlderRows = eligibleSegments.length > selectedSegments.length;
   const oldestSelectedSegment = selectedSegments[0];
 
   return {

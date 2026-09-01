@@ -321,7 +321,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const includeProviderUnhandledOperations =
       deps.config.isDevelopment ||
       getAppSettings(deps.db).showUnhandledProviderEvents;
-    const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,
@@ -339,7 +338,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           deps.db,
           thread,
           {
-            eventBudget,
             includeProviderUnhandledOperations,
             includeNestedRows,
             maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,

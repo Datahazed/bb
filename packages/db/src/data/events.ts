@@ -1,5 +1,6 @@
 import {
   and,
+  count,
   desc,
   eq,
   gt,
@@ -2969,6 +2970,41 @@ export function getLatestThreadSequence(
     .get();
 
   return row?.maxSequence ?? 0;
+}
+
+export interface StoredThreadEventTip {
+  eventCount: number;
+  id: string;
+  sequence: number;
+}
+
+/**
+ * The newest stored event's identity plus the thread's event count. Cache
+ * keys derived from both stay correct across appends, suffix replacement
+ * (which can reuse sequence numbers but never event ids), and pruning
+ * (which removes rows below an unchanged tip).
+ */
+export function getLatestStoredEventTip(
+  db: DbConnection,
+  args: GetLatestThreadSequenceArgs,
+): StoredThreadEventTip | null {
+  const row = db
+    .select({ id: events.id, sequence: events.sequence })
+    .from(events)
+    .where(eq(events.threadId, args.threadId))
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!row) {
+    return null;
+  }
+  const countRow = db
+    .select({ eventCount: count() })
+    .from(events)
+    .where(eq(events.threadId, args.threadId))
+    .get();
+
+  return { ...row, eventCount: countRow?.eventCount ?? 0 };
 }
 
 export function getActiveStoredTurnId(

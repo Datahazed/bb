@@ -107,13 +107,6 @@ function parseServerBindHostEnvValue(args: EnvVarParseArgs): ServerBindHost {
   return parseServerBindHost(args.value);
 }
 
-function parsePositiveIntegerEnvValue(args: EnvVarParseArgs): number {
-  const parsed = Number(args.value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${args.name} must be a positive integer`);
-  }
-  return parsed;
-}
 
 function parseRequiredUrlEnvValue(args: EnvVarParseArgs): string {
   return validateRequiredUrl(args.name, args.value);
@@ -272,13 +265,6 @@ export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
-export const BB_FF_TIMELINE_WINDOW_EVENT_BUDGET_ENV = defineEnvVar<number>({
-  description:
-    "Max events one thread-timeline window may span. Raise far above the default to restore unbounded windows.",
-  name: "BB_FF_TIMELINE_WINDOW_EVENT_BUDGET",
-  parse: parsePositiveIntegerEnvValue,
-});
-
 export const BB_DEV_APP_HOST_ENV = defineEnvVar<string>({
   description:
     "Development-only Vite bind host override for apps/app. Defaults to 127.0.0.1 when unset.",
@@ -378,5 +364,3 @@ export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_INFERENCE_FALLBACK = DEFAULTS.inferenceFallbackModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
-export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
-  defaultFeatureFlags.timelineWindowEventBudget;

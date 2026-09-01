@@ -200,36 +200,21 @@ const baseOptions = {
   page: { kind: "latest", segmentLimit: 20 } as const,
 };
 
-describe("timeline head state under a budgeted window", () => {
-  it("keeps goal, todos, and a running workflow when the budget excludes the turn that set them", () => {
+describe("timeline head state", () => {
+  it("keeps goal, todos, and a running workflow set long before the latest segments", () => {
     const { db, thread } = setup();
     seedThreadWithEarlyHeadState(db, thread, 12, 60);
 
-    const unbudgeted = buildThreadTimeline(db, thread, {
+    const latest = buildThreadTimeline(db, thread, {
       ...baseOptions,
-      eventBudget: 1_000_000,
-    });
-    const budgeted = buildThreadTimeline(db, thread, {
-      ...baseOptions,
-      eventBudget: 100,
+      page: { kind: "latest", segmentLimit: 2 } as const,
     });
 
-    expect(budgeted.timelinePage.returnedSegmentCount).toBeLessThan(
-      unbudgeted.timelinePage.returnedSegmentCount,
-    );
-
-    expect(unbudgeted.pendingTodos?.items.map((item) => item.text)).toContain(
+    expect(latest.pendingTodos?.items.map((item) => item.text)).toContain(
       "Shipping the thing",
     );
-    expect(budgeted.pendingTodos?.items.map((item) => item.text)).toContain(
-      "Shipping the thing",
-    );
-
-    expect(unbudgeted.goal).not.toBeNull();
-    expect(budgeted.goal).toEqual(unbudgeted.goal);
-
-    expect(unbudgeted.activeWorkflows).toHaveLength(1);
-    expect(budgeted.activeWorkflows).toHaveLength(1);
+    expect(latest.goal).not.toBeNull();
+    expect(latest.activeWorkflows).toHaveLength(1);
   });
 
   it("still reports no head state when the thread never set any", () => {
@@ -259,7 +244,6 @@ describe("timeline head state under a budgeted window", () => {
 
     const budgeted = buildThreadTimeline(db, thread, {
       ...baseOptions,
-      eventBudget: 100,
     });
     expect(budgeted.pendingTodos).toBeNull();
     expect(budgeted.goal).toBeNull();

@@ -18,8 +18,6 @@ import type { DbConnection } from "@bb/db";
 import type { TimelinePaginationCursor } from "@bb/server-contract";
 import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
 
-const LARGE_BUDGET = 1_000_000;
-
 const providerThreadId = "provider-root";
 const execution = {
   model: "gpt-5",
@@ -245,20 +243,19 @@ function insertTurnsWithReusedFileChangeItemId(
 function walkAllFileChangeDiffs(
   db: DbConnection,
   thread: Thread,
-  eventBudget: number,
+  segmentLimit: number,
 ): string[] {
   const diffsByPage: string[][] = [];
   let cursor: TimelinePaginationCursor | null = null;
   for (let page = 0; page < 200; page += 1) {
     const response = buildThreadTimeline(db, thread, {
-      eventBudget,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
       page: cursor
-        ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
-        : { kind: "latest", segmentLimit: 20 },
+        ? { kind: "older", beforeCursor: cursor, segmentLimit }
+        : { kind: "latest", segmentLimit },
     });
     diffsByPage.push(
       response.rows
@@ -286,7 +283,7 @@ interface WalkResult {
 function walkAllPages(
   db: DbConnection,
   thread: Thread,
-  eventBudget: number,
+  segmentLimit: number,
 ): WalkResult {
   const messagesByPage: string[][] = [];
   const seenCursors = new Set<string>();
@@ -295,14 +292,13 @@ function walkAllPages(
 
   for (;;) {
     const response = buildThreadTimeline(db, thread, {
-      eventBudget,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
       page: cursor
-        ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
-        : { kind: "latest", segmentLimit: 20 },
+        ? { kind: "older", beforeCursor: cursor, segmentLimit }
+        : { kind: "latest", segmentLimit },
     });
     pages += 1;
     messagesByPage.push(
@@ -327,103 +323,30 @@ function walkAllPages(
   return { pages, userMessages: messagesByPage.reverse().flat() };
 }
 
-describe("timeline event budget", () => {
-  it("reaches every user message that the unbudgeted build reaches", () => {
+describe("timeline page walks", () => {
+  it("reaches every user message that the single-page build reaches", () => {
     const { db, thread } = setup();
     insertTurns(db, thread, 12, 60);
 
-    const unbudgeted = walkAllPages(db, thread, LARGE_BUDGET);
-    const budgeted = walkAllPages(db, thread, 150);
+    const singlePage = walkAllPages(db, thread, 20);
+    const paged = walkAllPages(db, thread, 3);
 
-    expect(budgeted.userMessages).toEqual(unbudgeted.userMessages);
-    expect(budgeted.userMessages).toHaveLength(12);
-    expect(unbudgeted.pages).toBe(1);
-    expect(budgeted.pages).toBeGreaterThan(1);
-  });
-
-  it("reports older rows when the budget truncates a window that fits in segmentLimit", () => {
-    const { db, thread } = setup();
-    insertTurns(db, thread, 8, 40);
-
-    const unbudgeted = buildThreadTimeline(db, thread, {
-      eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
-      includeNestedRows: true,
-      maxInlineOutputChars: null,
-      maxSeq: 0,
-      page: { kind: "latest", segmentLimit: 20 },
-    });
-    expect(unbudgeted.timelinePage.hasOlderRows).toBe(false);
-
-    const budgeted = buildThreadTimeline(db, thread, {
-      eventBudget: 100,
-      includeProviderUnhandledOperations: false,
-      includeNestedRows: true,
-      maxInlineOutputChars: null,
-      maxSeq: 0,
-      page: { kind: "latest", segmentLimit: 20 },
-    });
-    expect(budgeted.timelinePage.returnedSegmentCount).toBeLessThan(
-      unbudgeted.timelinePage.returnedSegmentCount,
-    );
-    expect(budgeted.timelinePage.hasOlderRows).toBe(true);
-    expect(budgeted.timelinePage.olderCursor).not.toBeNull();
-  });
-
-  it("still renders a single turn larger than the whole budget", () => {
-    const { db, thread } = setup();
-    insertTurns(db, thread, 3, [10, 400, 10]);
-
-    const budgeted = buildThreadTimeline(db, thread, {
-      eventBudget: 50,
-      includeProviderUnhandledOperations: false,
-      includeNestedRows: true,
-      maxInlineOutputChars: null,
-      maxSeq: 0,
-      page: { kind: "latest", segmentLimit: 20 },
-    });
-    expect(budgeted.timelinePage.returnedSegmentCount).toBeGreaterThanOrEqual(
-      1,
-    );
-    expect(budgeted.rows.length).toBeGreaterThan(0);
-
-    expect(walkAllPages(db, thread, 50).userMessages).toEqual(
-      walkAllPages(db, thread, LARGE_BUDGET).userMessages,
-    );
+    expect(paged.userMessages).toEqual(singlePage.userMessages);
+    expect(paged.userMessages).toHaveLength(12);
+    expect(singlePage.pages).toBe(1);
+    expect(paged.pages).toBe(4);
   });
 
   it("keeps one file change per turn when turns reuse a file-change item id", () => {
     const { db, thread } = setup();
     insertTurnsWithReusedFileChangeItemId(db, thread, 3, 8);
 
-    const unbudgeted = walkAllFileChangeDiffs(db, thread, LARGE_BUDGET);
-    expect(unbudgeted).toEqual([
+    const singlePage = walkAllFileChangeDiffs(db, thread, 20);
+    expect(singlePage).toEqual([
       "@@ -1 +1 @@\n-old\n+turn-1",
       "@@ -1 +1 @@\n-old\n+turn-2",
       "@@ -1 +1 @@\n-old\n+turn-3",
     ]);
-    expect(walkAllFileChangeDiffs(db, thread, 10)).toEqual(unbudgeted);
-  });
-
-  it("leaves a thread that fits inside the budget byte-identical", () => {
-    const { db, thread } = setup();
-    insertTurns(db, thread, 4, 5);
-
-    const page = { kind: "latest", segmentLimit: 20 } as const;
-    const options = {
-      includeProviderUnhandledOperations: false,
-      includeNestedRows: true,
-      maxInlineOutputChars: null,
-      maxSeq: 0,
-      page,
-    };
-    expect(
-      buildThreadTimeline(db, thread, { ...options, eventBudget: 1_500 }),
-    ).toEqual(
-      buildThreadTimeline(db, thread, {
-        ...options,
-        eventBudget: LARGE_BUDGET,
-      }),
-    );
+    expect(walkAllFileChangeDiffs(db, thread, 1)).toEqual(singlePage);
   });
 });

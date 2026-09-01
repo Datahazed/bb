@@ -334,7 +334,6 @@ describe("thread timeline parented pagination", () => {
     insertCrossWindowSubagentEvents(db, thread);
 
     const timeline = buildThreadTimeline(db, thread, {
-      eventBudget: 1_000_000,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
@@ -351,7 +350,6 @@ describe("thread timeline parented pagination", () => {
     insertCrossWindowSubagentEvents(db, thread);
 
     const timeline = buildThreadTimeline(db, thread, {
-      eventBudget: 1_000_000,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,

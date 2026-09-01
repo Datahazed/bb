@@ -8,6 +8,7 @@ import {
   pruneTokenUsageEventsBeforeSequence,
   pruneThreadEventsBeforeSequence,
 } from "@bb/db";
+import { clearTimelineProjectionCache } from "../threads/timeline-projection-cache.js";
 import type { ThreadEventType } from "@bb/domain";
 import { roundDurationMs } from "../lib/duration.js";
 import type { AppDeps } from "../../types.js";
@@ -165,6 +166,16 @@ export function pruneThreadEventHistory(
         threadId: args.threadId,
       }),
   );
+  if (
+    removedAgePrunableEvents +
+      removedResolvedItemDeltas +
+      removedBackgroundTaskProgressEvents >
+    0
+  ) {
+    // Pruning removes stored events without touching the newest one, which
+    // tip-keyed projection caching cannot see.
+    clearTimelineProjectionCache();
+  }
 
   return {
     latestSequence,

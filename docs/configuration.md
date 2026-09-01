@@ -655,36 +655,19 @@ timelines and large expanded timeline details retain stable height-preserving
 wrappers while mounting only rows near their active scrollport. Toggle it with
 `bb settings experiment timelineWindowing <true|false>`.
 
-## Thread Timeline Window
+## Thread Timeline Pagination
 
-A thread-timeline window is bounded by segment (user-message) count _and_ by
-event count. Segment count alone is a weak bound on work, because an agentic
-turn can be thousands of events: a thread with 21 user messages and 21k events
-used to reproject its entire history on every timeline request. That projection
-is synchronous, so it blocked the server's event loop — which also delayed
-`/internal/session/events`, the endpoint the host daemon awaits before every
-dynamic tool call and before registering every interactive request. One slow
-thread therefore slowed agent work on _every_ thread on the host.
+The thread timeline pages at user-message boundaries. Every page is a slice
+of one canonical projection of the whole thread, so loading all pages always
+reproduces the thread exactly: no event-count or byte window can drop or
+duplicate a row at a page seam. Older segments load automatically as you
+scroll toward the top of the loaded window; a manual "Load older messages"
+button remains on surfaces that render no scroll body, and after a failed
+page so a broken fetch is retried on request rather than in a loop.
 
-A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default 1500) and returns however many whole turns fit. Older turns load automatically
-as you scroll toward the top of the loaded window; a manual "Load older
-messages" button remains on surfaces that render no scroll body, and after a
-failed page so a broken fetch is retried on request rather than in a loop.
-Nothing becomes unreachable — pagination still walks the full history, and the
-head-state banners (goal, pending todos, running workflows, background
-commands) are resolved by thread-scoped lookups rather than by scanning the
-window, so a narrow window cannot drop them mid-session.
-
-A turn larger than the whole budget is cut at the budget while it is _running_,
-so watching an agent work through a very long turn costs the budget per update
-rather than the whole turn; scrolling up loads the earlier part. Once the turn
-finishes it is rendered whole again, because a finished turn collapses into one
-summary row that two pages cannot each own — so the budget bounds a running turn
-and a long thread, but not a single finished oversized turn.
-
-Raising the budget far above the default restores the previous
-unbounded-in-practice behavior; it is an operator escape hatch set at server
-start, not a product setting.
+The head-state banners (goal, pending todos, running workflows, background
+commands) come from the same full projection, so pagination cannot drop them
+mid-session.
 
 Timeline builds slower than 150ms log `Thread timeline build blocked the event
 loop` with a per-stage breakdown, and event-loop stalls over 500ms log `Event

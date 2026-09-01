@@ -262,8 +262,11 @@ and the narrative is red-before/green-after:
    `ensure*` family, context-only channels, and the SQL anchor predicate.
 4. **Turn details**: port the #2464 contract/client stack; server internals
    are project-then-slice; plugin SDK bump.
-5. **Client merge simplification** (web, mobile, CLI) once the server no
-   longer emits page-split ids.
+5. **Client merge simplification** — resolved during implementation: main's
+   client merge (356-line `timeline-merge.ts`) contains no seam-repair code;
+   the branch-era coalescing was never merged. Everything in it is
+   latest-refetch splicing that remains valid, and the CLI's naive older-page
+   concat becomes *correct* under disjoint pages. No client changes needed.
 6. **Caching + checkpoint**: canonical-build cache and the streaming fold
    checkpoint, benchmarked as they land. Perf is measured continuously from
    commit 3 onward — extend `timeline-perf.test.ts` with the budget table's

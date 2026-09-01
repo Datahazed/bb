@@ -72,7 +72,7 @@ const perfThreadBaselineSchema = z.object({
   calibrationMinMs: z.number(),
   latest: buildCostSchema.extend({
     rowsProduced: z.number(),
-    selectionStrategy: z.string(),
+    selectionStrategy: z.string().optional(),
     stageP50Ms: z.record(z.string(), z.number()),
   }),
   walk: buildCostSchema.extend({
@@ -251,7 +251,6 @@ function measureCorpusThread(
           })),
         ),
         rowsProduced: lastLatest.profile.projectedRowCount,
-        selectionStrategy: lastLatest.profile.selectionStrategy,
         stageP50Ms: latestStageP50Ms,
       },
       walk: {
