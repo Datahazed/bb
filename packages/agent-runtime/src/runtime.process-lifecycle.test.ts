@@ -36,6 +36,7 @@ import type { AgentRuntimeBridgeLaunch, AgentRuntimeOptions } from "./types.js";
 
 interface CreateProviderProcessManagerArgs {
   adapterProcessEnv?: Record<string, string>;
+  createAdapter?: () => BridgeProtocolAdapter;
   env?: Record<string, string>;
   handleStdoutLine?: (line: string, childPid: number | undefined) => void;
   onStderr?: NonNullable<AgentRuntimeOptions["onStderr"]>;
@@ -50,6 +51,11 @@ const CODEX_SCRIPT: ScriptedEchoLaunchScript = {
 };
 
 const MANAGER_BRIDGE_LAUNCH = createScriptedEchoLaunch();
+const MANAGER_PROVIDER = {
+  bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+  processKey: "fake",
+  providerId: "fake",
+};
 
 describe("createAgentRuntime process lifecycle", () => {
   let tmpDir: string;
@@ -96,7 +102,7 @@ describe("createAgentRuntime process lifecycle", () => {
     const adapter = createManagerAdapter(args);
     return new RuntimeProviderProcessManager({
       additionalWorkspaceWriteRoots: [],
-      createAdapter: () => adapter,
+      createAdapter: args.createAdapter ?? (() => adapter),
       bridgeBundleDir: undefined,
       bridgeNodeExecutablePath: process.execPath,
       captureThreadExitState: (threadId) => ({
@@ -270,6 +276,76 @@ describe("createAgentRuntime process lifecycle", () => {
     ).toBe(staleProcess);
 
     await manager.shutdown();
+  });
+
+  it("waits for provider retirement before starting a same-key replacement", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+    await manager.ensureProvider(MANAGER_PROVIDER);
+    const retiringProcess = manager.requireProviderProcess(MANAGER_PROVIDER);
+    await Promise.all([
+      manager.shutdownProvider(MANAGER_PROVIDER),
+      manager.ensureProvider(MANAGER_PROVIDER),
+    ]);
+
+    expect(manager.requireProviderProcess(MANAGER_PROVIDER)).not.toBe(
+      retiringProcess,
+    );
+    await manager.shutdown();
+  });
+
+  it("does not wait for stalled replacement initialization during full shutdown", async () => {
+    const stalledBridge = join(tmpDir, "stalled-provider.cjs");
+    const stalledBridgeStarted = join(tmpDir, "stalled-provider-started");
+    writeFileSync(
+      stalledBridge,
+      `require("readline").createInterface({input:process.stdin}).once("line",line=>{require("fs").writeFileSync(${JSON.stringify(stalledBridgeStarted)},"");setTimeout(()=>console.log(JSON.stringify({jsonrpc:"2.0",id:JSON.parse(line).id,result:{protocolVersion:2,capabilities:{grammarVersions:[3,3]}}})),3000)});`,
+    );
+    let starts = 0;
+    const manager = createProviderProcessManager({
+      createAdapter: () =>
+        createManagerAdapter(
+          starts++ === 0 ? {} : { rawScriptPath: stalledBridge },
+        ),
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+    await manager.ensureProvider(MANAGER_PROVIDER);
+    const retirement = manager.shutdownProvider(MANAGER_PROVIDER);
+    const replacementStart = manager.ensureProvider(MANAGER_PROVIDER);
+    await waitForRuntimeState({
+      label: "the replacement bridge to begin initialization",
+      predicate: () => existsSync(stalledBridgeStarted),
+      timeoutMs: 1_000,
+    });
+    expect(starts).toBe(2);
+    const replacementProcess = manager.requireProviderProcess(MANAGER_PROVIDER);
+    const fullShutdown = manager.shutdown();
+    const operations = Promise.all([
+      retirement,
+      replacementStart,
+      fullShutdown,
+    ]);
+    let completionTimer: ReturnType<typeof setTimeout> | undefined;
+    const completedPromptly = await Promise.race([
+      operations.then(() => true),
+      new Promise<false>((resolve) => {
+        completionTimer = setTimeout(() => resolve(false), 1_000);
+        completionTimer.unref();
+      }),
+    ]);
+    if (completionTimer !== undefined) clearTimeout(completionTimer);
+    await expect(operations).resolves.toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(completedPromptly).toBe(true);
+    expect(replacementProcess.child.killed).toBe(true);
+    await manager.ensureProvider(MANAGER_PROVIDER);
+    expect(manager.listRunningProviders()).toEqual([]);
   });
 
   it("bounds provider stderr while data arrives without a newline", async () => {
