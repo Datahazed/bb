@@ -176,6 +176,7 @@ interface EnvironmentSummaryArgs {
   projectName?: string;
   machineName?: string;
   machineConnected?: boolean;
+  machineCount?: number;
   branchName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
   onCreateNewThreadInWorktree?: () => void;
@@ -187,6 +188,7 @@ function makeEnvironmentSummary({
   projectName,
   machineName,
   machineConnected = true,
+  machineCount = 1,
   branchName,
   environmentCheckout,
   onCreateNewThreadInWorktree,
@@ -207,7 +209,7 @@ function makeEnvironmentSummary({
       connected: machineConnected,
       hasCustomName: environment.name !== null,
       locality: host.locality,
-      machineCount: 1,
+      machineCount,
     });
   const checkoutDisplay =
     environmentCheckout ??
@@ -330,6 +332,36 @@ const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   branchName: STORY_BRANCH_NAME,
   onCreateNewThreadInWorktree: noop,
 });
+
+const namedRemoteWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary(
+  {
+    environment: makeEnvironment({
+      name: "Design system polish",
+      isWorktree: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    }),
+    host: remoteEnvironmentDisplayHost,
+    machineName: "Build Mac mini",
+    branchName: STORY_BRANCH_NAME,
+    onCreateNewThreadInWorktree: noop,
+  },
+);
+
+const namedMultiMachineWorktreeEnvironmentSummary: ReactNode =
+  makeEnvironmentSummary({
+    environment: makeEnvironment({
+      name: "Design system polish",
+      isWorktree: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    }),
+    host: localEnvironmentDisplayHost,
+    machineName: "Bersabel's MacBook Pro",
+    machineCount: 2,
+    branchName: STORY_BRANCH_NAME,
+    onCreateNewThreadInWorktree: noop,
+  });
 
 const offlineNamedWorktreeEnvironmentSummary: ReactNode =
   makeEnvironmentSummary({
@@ -1216,11 +1248,29 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · named worktree"
-        hint="worktree icon · custom sidebar name"
+        hint="local single-machine worktree · custom sidebar name"
       >
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={namedWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · named remote worktree"
+        hint="custom worktree name · separate connected remote machine"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={namedRemoteWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · named multi-machine worktree"
+        hint="custom worktree name · separate machine when several are available"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={namedMultiMachineWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
