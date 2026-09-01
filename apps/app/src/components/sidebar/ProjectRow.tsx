@@ -183,6 +183,7 @@ export interface ProjectRowProps {
 
 interface ProjectThreadTreeProps {
   projectId?: string;
+  rootDepth: number;
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
   selectedThreadId?: string;
@@ -498,18 +499,11 @@ function getProjectThreadTreeGroupLineClassName(
   return undefined;
 }
 
-function getProjectThreadTreeRootDepthOffset(
-  variant: ProjectThreadTreeVariant,
-): number {
-  return variant === "section" ? 0 : 1;
-}
-
 function getThreadRowDepth({
   depthOffset,
   nodeDepth,
-  variant,
 }: GetThreadRowDepthArgs): number {
-  return getProjectThreadTreeRootDepthOffset(variant) + nodeDepth + depthOffset;
+  return nodeDepth + depthOffset;
 }
 
 function getThreadRowOptions({
@@ -524,9 +518,8 @@ function getThreadRowOptions({
   nodeDepth,
   onToggleThreadCollapsed,
   stickyLevel,
-  variant,
 }: GetThreadRowOptionsArgs): ThreadRowOptions {
-  const depth = getThreadRowDepth({ depthOffset, nodeDepth, variant });
+  const depth = getThreadRowDepth({ depthOffset, nodeDepth });
   const baseOptions = {
     depth,
     isCompact: nodeDepth > 0 || isEnvGrouped,
@@ -564,13 +557,11 @@ interface GetThreadRowOptionsArgs {
   nodeDepth: number;
   onToggleThreadCollapsed: (threadId: string) => void;
   stickyLevel?: number;
-  variant: ProjectThreadTreeVariant;
 }
 
 interface GetThreadRowDepthArgs {
   depthOffset: number;
   nodeDepth: number;
-  variant: ProjectThreadTreeVariant;
 }
 
 function getThreadNodeStickyLevel({
@@ -1063,14 +1054,12 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   const rowDepth = getThreadRowDepth({
     depthOffset,
     nodeDepth,
-    variant,
   });
   const parentLineDepth =
     nodeDepth > 0
       ? getThreadRowDepth({
           depthOffset,
           nodeDepth: nodeDepth - 1,
-          variant,
         })
       : undefined;
   const createThreadInWorktree = useCreateThreadInWorktree({
@@ -1340,7 +1329,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     );
   }, [sectionKey, setCollapsedSections]);
 
-  const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0, variant });
+  const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0 });
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
   const showDropPreview = sectionDnd?.dragOverParentKey === sectionKey;
@@ -1381,11 +1370,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
                   key={getItemKey(item)}
                   projectId={getItemProjectId(item)}
                   item={item}
-                  depthOffset={
-                    variant === "section" && depthOffset === 0
-                      ? 0
-                      : depthOffset + 1
-                  }
+                  depthOffset={depthOffset + 1}
                   selectedThreadId={selectedThreadId}
                   collapsedThreadIds={collapsedThreadIds}
                   collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1407,10 +1392,8 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         <DropPreviewRow
           visible={showDropPreview}
           depth={getThreadRowDepth({
-            depthOffset:
-              variant === "section" && depthOffset === 0 ? 0 : depthOffset + 1,
+            depthOffset: depthOffset + 1,
             nodeDepth: 0,
-            variant,
           })}
         />
       ) : null}
@@ -1603,7 +1586,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   const parentRowDepth = getThreadRowDepth({
     depthOffset,
     nodeDepth: node.depth,
-    variant,
   });
   const options = useMemo<ThreadRowOptions>(
     () =>
@@ -1621,7 +1603,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
         stickyLevel: hasChildren
           ? getThreadNodeStickyLevel({ depthOffset, node })
           : undefined,
-        variant,
       }),
     [
       consumeClickSuppression,
@@ -1633,7 +1614,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       hasChildren,
       node,
       onToggleThreadCollapsed,
-      variant,
     ],
   );
   const showChildren = !isCollapsed && hasChildren;
@@ -1871,6 +1851,7 @@ function SectionThreadTreeItems({
 
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
+  rootDepth,
   threadListState,
   compareThreads,
   selectedThreadId,
@@ -1928,6 +1909,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       sectionDnd={null}
       variant={variant}
       projectId={projectId}
+      depthOffset={rootDepth}
       sortableParentKey={projectId}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
@@ -2139,7 +2121,6 @@ export const ChronologicalSectionThreadSections = memo(
             depth={getThreadRowDepth({
               depthOffset: 0,
               nodeDepth: 0,
-              variant: "section",
             })}
           />
         ) : null}
@@ -2394,6 +2375,7 @@ function ProjectRowComponent({
         >
           <ProjectThreadTree
             projectId={project.id}
+            rootDepth={1}
             threadListState={threadListState}
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
