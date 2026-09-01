@@ -25,6 +25,7 @@ import {
 } from "./services/system/periodic-sweeps.js";
 import { createProviderRegistryService } from "./services/providers/provider-registry.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
+import { createPushSender } from "./services/notifications/push-sender.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "./constants.js";
@@ -128,6 +129,17 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     enabled: serverConfig.BB_TELEMETRY && isProduction,
     logger,
   });
+
+  // Push fan-out listens to the hub's change stream; it needs no daemon
+  // cooperation and nothing about it crosses the host protocol.
+  const pushSender = createPushSender({
+    db,
+    enabled: serverConfig.BB_PUSH_NOTIFICATIONS,
+    expoPushUrl: serverConfig.BB_EXPO_PUSH_URL,
+    hub,
+    logger,
+  });
+  pushSender.start();
 
   const machineAuth = await createMachineAuthService({
     dataDir: serverConfig.BB_DATA_DIR,
@@ -262,6 +274,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
+      pushSender.stop();
       pluginCatalogService.stopPeriodicRefresh();
       await pluginService.stopPeriodicUpdateChecks();
       await pluginService.stop().catch((error: unknown) => {

@@ -16,6 +16,7 @@ import type {
   ProjectFileContentResult as RootProjectFileContent,
   ProjectGetResult as RootProjectGet,
   ProjectWorkspaceRoutingArgs as RootProjectWorkspaceRoutingArgs,
+  PushSubscriptionAddResult as RootPushSubscriptionAddResult,
   ProviderListArgs as RootProviderListArgs,
   ProviderListResult as RootProviderList,
   ProviderModelsArgs as RootProviderModelsArgs,
@@ -44,6 +45,7 @@ import type {
   ProjectFileContentResult as BrowserProjectFileContent,
   ProjectGetResult as BrowserProjectGet,
   ProjectWorkspaceRoutingArgs as BrowserProjectWorkspaceRoutingArgs,
+  PushSubscriptionAddResult as BrowserPushSubscriptionAddResult,
   ProviderListArgs as BrowserProviderListArgs,
   ProviderListResult as BrowserProviderList,
   ProviderModelsArgs as BrowserProviderModelsArgs,
@@ -71,6 +73,7 @@ import type {
   ProjectFileContentResult as CoreProjectFileContent,
   ProjectGetResult as CoreProjectGet,
   ProjectWorkspaceRoutingArgs as CoreProjectWorkspaceRoutingArgs,
+  PushSubscriptionAddResult as CorePushSubscriptionAddResult,
   ProviderListArgs as CoreProviderListArgs,
   ProviderListResult as CoreProviderList,
   ProviderModelsArgs as CoreProviderModelsArgs,
@@ -98,6 +101,7 @@ import type {
   ProjectFileContentResult as NodeProjectFileContent,
   ProjectGetResult as NodeProjectGet,
   ProjectWorkspaceRoutingArgs as NodeProjectWorkspaceRoutingArgs,
+  PushSubscriptionAddResult as NodePushSubscriptionAddResult,
   ProviderListArgs as NodeProviderListArgs,
   ProviderListResult as NodeProviderList,
   ProviderModelsArgs as NodeProviderModelsArgs,
@@ -125,6 +129,7 @@ interface RootSurface {
   projectFileContent: RootProjectFileContent;
   projectGet: RootProjectGet;
   projectWorkspaceRoutingArgs: RootProjectWorkspaceRoutingArgs;
+  pushSubscriptionAdd: RootPushSubscriptionAddResult;
   providerList: RootProviderList;
   providerListArgs: RootProviderListArgs;
   providerModelsArgs: RootProviderModelsArgs;
@@ -152,6 +157,7 @@ interface BrowserSurface {
   projectFileContent: BrowserProjectFileContent;
   projectGet: BrowserProjectGet;
   projectWorkspaceRoutingArgs: BrowserProjectWorkspaceRoutingArgs;
+  pushSubscriptionAdd: BrowserPushSubscriptionAddResult;
   providerList: BrowserProviderList;
   providerListArgs: BrowserProviderListArgs;
   providerModelsArgs: BrowserProviderModelsArgs;
@@ -179,6 +185,7 @@ interface CoreSurface {
   projectFileContent: CoreProjectFileContent;
   projectGet: CoreProjectGet;
   projectWorkspaceRoutingArgs: CoreProjectWorkspaceRoutingArgs;
+  pushSubscriptionAdd: CorePushSubscriptionAddResult;
   providerList: CoreProviderList;
   providerListArgs: CoreProviderListArgs;
   providerModelsArgs: CoreProviderModelsArgs;
@@ -206,6 +213,7 @@ interface NodeSurface {
   projectFileContent: NodeProjectFileContent;
   projectGet: NodeProjectGet;
   projectWorkspaceRoutingArgs: NodeProjectWorkspaceRoutingArgs;
+  pushSubscriptionAdd: NodePushSubscriptionAddResult;
   providerList: NodeProviderList;
   providerListArgs: NodeProviderListArgs;
   providerModelsArgs: NodeProviderModelsArgs;
@@ -225,6 +233,7 @@ type ExpectedBbSdkKey =
   | "files"
   | "guide"
   | "hosts"
+  | "notifications"
   | "plugins"
   | "projects"
   | "providers"
@@ -268,6 +277,9 @@ type ExpectedFilesKey =
   | "write";
 
 type ExpectedGuideKey = "render";
+
+type ExpectedNotificationsKey = "pushSubscriptions";
+type ExpectedPushSubscriptionsKey = "add" | "list" | "remove";
 
 type ExpectedHostsKey =
   | "cloneDefaultPath"
@@ -510,6 +522,12 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<keyof RootBbSdk["files"]>().toEqualTypeOf<ExpectedFilesKey>();
     expectTypeOf<keyof RootBbSdk["guide"]>().toEqualTypeOf<ExpectedGuideKey>();
     expectTypeOf<keyof RootBbSdk["hosts"]>().toEqualTypeOf<ExpectedHostsKey>();
+    expectTypeOf<
+      keyof RootBbSdk["notifications"]
+    >().toEqualTypeOf<ExpectedNotificationsKey>();
+    expectTypeOf<
+      keyof RootBbSdk["notifications"]["pushSubscriptions"]
+    >().toEqualTypeOf<ExpectedPushSubscriptionsKey>();
     expectTypeOf<
       keyof RootBbSdk["plugins"]
     >().toEqualTypeOf<ExpectedPluginsKey>();

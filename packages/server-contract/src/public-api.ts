@@ -220,6 +220,13 @@ import type {
   ThreadTabsWireResponse,
   UpdateThreadTabsRequest,
 } from "./api/thread-tabs.js";
+import type {
+  DeletePushSubscriptionResponse,
+  PushSubscriptionListResponse,
+  PushSubscriptionResponse,
+  RegisterPushSubscriptionRequest,
+} from "./api/notifications.js";
+import { registerPushSubscriptionRequestSchema } from "./api/notifications.js";
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
 import {
   closeTerminalRequestSchema,
@@ -1364,6 +1371,35 @@ export const publicApiRoutes = {
         queuedMessageListQuerySchema,
       ),
       response: jsonResponse<ThreadQueuedMessageListResponse>(),
+    }),
+  },
+
+  notifications: {
+    listPushSubscriptions: defineRoute({
+      path: "/notifications/push-subscriptions",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<PushSubscriptionListResponse>(),
+    }),
+    registerPushSubscription: defineRoute({
+      path: "/notifications/push-subscriptions",
+      method: "post",
+      request: jsonRequest<EmptyInput, RegisterPushSubscriptionRequest>(
+        registerPushSubscriptionRequestSchema,
+      ),
+      response: [
+        jsonResponse<PushSubscriptionResponse>({ status: 201 }),
+        jsonResponse<PushSubscriptionResponse>(),
+      ],
+    }),
+    deletePushSubscription: defineRoute({
+      path: "/notifications/push-subscriptions/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: [
+        jsonResponse<DeletePushSubscriptionResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
     }),
   },
 

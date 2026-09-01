@@ -13,6 +13,7 @@ import { ApiError, errorToResponse } from "./errors.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
@@ -629,6 +630,7 @@ export function createApp(
   registerThreadRoutes(publicApi, deps);
   registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
+  registerNotificationRoutes(publicApi, deps);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService);
   registerSkillsRegistryRoutes(publicApi, deps);

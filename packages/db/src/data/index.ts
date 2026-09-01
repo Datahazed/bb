@@ -443,3 +443,17 @@ export {
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
+
+export {
+  deletePushSubscription,
+  deletePushSubscriptionByToken,
+  getPushSubscription,
+  getPushSubscriptionByToken,
+  listPushSubscriptions,
+  upsertPushSubscription,
+} from "./push-subscriptions.js";
+export type {
+  PushSubscriptionRow,
+  UpsertPushSubscriptionInput,
+  UpsertPushSubscriptionResult,
+} from "./push-subscriptions.js";

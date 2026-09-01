@@ -21,6 +21,7 @@ import type {
   PermissionMode,
   PromptHistoryScope,
   ProjectSourceType,
+  PushSubscriptionPlatform,
   QueuedMessagePayloadKind,
   QueuedMessageWaitHolder,
   ReasoningLevel,
@@ -1025,6 +1026,23 @@ export const pendingInteractions = sqliteTable(
       table.pluginId,
       table.status,
       table.createdAt,
+    ),
+  ],
+);
+
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    expoPushToken: text("expo_push_token").notNull(),
+    platform: text("platform").$type<PushSubscriptionPlatform>().notNull(),
+    deviceLabel: text("device_label").notNull(),
+    createdAt: integer("created_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_expo_push_token_idx").on(
+      table.expoPushToken,
     ),
   ],
 );

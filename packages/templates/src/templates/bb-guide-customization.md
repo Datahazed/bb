@@ -1,8 +1,8 @@
 ---
 kind: instruction
 title: bb Guide — Customization
-summary: Command reference for customizing the bb app color palette and keyboard shortcuts.
-intent: Explain the CLI theme surface and server-backed app customization.
+summary: Command reference for customizing the bb app color palette, keyboard shortcuts, and mobile push notifications.
+intent: Explain the CLI theme surface, server-backed app customization, and push-notification device registration.
 editingNotes: Keep flags accurate against the CLI implementation. Theme details live in the bb-cli skill's references/theming.md.
 ---
 Customization commands
@@ -156,6 +156,30 @@ same resolved bindings. The complete default table is in docs/configuration.md.
   bb settings keyboard hints <true|false>
   bb settings keyboard set <command> <shortcut|disabled>
   bb settings keyboard reset [command]
+
+Mobile push notifications
+
+The server pushes thread updates to registered bb mobile devices through the
+Expo Push API: a new pending interaction (approval or question), a root thread
+whose turn finished and is waiting for you, and a run that failed. Each push
+carries the thread title plus a short preview (the question, the first line of
+the reply, or the error) and opens the thread when tapped. Pushes for one
+thread coalesce over a two-second window and are skipped when a client read
+the thread or answered the interaction in the meantime. The bb mobile app
+registers its Expo push token automatically after it connects; the commands
+below inspect and repair that registry.
+
+  bb notifications push-subscriptions list
+  bb notifications push-subscriptions add --token <expo-push-token>
+      --platform <ios|android> --label <device-name>
+  bb notifications push-subscriptions remove <id>
+
+`add` is an upsert by token: a known token refreshes its label and last-seen
+time and keeps its id. Expo tokens that are no longer registered are removed
+automatically after a failed delivery. `BB_PUSH_NOTIFICATIONS=false` (startup
+only) stops sending while keeping registrations; `BB_EXPO_PUSH_URL` points the
+sender at a stub for testing. Add --json to any of these commands for
+machine-readable output.
 
 Host files and voice transcription
 
