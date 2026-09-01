@@ -99,6 +99,7 @@ const loadedSidebarNavigation = {
         projectId: PERSONAL_PROJECT_ID,
         title: "Sketch launch checklist",
         titleFallback: "Sketch launch checklist",
+        lastReadAt: 0,
         latestAttentionAt: 85,
         createdAt: 85,
         updatedAt: 85,
@@ -556,7 +557,7 @@ export function OrganizationModes() {
           navigation={emptySidebarNavigation}
         />
       </StoryRow>
-      <StoryRow label="Manual">
+      <StoryRow label="Custom">
         <OrganizationSidebar
           mode="manual"
           navigation={loadedSidebarNavigation}
@@ -586,12 +587,12 @@ export function RowLayoutContract() {
   return (
     <StoryCard
       labelWidth="120px"
-      columns={["Wide", "Compact width"]}
+      columns={["Standard width", "Compact width"]}
       className="min-w-max items-start"
     >
       <StoryRow
         label="Project tree"
-        hint="Production rows at the two representative sidebar widths"
+        hint="Loose, project, worktree, parent, nested, unread, working, and attention rows; use the production carets to compare expanded and collapsed geometry"
       >
         <div className="w-[320px]">
           <OrganizationSidebar
@@ -607,8 +608,25 @@ export function RowLayoutContract() {
         </div>
       </StoryRow>
       <StoryRow
+        label="Custom tree"
+        hint="Sections and loose threads use the same fixed status and disclosure rails"
+      >
+        <div className="w-[320px]">
+          <OrganizationSidebar
+            mode="manual"
+            navigation={loadedSidebarNavigation}
+          />
+        </div>
+        <div className="w-[240px]">
+          <OrganizationSidebar
+            mode="manual"
+            navigation={loadedSidebarNavigation}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow
         label="Machine tree"
-        hint="The same status, identity, content, action, and disclosure rails"
+        hint="Machine groups preserve the same compact row contract at both widths"
       >
         <div className="w-[320px]">
           <OrganizationSidebar

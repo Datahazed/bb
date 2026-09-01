@@ -915,8 +915,12 @@ describe("ThreadRow", () => {
     const disclosure = screen.getByRole("button", {
       name: "Collapse Parent thread threads",
     });
-    expect(disclosure.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
-      "always",
+    expect(
+      disclosure.getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBeNull();
+    expect(disclosure.classList.contains("pointer-events-auto")).toBe(true);
+    expect(disclosure.classList.contains("bb-sidebar-hover-actions")).toBe(
+      false,
     );
     expect(disclosure.classList.contains("text-subtle-foreground/75")).toBe(
       true,
