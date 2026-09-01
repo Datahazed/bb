@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   Environment,
   PermissionMode,
@@ -24,7 +24,10 @@ import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import { getEnvironmentWorkspaceSummaryDisplay } from "@/lib/environment-workspace-display";
+import {
+  getEnvironmentWorkspaceSummaryDisplay,
+  shouldShowWorktreeMachineInComposer,
+} from "@/lib/environment-workspace-display";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
@@ -42,6 +45,7 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import { EnvironmentRenameDialogContent } from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   formatWorkspaceCheckoutDisplay,
   type WorkspaceCheckoutDisplay,
@@ -49,6 +53,7 @@ import {
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { DialogStage } from "../../../.ladle/story-dialog-stage";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
@@ -170,6 +175,7 @@ interface EnvironmentSummaryArgs {
   host: EnvironmentDisplayHostContext;
   projectName?: string;
   machineName?: string;
+  machineConnected?: boolean;
   branchName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
   onCreateNewThreadInWorktree?: () => void;
@@ -180,6 +186,7 @@ function makeEnvironmentSummary({
   host,
   projectName,
   machineName,
+  machineConnected = true,
   branchName,
   environmentCheckout,
   onCreateNewThreadInWorktree,
@@ -193,6 +200,15 @@ function makeEnvironmentSummary({
     environmentName: environment.name,
     hostName: machineName,
   });
+  const showMachine =
+    display.mode === "worktree" &&
+    machineName !== undefined &&
+    shouldShowWorktreeMachineInComposer({
+      connected: machineConnected,
+      hasCustomName: environment.name !== null,
+      locality: host.locality,
+      machineCount: 1,
+    });
   const checkoutDisplay =
     environmentCheckout ??
     (branchName
@@ -211,6 +227,8 @@ function makeEnvironmentSummary({
       environmentIcon={summaryDisplay.icon}
       environmentTypeLabel={summaryDisplay.typeLabel}
       environmentCheckout={checkoutDisplay}
+      machineName={showMachine ? machineName : undefined}
+      machineConnected={machineConnected}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
     />
   );
@@ -312,6 +330,21 @@ const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   branchName: STORY_BRANCH_NAME,
   onCreateNewThreadInWorktree: noop,
 });
+
+const offlineNamedWorktreeEnvironmentSummary: ReactNode =
+  makeEnvironmentSummary({
+    environment: makeEnvironment({
+      name: "Design system polish",
+      isWorktree: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    }),
+    host: remoteEnvironmentDisplayHost,
+    machineName: "Build Mac mini",
+    machineConnected: false,
+    branchName: STORY_BRANCH_NAME,
+    onCreateNewThreadInWorktree: noop,
+  });
 
 const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
@@ -1142,13 +1175,13 @@ export function EnvironmentMatrix() {
           environmentSummary={provisioningEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow label="ready · local" hint="laptop icon · Local tooltip">
+      <StoryRow label="ready · local" hint="laptop icon · machine name">
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={localEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow label="ready · remote" hint="laptop icon · Remote tooltip">
+      <StoryRow label="ready · remote" hint="laptop icon · machine name">
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
@@ -1156,7 +1189,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · local worktree"
-        hint="managed worktree · worktree icon · Local worktree tooltip"
+        hint="worktree icon · machine name fallback"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1165,7 +1198,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · remote worktree"
-        hint="managed worktree · worktree icon · Remote worktree tooltip"
+        hint="worktree icon · machine name fallback"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1183,11 +1216,20 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · named worktree"
-        hint="worktree icon · custom environment name"
+        hint="worktree icon · custom sidebar name"
       >
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={namedWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · named offline worktree"
+        hint="custom worktree name · separate offline machine context"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={offlineNamedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1223,6 +1265,56 @@ export function ProvisioningEnvironmentSummary() {
         <div className="w-full max-w-xl rounded-md border bg-background p-3">
           {provisioningEnvironmentSummary}
         </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function WorktreeNamingContract() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <StoryCard>
+      <StoryRow
+        label="custom name"
+        hint="clearing the alias restores the host as environment identity"
+      >
+        <DialogStage>
+          <EnvironmentRenameDialogContent
+            target={{
+              id: "env_named",
+              currentName: "Design system polish",
+              branchName: STORY_BRANCH_NAME,
+              canClearName: true,
+            }}
+            pending={false}
+            onRename={noop}
+            inputRef={inputRef}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow
+        label="after clear"
+        hint="host identifies the environment; branch remains checkout metadata"
+      >
+        <div className="w-full max-w-xl rounded-md border bg-background p-3">
+          {worktreeEnvironmentSummary}
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function WorktreeCopyAction() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="copy action"
+        hint="branch stays visible as secondary checkout metadata and copies on click"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={worktreeEnvironmentSummary}
+        />
       </StoryRow>
     </StoryCard>
   );

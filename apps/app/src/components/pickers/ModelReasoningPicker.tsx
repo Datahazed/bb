@@ -770,7 +770,7 @@ export function ModelReasoningPicker({
   const triggerTitle = [
     `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
-    showSelectedFastMode ? " · Fast mode" : "",
+    showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
   const trigger = (
     <Button
@@ -778,7 +778,11 @@ export function ModelReasoningPicker({
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Provider, model and reasoning"
+      aria-label={
+        toggleShortcut
+          ? `Provider, model and reasoning (${toggleShortcut.label})`
+          : "Provider, model and reasoning"
+      }
       aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
       className={cn(

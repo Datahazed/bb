@@ -7,8 +7,6 @@ import { useClipboardCopy, type ClipboardCopyOptions } from "@/lib/clipboard";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { useIsElementTruncated } from "@/hooks/useIsElementTruncated";
 
 interface CopyButtonProps
   extends
@@ -63,8 +61,7 @@ export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
 
 interface CopyableInlineLabelProps extends ClipboardCopyOptions {
   label: string;
-  tooltip: string;
-  truncatedTooltip?: string;
+  title?: string;
   className?: string;
   iconClassName?: string;
   children?: ReactNode;
@@ -73,8 +70,7 @@ interface CopyableInlineLabelProps extends ClipboardCopyOptions {
 export function CopyableInlineLabel({
   text,
   label,
-  tooltip,
-  truncatedTooltip,
+  title,
   className,
   iconClassName,
   successMessage,
@@ -86,15 +82,12 @@ export function CopyableInlineLabel({
     successMessage,
     errorMessage,
   });
-  const { elementRef, isTruncated } = useIsElementTruncated({
-    measurementKey: text,
-  });
 
-  const button = (
+  return (
     <button
       type="button"
       className={cn(
-        `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground outline-none ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring`,
+        `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`,
         className,
       )}
       onClick={() => {
@@ -102,11 +95,7 @@ export function CopyableInlineLabel({
       }}
       aria-label={label}
     >
-      <span
-        ref={elementRef}
-        className="min-w-0 truncate"
-        data-copyable-inline-label-text=""
-      >
+      <span className="min-w-0 truncate" title={title ?? text}>
         {children ?? text}
       </span>
       <Icon
@@ -114,14 +103,5 @@ export function CopyableInlineLabel({
         className={cn("size-3.5 shrink-0 text-muted-foreground", iconClassName)}
       />
     </button>
-  );
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent>
-        {isTruncated && truncatedTooltip ? truncatedTooltip : tooltip}
-      </TooltipContent>
-    </Tooltip>
   );
 }

@@ -27,8 +27,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="standard"
-        hint="canonical state — worktree + machine + path + Git context + pull request"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
+        hint="canonical state — parent + env + worktree path + branch + merge base + pull request + clean git status"
       >
         {render({
           pullRequest: makePullRequest(),
@@ -37,7 +36,6 @@ export function Overview() {
       <StoryRow
         label="standard, child thread"
         hint="thread.parentThreadId set — selector renders the link form"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         {render({
           thread: makeThread({ parentThreadId: "thr_codex_parent" }),
@@ -50,7 +48,6 @@ export function Overview() {
       <StoryRow
         label="standard, archived"
         hint="thread.archivedAt set — Archived row + unarchive button render"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         {render({
           thread: makeThread({ archivedAt: 1_700_000_000_000 }),
@@ -59,7 +56,6 @@ export function Overview() {
       <StoryRow
         label="parent thread"
         hint="parent thread with no environment — environment/branch/merge-base hidden"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
       >
         {render({
           thread: makeThread({
@@ -68,7 +64,6 @@ export function Overview() {
             environmentId: null,
           }),
           environment: null,
-          environmentHostName: "",
           workspaceStatus: undefined,
         })}
       </StoryRow>

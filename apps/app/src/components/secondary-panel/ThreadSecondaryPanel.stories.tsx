@@ -42,7 +42,6 @@ import {
 } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -250,13 +249,6 @@ function ShellRow({
           <ThreadSecondaryPanel
             activeTab={createStoryFixedPanelTab(panel)}
             canUseGitUi={canUseGitUi}
-            gitCheckout={formatWorkspaceCheckoutDisplay({
-              checkout: {
-                kind: "branch",
-                branchName: "bb/design-system-polish",
-                headSha: null,
-              },
-            })}
             requestedMergeBaseBranch="main"
             environmentId={undefined}
             isOpen

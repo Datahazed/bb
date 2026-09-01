@@ -25,7 +25,7 @@ import {
 } from "@bb/core-ui";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { getEnvironmentWorkspaceInfoDisplay } from "@/lib/environment-workspace-display";
+import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -73,8 +73,6 @@ import {
 } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
-import { PersistentHostIconName } from "@/lib/host-display";
-import { useIsElementTruncated } from "@/hooks/useIsElementTruncated";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
 
 interface ParentSelectorRowProps {
@@ -229,49 +227,6 @@ interface EnvironmentRowProps {
   environmentDisplayHost: EnvironmentDisplayHostContext;
 }
 
-interface DetailValueTooltipProps {
-  accessibleLabel: string;
-  children: ReactNode;
-  measurementKey?: string;
-  tooltip: string;
-}
-
-function DetailValueTooltip({
-  accessibleLabel,
-  children,
-  measurementKey,
-  tooltip,
-}: DetailValueTooltipProps) {
-  const { elementRef, isTruncated } = useIsElementTruncated({
-    measurementKey: measurementKey ?? "",
-  });
-  const showTooltip = measurementKey === undefined || isTruncated;
-  const content = (
-    <span
-      tabIndex={showTooltip ? 0 : undefined}
-      aria-label={accessibleLabel}
-      className={cn(
-        "inline-flex min-w-0 items-center gap-1 rounded-sm",
-        showTooltip &&
-          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      )}
-    >
-      <span ref={elementRef} className="min-w-0 truncate text-foreground">
-        {children}
-      </span>
-    </span>
-  );
-
-  return showTooltip ? (
-    <Tooltip>
-      <TooltipTrigger asChild>{content}</TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
-  ) : (
-    content
-  );
-}
-
 export function EnvironmentRow({
   thread,
   environment,
@@ -286,103 +241,53 @@ export function EnvironmentRow({
     environment,
     host: environmentDisplayHost,
   });
-  const environmentInfo = getEnvironmentWorkspaceInfoDisplay({
-    display,
-    environmentName: environment.name,
-  });
-  if (!environmentInfo) return null;
   const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon={environmentInfo.icon}>
-          {environmentInfo.label}
+        <DetailRowIconLabel
+          icon={getEnvironmentWorkspaceLabelIconName(
+            display.workspaceDisplayKind,
+          )}
+        >
+          Environment
         </DetailRowIconLabel>
       }
-      valueClassName="flex min-w-0 items-center gap-1"
+      valueClassName="min-w-0"
     >
-      <DetailValueTooltip
-        accessibleLabel={`${environmentInfo.label}: ${environmentInfo.title}`}
-        measurementKey={environmentInfo.title}
-        tooltip={environmentInfo.title}
-      >
-        {environmentInfo.title}
-      </DetailValueTooltip>
-      {showCreateThreadButton ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Create thread in worktree"
-              onClick={createThreadInWorktree}
-              className="ml-auto inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-            >
-              <Icon name="MessageSquarePlus" className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Create thread in worktree</TooltipContent>
-        </Tooltip>
-      ) : null}
-    </DetailRow>
-  );
-}
-
-interface MachineRowProps {
-  name?: string;
-  connected?: boolean;
-}
-
-export function MachineRow({ name, connected = true }: MachineRowProps) {
-  if (!name) return null;
-  const accessibleLabel = connected
-    ? `Machine: ${name}`
-    : `Machine: ${name}, offline`;
-  return (
-    <DetailRow
-      label={
-        <span className="flex items-center gap-1.5">
-          {connected ? (
-            <Icon
-              name={PersistentHostIconName}
-              className="size-3.5 shrink-0 text-muted-foreground"
-              aria-hidden
-            />
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  role="img"
-                  tabIndex={0}
-                  aria-label="Offline"
-                  className="inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Icon
-                    name="AlertTriangle"
-                    className="size-3.5 text-warning-text"
-                    aria-hidden
-                  />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Offline</TooltipContent>
-            </Tooltip>
-          )}
-          <span className="min-w-0 truncate">Machine</span>
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="min-w-0 truncate" title={display.modeLabel}>
+          {display.compactModeLabel}
         </span>
-      }
-      valueClassName="flex min-w-0 items-center gap-1"
-    >
-      <DetailValueTooltip
-        accessibleLabel={accessibleLabel}
-        measurementKey={name}
-        tooltip={name}
-      >
-        {name}
-      </DetailValueTooltip>
-      {connected ? null : (
-        <span aria-hidden className="shrink-0 text-muted-foreground">
-          · Offline
-        </span>
-      )}
+        {environmentDisplayHost.identity ? (
+          <span
+            className="min-w-0 shrink-0 truncate text-muted-foreground"
+            title={`On ${environmentDisplayHost.identity.name} (${
+              environmentDisplayHost.identity.connected
+                ? "connected"
+                : "offline"
+            })`}
+          >
+            · {environmentDisplayHost.identity.name}
+            {environmentDisplayHost.identity.connected ? "" : " (offline)"}
+          </span>
+        ) : null}
+        {showCreateThreadButton ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Create thread in worktree"
+                onClick={createThreadInWorktree}
+                className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+              >
+                <Icon name="MessageSquarePlus" className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Create thread in worktree</TooltipContent>
+          </Tooltip>
+        ) : null}
+      </span>
     </DetailRow>
   );
 }
@@ -411,16 +316,15 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
 
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="Folder">Path</DetailRowIconLabel>}
+      label={<DetailRowIconLabel icon="Folder">Directory</DetailRowIconLabel>}
       valueClassName="min-w-0"
     >
       <CopyableInlineLabel
         text={environment.path}
-        label={`Copy path: ${environment.path}`}
-        tooltip="Copy path"
-        truncatedTooltip={environment.path}
-        successMessage="Path copied"
-        errorMessage="Failed to copy path"
+        label="Copy directory"
+        title={environment.path}
+        successMessage="Directory copied"
+        errorMessage="Failed to copy directory"
       />
     </DetailRow>
   );
@@ -447,8 +351,8 @@ export function BranchRow({ workspaceStatus }: BranchRowProps) {
       {checkoutDisplay.copyValue !== null ? (
         <CopyableInlineLabel
           text={checkoutDisplay.copyValue}
-          label={`${checkoutDisplay.copyLabel}: ${checkoutDisplay.copyValue}`}
-          tooltip={checkoutDisplay.copyLabel ?? "Copy Git value"}
+          label={checkoutDisplay.copyLabel ?? "Copy checkout value"}
+          title={checkoutDisplay.title}
           successMessage={checkoutDisplay.copySuccessMessage ?? "Value copied"}
           errorMessage={
             checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
@@ -457,12 +361,9 @@ export function BranchRow({ workspaceStatus }: BranchRowProps) {
           {checkoutDisplay.label}
         </CopyableInlineLabel>
       ) : (
-        <DetailValueTooltip
-          accessibleLabel={`${checkoutDisplay.rowLabel}: ${checkoutDisplay.label}`}
-          tooltip={checkoutDisplay.title}
-        >
-          <span className="block truncate">{checkoutDisplay.label}</span>
-        </DetailValueTooltip>
+        <span className="block truncate" title={checkoutDisplay.title}>
+          {checkoutDisplay.label}
+        </span>
       )}
     </DetailRow>
   );
@@ -621,7 +522,9 @@ export function MergeBaseRow({
 
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="GitMerge">Base</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="GitMerge">Merge base</DetailRowIconLabel>
+      }
       valueClassName="min-w-0"
     >
       {canSelectMergeBase && mergeBaseBranch ? (
@@ -692,7 +595,9 @@ export function GitStatusRow({
 
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="FileDiff">Status</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="FileDiff">Git status</DetailRowIconLabel>
+      }
       align="start"
       valueClassName="min-w-0"
     >
@@ -898,8 +803,6 @@ export interface ThreadMetadataContentProps {
   isParentThreadsError: boolean;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
-  environmentHostName?: string;
-  environmentHostConnected?: boolean;
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
@@ -1024,8 +927,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     isParentThreadsError,
     environment,
     environmentDisplayHost,
-    environmentHostName,
-    environmentHostConnected,
     workspaceStatus,
     workspaceStatusError,
     workspaceUnavailable,
@@ -1069,10 +970,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         thread={thread}
         environment={environment}
         environmentDisplayHost={environmentDisplayHost}
-      />
-      <MachineRow
-        name={environmentHostName}
-        connected={environmentHostConnected}
       />
       <WorkspacePathRow environment={environment} />
       <BranchRow workspaceStatus={workspaceStatus} />

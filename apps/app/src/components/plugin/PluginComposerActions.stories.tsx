@@ -131,7 +131,7 @@ function OverflowFixture() {
           submission={{
             isSubmitting: false,
             disabled: false,
-            title: "Submit",
+            title: "Submit (Enter)",
           }}
         />
       </div>
@@ -307,7 +307,7 @@ function ThreadRowStatusFixture() {
             submission={{
               isSubmitting: false,
               disabled: false,
-              title: "Submit",
+              title: "Submit (Enter)",
             }}
           />
         </div>

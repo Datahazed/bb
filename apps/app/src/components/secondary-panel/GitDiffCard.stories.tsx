@@ -22,10 +22,6 @@ import {
 } from "../git-diff/git-diff-parsing";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { appToast } from "@/components/ui/app-toast";
-import {
-  formatWorkspaceCheckoutDisplay,
-  type WorkspaceCheckoutDisplay,
-} from "@/lib/workspace-checkout-display";
 
 export default {
   title: "right-panel/Diff",
@@ -608,21 +604,6 @@ const SELECTION_OPTIONS: readonly GitDiffSelectionOption[] = [
   },
 ];
 
-const BRANCH_CHECKOUT = formatWorkspaceCheckoutDisplay({
-  checkout: {
-    kind: "branch",
-    branchName: "bb/design-system-polish",
-    headSha: null,
-  },
-});
-
-const DETACHED_CHECKOUT = formatWorkspaceCheckoutDisplay({
-  checkout: {
-    kind: "detached",
-    headSha: "abcdef1234567890",
-  },
-});
-
 type DiffPanelFixture = AlignedDiffResult | ImageDiffResult;
 
 interface InteractiveDiffPanelDiff {
@@ -679,14 +660,12 @@ function getFixtureSideContents(
 
 interface InteractiveDiffPanelArgs {
   diffs: readonly InteractiveDiffPanelDiff[];
-  checkout?: WorkspaceCheckoutDisplay;
   initialCollapsed?: ReadonlySet<string>;
   renderingFileKeys?: ReadonlySet<string>;
 }
 
 function InteractiveDiffPanel({
   diffs,
-  checkout = BRANCH_CHECKOUT,
   initialCollapsed,
   renderingFileKeys,
 }: InteractiveDiffPanelArgs) {
@@ -788,7 +767,6 @@ function InteractiveDiffPanel({
   return (
     <PanelStage>
       <GitDiffToolbar
-        checkout={checkout}
         selectionValue={selection}
         selectionOptions={SELECTION_OPTIONS}
         onSelectionChange={setSelection}
@@ -827,12 +805,6 @@ function InteractiveDiffPanel({
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow
-        label="detached commit"
-        hint="commit identity replaces the branch above the diff selector"
-      >
-        <InteractiveDiffPanel diffs={[]} checkout={DETACHED_CHECKOUT} />
-      </StoryRow>
       <StoryRow
         label="modified file"
         hint="single hunk in a real-looking ProjectRow.tsx; click ↑/↓/⇅ in the gaps to expand 30 lines at a time"

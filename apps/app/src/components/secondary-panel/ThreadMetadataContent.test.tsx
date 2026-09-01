@@ -45,7 +45,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
 function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
   return {
     id: "env_test",
-    name: "Design system polish",
+    name: null,
     projectId: "proj_test",
     hostId: "host_test",
     path: "/workspace",

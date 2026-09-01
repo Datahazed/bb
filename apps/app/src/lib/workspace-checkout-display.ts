@@ -8,7 +8,7 @@ export interface WorkspaceCheckoutDisplay {
   copySuccessMessage: string | null;
   copyValue: string | null;
   label: string;
-  rowLabel: "Branch" | "Commit" | "Git" | "Repository";
+  rowLabel: "Branch" | "Checkout";
   title: string;
 }
 
@@ -32,7 +32,7 @@ export function formatWorkspaceCheckoutDisplay({
         copyValue: checkout.branchName,
         label: checkout.branchName,
         rowLabel: "Branch",
-        title: checkout.branchName,
+        title: `Copy branch name: ${checkout.branchName}`,
       };
     case "detached":
       if (checkout.headSha === null) {
@@ -41,8 +41,8 @@ export function formatWorkspaceCheckoutDisplay({
           copyLabel: null,
           copySuccessMessage: null,
           copyValue: null,
-          label: "Detached HEAD",
-          rowLabel: "Commit",
+          label: "detached HEAD",
+          rowLabel: "Checkout",
           title: "Detached HEAD",
         };
       }
@@ -51,9 +51,9 @@ export function formatWorkspaceCheckoutDisplay({
         copyLabel: "Copy commit SHA",
         copySuccessMessage: "Commit SHA copied",
         copyValue: checkout.headSha,
-        label: `Detached at ${shortSha(checkout.headSha)}`,
-        rowLabel: "Commit",
-        title: checkout.headSha,
+        label: `detached ${shortSha(checkout.headSha)}`,
+        rowLabel: "Checkout",
+        title: `Detached HEAD: ${checkout.headSha}`,
       };
     case "unborn":
       return {
@@ -65,7 +65,7 @@ export function formatWorkspaceCheckoutDisplay({
           checkout.branchName !== null
             ? `${checkout.branchName} (empty)`
             : "empty repo",
-        rowLabel: checkout.branchName !== null ? "Branch" : "Repository",
+        rowLabel: "Checkout",
         title:
           checkout.branchName !== null
             ? `Empty branch: ${checkout.branchName}`
@@ -77,9 +77,9 @@ export function formatWorkspaceCheckoutDisplay({
         copyLabel: null,
         copySuccessMessage: null,
         copyValue: null,
-        label: "unknown state",
-        rowLabel: "Git",
-        title: `Unknown Git state: ${checkout.reason}`,
+        label: "unknown checkout",
+        rowLabel: "Checkout",
+        title: `Unknown checkout: ${checkout.reason}`,
       };
   }
 }

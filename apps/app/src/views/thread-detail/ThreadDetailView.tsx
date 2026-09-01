@@ -2868,9 +2868,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               isParentThreadsError: parentThreadSubsetQuery.isError,
               environment: environment ?? null,
               environmentDisplayHost: environmentDisplayHostContext,
-              environmentHostName: resolvedThreadEnvironmentHost?.name,
-              environmentHostConnected:
-                resolvedThreadEnvironmentHost?.status === "connected",
               workspaceStatus,
               workspaceStatusError: workspaceStatusError ?? null,
               workspaceUnavailable,
@@ -2900,7 +2897,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               activeTab: activeFixedSecondaryTab,
               canUseGitUi,
               gitDiffTabStatus,
-              gitCheckout: threadCheckoutDisplay,
               environmentId: thread.environmentId ?? undefined,
               workspaceRootPath: environment?.path,
               tabs: panelTabs,

@@ -1781,7 +1781,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
       screen.getByRole("button", { name: "Still available" }),
     ).toBeTruthy();
     expect(screen.queryByText(/plugin actions crashed/u)).toBeNull();
-    expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
     await waitFor(() => {
       expect(getPromptEditorElement().getAttribute("contenteditable")).toBe(
         "true",
@@ -1881,7 +1881,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
           ?.getAttribute("aria-busy"),
       ).toBe("true");
     });
-    expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Toggle lock (thread)" }),
@@ -1987,7 +1987,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
   });
 });
 
@@ -2129,7 +2129,7 @@ describe("PromptBoxInternal compact layout", () => {
 
     const form = document.querySelector("[data-promptbox]");
     expect(form?.getAttribute("data-promptbox-compact")).toBe("");
-    expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
@@ -2181,7 +2181,9 @@ describe("PromptBoxInternal compact layout", () => {
         "[data-promptbox-submit-group]",
       );
       expect(submitGroup?.contains(voiceButton)).toBe(true);
-      expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Submit (Enter)" }),
+      ).toBeNull();
 
       expect(
         fireEvent.pointerDown(voiceButton, {
@@ -2215,7 +2217,7 @@ describe("PromptBoxInternal compact layout", () => {
       );
 
       expect(document.activeElement).not.toBe(getPromptEditorElement());
-      const submit = screen.getByRole("button", { name: "Submit" });
+      const submit = screen.getByRole("button", { name: "Submit (Enter)" });
       expect(
         fireEvent.pointerDown(submit, {
           button: 0,
@@ -2246,7 +2248,7 @@ describe("PromptBoxInternal compact layout", () => {
 
     await waitForPromptFocus();
     const editor = getPromptEditorElement();
-    const submit = screen.getByRole("button", { name: "Submit" });
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
 
     expect(
       fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
@@ -2267,7 +2269,7 @@ describe("PromptBoxInternal compact layout", () => {
 
     await waitForPromptFocus();
     const editor = getPromptEditorElement();
-    const submit = screen.getByRole("button", { name: "Submit" });
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
 
     editor.dispatchEvent(new FocusEvent("blur"));
     expect(document.activeElement).toBe(editor);
@@ -2296,7 +2298,7 @@ describe("PromptBoxInternal compact layout", () => {
 
     await waitForPromptFocus();
     const editor = getPromptEditorElement();
-    const submit = screen.getByRole("button", { name: "Submit" });
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
 
     expect(
       fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
@@ -2375,7 +2377,7 @@ describe("PromptBoxInternal compact layout", () => {
     );
 
     const submitGroup = document.querySelector("[data-promptbox-submit-group]");
-    const submit = screen.getByRole("button", { name: "Submit" });
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
     const voice = screen.getByRole("button", { name: "Start voice input" });
 
     expect(submitGroup?.contains(submit)).toBe(true);
@@ -3202,7 +3204,10 @@ describe("PromptBoxInternal mention triggers", () => {
 
     view.rerender(
       <Harness
-        mentionSuggestions={[...initialSuggestions, delayedExactSuggestion]}
+        mentionSuggestions={[
+          ...initialSuggestions,
+          delayedExactSuggestion,
+        ]}
       />,
     );
     await screen.findByRole("button", { name: "Atlas" });

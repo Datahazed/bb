@@ -100,7 +100,6 @@ import {
 } from "./SidebarSplitContainer";
 import { SIDEBAR_FIXED_INFO_TAB_ID } from "./sidebarSplitLayout";
 import type { GitDiffTabStatus } from "./gitDiffTabEligibility";
-import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 export type {
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
@@ -179,7 +178,6 @@ export interface ThreadSecondaryPanelProps {
   gitDiffTabStatus?: GitDiffTabStatus;
   onRetryGitDiffEligibility?: () => void;
   requestedMergeBaseBranch?: string;
-  gitCheckout?: WorkspaceCheckoutDisplay;
   environmentId?: string;
   metadataContent: ReactNode;
   tabs: readonly SecondaryPanelRenderableTab[];
@@ -216,7 +214,6 @@ export function ThreadSecondaryPanel({
   canUseGitUi,
   gitDiffTabStatus,
   requestedMergeBaseBranch,
-  gitCheckout,
   environmentId,
   metadataContent,
   tabs,
@@ -776,7 +773,6 @@ export function ThreadSecondaryPanel({
           </div>
           {showsSurfaceDiffToolbar ? (
             <GitDiffToolbar
-              checkout={gitCheckout}
               selectionValue={gitDiffSelectValue}
               selectionOptions={gitDiffSelectOptions}
               onSelectionChange={onGitDiffSelectionChange}

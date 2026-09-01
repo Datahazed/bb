@@ -793,7 +793,7 @@ describe("ThreadDetailPromptArea", () => {
     );
     expect(editingFrame).not.toBeNull();
     expect(inlineEditor.getByTestId("submit-title").textContent).toBe(
-      "Submit edit",
+      "Submit edit (Enter)",
     );
     expect(
       inlineEditor.getByTestId("plugin-customizations-suppressed").textContent,

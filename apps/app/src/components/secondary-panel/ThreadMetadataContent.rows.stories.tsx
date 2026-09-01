@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   ParentSelectorRow,
+  EnvironmentRow,
   WorkspacePathRow,
   BranchRow,
   MergeBaseRow,
@@ -14,6 +16,7 @@ import {
 import {
   PanelStage,
   baseProps,
+  localEnvironmentDisplayHost,
   parentThreads,
   makeEnvironment,
   makePullRequest,
@@ -27,6 +30,11 @@ export default {
 };
 
 const noop = () => {};
+
+const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "remote",
+  identity: null,
+};
 
 function RowStage({ children }: { children: ReactNode }) {
   return (
@@ -113,6 +121,59 @@ export function ParentSelector() {
             onParentSelectorOpenChange={noop}
             onRetryParentThreads={noop}
             defaultOpen
+          />
+        </RowStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function Environment() {
+  return (
+    <StoryCard>
+      <StoryRow label="worktree">
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment()}
+            environmentDisplayHost={localEnvironmentDisplayHost}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="direct">
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({
+              isWorktree: false,
+              workspaceProvisionType: "unmanaged",
+            })}
+            environmentDisplayHost={localEnvironmentDisplayHost}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="remote direct">
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({
+              isWorktree: false,
+              workspaceProvisionType: "unmanaged",
+            })}
+            environmentDisplayHost={remoteEnvironmentDisplayHost}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="provisioning">
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({
+              status: "provisioning",
+              isWorktree: false,
+              workspaceProvisionType: "managed-worktree",
+            })}
+            environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
       </StoryRow>

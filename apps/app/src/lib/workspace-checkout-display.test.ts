@@ -12,10 +12,10 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyLabel: "Copy branch name",
       copyValue: "bb/thread",
       label: "bb/thread",
       rowLabel: "Branch",
+      title: "Copy branch name: bb/thread",
     });
   });
 
@@ -28,10 +28,10 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyLabel: "Copy commit SHA",
       copyValue: "abcdef1234567890",
-      label: "Detached at abcdef1",
-      rowLabel: "Commit",
+      label: "detached abcdef1",
+      rowLabel: "Checkout",
+      title: "Detached HEAD: abcdef1234567890",
     });
   });
 
@@ -45,8 +45,9 @@ describe("formatWorkspaceCheckoutDisplay", () => {
       }),
     ).toMatchObject({
       copyValue: null,
-      label: "Detached HEAD",
-      rowLabel: "Commit",
+      label: "detached HEAD",
+      rowLabel: "Checkout",
+      title: "Detached HEAD",
     });
   });
 
@@ -61,7 +62,8 @@ describe("formatWorkspaceCheckoutDisplay", () => {
     ).toMatchObject({
       copyValue: null,
       label: "main (empty)",
-      rowLabel: "Branch",
+      rowLabel: "Checkout",
+      title: "Empty branch: main",
     });
   });
 
@@ -76,7 +78,8 @@ describe("formatWorkspaceCheckoutDisplay", () => {
     ).toMatchObject({
       copyValue: null,
       label: "empty repo",
-      rowLabel: "Repository",
+      rowLabel: "Checkout",
+      title: "Empty repository",
     });
   });
 
@@ -90,8 +93,9 @@ describe("formatWorkspaceCheckoutDisplay", () => {
       }),
     ).toMatchObject({
       copyValue: null,
-      label: "unknown state",
-      rowLabel: "Git",
+      label: "unknown checkout",
+      rowLabel: "Checkout",
+      title: "Unknown checkout: HEAD is missing",
     });
   });
 });

@@ -1,10 +1,5 @@
 import { memo } from "react";
-import {
-  OPTION_BASE_CLASS_NAME,
-  OPTION_CONTENT_CLASS_NAME,
-  OPTION_MUTED_CLASS_NAME,
-  OptionDisplay,
-} from "@bb/shared-ui/option-display";
+import { OptionDisplay } from "@bb/shared-ui/option-display";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -55,52 +50,32 @@ function NameDisplay({
   accessibleLabel,
   kind,
   name,
-  option = false,
 }: {
   accessibleLabel: string;
   kind: "environment" | "machine";
   name: string;
-  option?: boolean;
 }) {
   const { elementRef, isTruncated } = useIsElementTruncated({
     measurementKey: name,
   });
-  const text = (
-    <span
-      ref={elementRef}
-      className="min-w-0 truncate"
-      data-environment-name-text={kind === "environment" ? "" : undefined}
-      data-machine-name-text={kind === "machine" ? "" : undefined}
-    >
-      {name}
-    </span>
-  );
-  const display = option ? (
-    <div
-      data-option-display=""
-      tabIndex={isTruncated ? 0 : undefined}
-      aria-label={accessibleLabel}
-      className={cn(
-        "inline-flex h-6 min-w-0 shrink px-0",
-        OPTION_BASE_CLASS_NAME,
-        OPTION_MUTED_CLASS_NAME,
-        isTruncated &&
-          "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-      )}
-    >
-      <span className={OPTION_CONTENT_CLASS_NAME}>{text}</span>
-    </div>
-  ) : (
+  const display = (
     <span
       tabIndex={isTruncated ? 0 : undefined}
       aria-label={accessibleLabel}
       className={cn(
-        "inline-flex min-w-0 rounded-md",
+        "inline-flex min-w-0 shrink rounded-md",
         isTruncated &&
           "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       )}
     >
-      {text}
+      <span
+        ref={elementRef}
+        className="min-w-0 truncate"
+        data-environment-name-text={kind === "environment" ? "" : undefined}
+        data-machine-name-text={kind === "machine" ? "" : undefined}
+      >
+        {name}
+      </span>
     </span>
   );
 
@@ -186,7 +161,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             compactValue={projectName}
             leading={<Icon name="Folder" className="size-4 shrink-0" />}
             className="h-6 min-w-0 max-w-[10rem] shrink"
-            tooltip={projectName}
+            tooltip={`Project: ${projectName}`}
             muted
           />
         </span>
@@ -229,7 +204,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
                 accessibleLabel={`Worktree: ${environmentLabel}, offline`}
                 kind="environment"
                 name={environmentLabel}
-                option
               />
             </span>
           ) : (
@@ -237,7 +211,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               accessibleLabel={`${environmentTypeLabel ?? "Worktree"}: ${environmentLabel}${showOfflineAsPrimaryIcon ? ", offline" : ""}`}
               kind="environment"
               name={environmentLabel}
-              option
             />
           )}
         </div>
@@ -250,7 +223,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label={`${environmentCheckout.copyLabel}: ${checkoutCopyValue}`}
               data-promptbox-hide-branch-compact=""
               className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
               onClick={() => {
@@ -267,23 +239,17 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               <span className="truncate">{environmentCheckout.label}</span>
             </button>
           </TooltipTrigger>
-          <TooltipContent>{environmentCheckout.copyLabel}</TooltipContent>
-        </Tooltip>
-      ) : environmentCheckout ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              tabIndex={0}
-              aria-label={`${environmentCheckout.rowLabel}: ${environmentCheckout.label}`}
-              data-promptbox-hide-branch-compact=""
-              className={`${CHECKOUT_CHIP_BASE_CLASS_NAME} outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-            >
-              <Icon name="GitBranch" className="size-3.5 shrink-0" />
-              <span className="truncate">{environmentCheckout.label}</span>
-            </span>
-          </TooltipTrigger>
           <TooltipContent>{environmentCheckout.title}</TooltipContent>
         </Tooltip>
+      ) : environmentCheckout ? (
+        <span
+          data-promptbox-hide-branch-compact=""
+          className={CHECKOUT_CHIP_BASE_CLASS_NAME}
+          title={environmentCheckout.title}
+        >
+          <Icon name="GitBranch" className="size-3.5 shrink-0" />
+          <span className="truncate">{environmentCheckout.label}</span>
+        </span>
       ) : null}
       {onCreateNewThreadInWorktree ? (
         <Tooltip>

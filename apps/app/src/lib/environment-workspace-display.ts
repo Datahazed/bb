@@ -11,24 +11,10 @@ interface EnvironmentWorkspaceSummaryDisplayArgs {
   hostName?: string;
 }
 
-interface EnvironmentContextDisplay {
-  customName: string | null;
-  lifecycleLabel: string | null;
-  machineName: string | undefined;
-  resourceIcon: IconName;
-  typeLabel: EnvironmentWorkspaceTypeLabel;
-}
-
 export interface EnvironmentWorkspaceSummaryDisplay {
   label: string | undefined;
   icon: IconName;
   typeLabel: EnvironmentWorkspaceTypeLabel | undefined;
-}
-
-export interface EnvironmentWorkspaceInfoDisplay {
-  icon: IconName;
-  label: "Environment";
-  title: string;
 }
 
 interface WorktreeMachineComposerVisibilityArgs {
@@ -54,67 +40,25 @@ export function getEnvironmentWorkspaceSummaryDisplay({
   environmentName,
   hostName,
 }: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentWorkspaceSummaryDisplay {
-  const context = getEnvironmentContextDisplay({
-    display,
-    environmentName,
-    hostName,
-  });
+  const typeLabel = getEnvironmentWorkspaceTypeLabel(
+    display.workspaceDisplayKind,
+  );
 
-  if (context.lifecycleLabel === "Provisioning") {
+  if (display.lifecycle === "provisioning") {
     return {
-      label: context.lifecycleLabel,
+      label: "Provisioning",
       icon: "Loading",
-      typeLabel: context.typeLabel,
+      typeLabel,
     };
   }
 
-  const environmentSummaryLabel =
-    context.typeLabel === "Machine" || context.customName === null
-      ? context.machineName
-      : context.customName;
-
   return {
-    label: environmentSummaryLabel,
-    icon: context.resourceIcon,
-    typeLabel: context.typeLabel,
-  };
-}
-
-export function getEnvironmentWorkspaceInfoDisplay({
-  display,
-  environmentName,
-}: Omit<
-  EnvironmentWorkspaceSummaryDisplayArgs,
-  "hostName"
->): EnvironmentWorkspaceInfoDisplay | null {
-  const context = getEnvironmentContextDisplay({
-    display,
-    environmentName,
-  });
-  if (context.typeLabel !== "Worktree") return null;
-
-  return {
-    icon: context.resourceIcon,
-    label: "Environment",
-    title: [context.typeLabel, context.customName, context.lifecycleLabel]
-      .filter((value) => Boolean(value))
-      .join(" · "),
-  };
-}
-
-function getEnvironmentContextDisplay({
-  display,
-  environmentName,
-  hostName,
-}: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentContextDisplay {
-  return {
-    customName: environmentName,
-    lifecycleLabel: display.lifecycle === null ? null : display.modeLabel,
-    machineName: hostName,
-    resourceIcon: getEnvironmentWorkspaceLabelIconName(
-      display.workspaceDisplayKind,
-    ),
-    typeLabel: getEnvironmentWorkspaceTypeLabel(display.workspaceDisplayKind),
+    label:
+      typeLabel === "Machine" || environmentName === null
+        ? hostName
+        : environmentName,
+    icon: getEnvironmentWorkspaceLabelIconName(display.workspaceDisplayKind),
+    typeLabel,
   };
 }
 
