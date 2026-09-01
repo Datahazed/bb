@@ -120,7 +120,6 @@ function SortableTopRegionItem({ id }: { id: SidebarTopRegionItemId }) {
         {...attributes}
         {...listeners}
         aria-label={`Reorder ${ITEM_LABELS[id]}`}
-        title={`Reorder ${ITEM_LABELS[id]}`}
         className={cn(
           "flex size-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 active:cursor-grabbing",
           "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
@@ -185,7 +184,6 @@ function SortableSidebarRegionItem({ id }: { id: SidebarRegionId }) {
         {...attributes}
         {...listeners}
         aria-label={`Reorder ${label}`}
-        title={`Reorder ${label}`}
         className={cn(
           "flex size-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 active:cursor-grabbing",
           "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",

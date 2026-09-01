@@ -138,12 +138,6 @@ function consumeLegacyBooleanPreferences(
   storage.removeItem(LEGACY_EXTENSIONS_VISIBLE_STORAGE_KEY);
 }
 
-/**
- * Moves the stack's two booleans and the shipped plugin-hide choices into the
- * one top-region preference. The combined value wins once it exists, while
- * owned legacy keys are still consumed so the plugin-page migration cannot
- * reintroduce Automations as a traditional row.
- */
 export function migrateLegacySidebarTopRegionItems(
   storage: SidebarItemMigrationStorage,
 ): SidebarTopRegionItemPreferences {
