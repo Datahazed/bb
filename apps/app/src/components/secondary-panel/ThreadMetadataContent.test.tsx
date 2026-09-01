@@ -6,19 +6,13 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  EnvironmentRow,
-  MachineRow,
-  ThreadMetadataCard,
-  WorkspacePathRow,
-} from "./ThreadMetadataContent";
+import { EnvironmentRow, ThreadMetadataCard } from "./ThreadMetadataContent";
 
 const localHost = { locality: "local", identity: null } as const;
 
@@ -51,7 +45,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
 function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
   return {
     id: "env_test",
-    name: null,
+    name: "Design system polish",
     projectId: "proj_test",
     hostId: "host_test",
     path: "/workspace",
@@ -87,36 +81,7 @@ function renderEnvironmentRow(environment: Environment): string {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
-  vi.restoreAllMocks();
 });
-
-function mockMachineNameTruncation(isTruncated: boolean): void {
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
-    function clientWidth(this: HTMLElement) {
-      return this.hasAttribute("data-machine-name-text") ? 100 : 0;
-    },
-  );
-  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
-    function scrollWidth(this: HTMLElement) {
-      if (!this.hasAttribute("data-machine-name-text")) return 0;
-      return isTruncated ? 200 : 100;
-    },
-  );
-}
-
-function mockCopyableLabelTruncation(isTruncated: boolean): void {
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
-    function clientWidth(this: HTMLElement) {
-      return this.hasAttribute("data-copyable-inline-label-text") ? 100 : 0;
-    },
-  );
-  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
-    function scrollWidth(this: HTMLElement) {
-      if (!this.hasAttribute("data-copyable-inline-label-text")) return 0;
-      return isTruncated ? 200 : 100;
-    },
-  );
-}
 
 describe("ThreadMetadataCard", () => {
   it("shows its scrollbar only during active scrolling", () => {
@@ -146,200 +111,15 @@ describe("ThreadMetadataCard", () => {
 });
 
 describe("EnvironmentRow", () => {
-  it("keeps an existing custom worktree name primary and read-only", () => {
-    render(
-      <TooltipProvider delayDuration={0}>
-        <MemoryRouter>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({
-              id: "env_obfuscated",
-              name: "Design system polish",
-            })}
-            environmentDisplayHost={localHost}
-          />
-        </MemoryRouter>
-      </TooltipProvider>,
+  it("shows a custom worktree name and omits the row when none exists", () => {
+    expect(renderEnvironmentRow(makeEnvironment())).toContain(
+      "Design system polish",
     );
-
-    const worktreeName = screen.getByText("Design system polish");
-    const worktreeValue = worktreeName.closest("dd");
-    expect(worktreeValue).not.toBeNull();
-    expect(
-      worktreeValue?.previousElementSibling?.querySelector(
-        '[data-icon="FolderGit"]',
-      ),
-    ).not.toBeNull();
-    expect(screen.getByText("Worktree").closest("dt")).not.toBeNull();
-    expect(screen.queryByText("Name")).toBeNull();
-    expect(screen.queryByText("Bersabel's MacBook Pro")).toBeNull();
-    expect(screen.queryByText("env_obfuscated")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /rename worktree/iu }),
-    ).toBeNull();
-    expect(worktreeValue?.querySelector('[data-icon="Edit"]')).toBeNull();
-  });
-
-  it("reveals a truncated worktree name on keyboard focus", async () => {
-    const longName =
-      "internal-tooling-ingest-pipeline-rewrite-2026-cross-platform-rollout";
-    render(
-      <TooltipProvider delayDuration={0}>
-        <MemoryRouter>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({ name: longName })}
-            environmentDisplayHost={localHost}
-          />
-        </MemoryRouter>
-      </TooltipProvider>,
-    );
-
-    fireEvent.focus(screen.getByLabelText(`Worktree: ${longName}`));
-    expect((await screen.findByRole("tooltip")).textContent).toBe(longName);
-  });
-
-  it("omits the worktree row when no custom name exists", () => {
-    const { container } = render(
-      <TooltipProvider delayDuration={0}>
-        <MemoryRouter>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({ name: null })}
-            environmentDisplayHost={localHost}
-          />
-        </MemoryRouter>
-      </TooltipProvider>,
-    );
-
-    expect(container.innerHTML).toBe("");
-    expect(screen.queryByText("Unnamed")).toBeNull();
-    expect(screen.queryByText("Worktree")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Create thread in worktree" }),
-    ).toBeNull();
-  });
-
-  it("does not present direct locality as a resource identity", () => {
-    const result = render(
-      <MemoryRouter>
-        <EnvironmentRow
-          thread={makeThread()}
-          environment={makeEnvironment({
-            isWorktree: false,
-            workspaceProvisionType: "unmanaged",
-          })}
-          environmentDisplayHost={localHost}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByText("Local")).toBeNull();
-
-    result.rerender(
-      <MemoryRouter>
-        <EnvironmentRow
-          thread={makeThread()}
-          environment={makeEnvironment({
-            isWorktree: false,
-            workspaceProvisionType: "unmanaged",
-          })}
-          environmentDisplayHost={{ locality: "remote", identity: null }}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByText("Remote")).toBeNull();
-  });
-
-  it("keeps worktree identity primary while lifecycle stays secondary", () => {
-    render(
-      <TooltipProvider delayDuration={0}>
-        <MemoryRouter>
-          <EnvironmentRow
-            thread={makeThread()}
-            environment={makeEnvironment({
-              name: "Design system polish",
-              status: "provisioning",
-              path: null,
-              isWorktree: false,
-              workspaceProvisionType: "managed-worktree",
-            })}
-            environmentDisplayHost={localHost}
-          />
-        </MemoryRouter>
-      </TooltipProvider>,
-    );
-
-    const worktreeName = screen.getByText("Design system polish");
-    const worktreeValue = worktreeName.closest("dd");
-    expect(worktreeValue).not.toBeNull();
-    expect(
-      worktreeValue?.previousElementSibling?.querySelector(
-        '[data-icon="FolderGit"]',
-      ),
-    ).not.toBeNull();
-    expect(screen.getByText("Worktree").closest("dt")).not.toBeNull();
-    expect(screen.getByText("· Provisioning").getAttribute("class")).toContain(
-      "text-muted-foreground",
-    );
-  });
-
-  it("places the actual machine name beside its icon and keeps state secondary", async () => {
-    mockMachineNameTruncation(true);
-    render(
-      <TooltipProvider delayDuration={0}>
-        <MachineRow name="Bersabel's MacBook Pro" connected={false} />
-      </TooltipProvider>,
-    );
-
-    const machineName = screen.getByText("Bersabel's MacBook Pro");
-    const machineValue = machineName.closest("dd");
-    expect(machineValue).not.toBeNull();
-    const offlineGlyph = machineValue?.previousElementSibling?.querySelector(
-      '[data-icon="AlertTriangle"]',
-    );
-    expect(offlineGlyph).not.toBeNull();
-    expect(offlineGlyph?.getAttribute("class")).toContain("text-warning-text");
-    expect(screen.getByText("Machine").closest("dt")).not.toBeNull();
-    expect(screen.getByText("· Offline").getAttribute("class")).toContain(
-      "text-muted-foreground",
-    );
-    const offlineIcon = screen.getByRole("img", { name: "Offline" });
-    fireEvent.focus(offlineIcon);
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Offline");
-
-    fireEvent.blur(offlineIcon);
-    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
-    fireEvent.focus(
-      screen.getByLabelText("Machine: Bersabel's MacBook Pro, offline"),
-    );
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Bersabel's MacBook Pro",
-    );
-  });
-
-  it("does not add a redundant machine-name tooltip when the label fits", () => {
-    mockMachineNameTruncation(false);
-    render(
-      <TooltipProvider delayDuration={0}>
-        <MachineRow name="Build Mac mini" />
-      </TooltipProvider>,
-    );
-
-    const machineName = screen.getByLabelText("Machine: Build Mac mini");
-    expect(machineName.getAttribute("tabindex")).toBeNull();
-    expect(machineName.getAttribute("data-state")).toBeNull();
-    fireEvent.pointerEnter(machineName);
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(renderEnvironmentRow(makeEnvironment({ name: null }))).toBe("");
   });
 
   it("shows the create-thread action for a provisioned worktree", () => {
-    expect(
-      renderEnvironmentRow(
-        makeEnvironment({ name: "Design system polish" }),
-      ),
-    ).toContain(
+    expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="Create thread in worktree"',
     );
   });
@@ -350,7 +130,7 @@ describe("EnvironmentRow", () => {
         <MemoryRouter>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({ name: "Design system polish" })}
+            environment={makeEnvironment()}
             environmentDisplayHost={localHost}
           />
         </MemoryRouter>
@@ -371,7 +151,6 @@ describe("EnvironmentRow", () => {
   it("hides the create-thread action while a managed worktree is provisioning", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({
-        name: "Design system polish",
         status: "provisioning",
         path: null,
         isWorktree: false,
@@ -384,40 +163,11 @@ describe("EnvironmentRow", () => {
   it("hides the create-thread action before a prepared worktree has a path", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({
-        name: "Design system polish",
         path: null,
         isWorktree: false,
       }),
     );
 
     expect(markup).not.toContain('aria-label="Create thread in worktree"');
-  });
-});
-describe("WorkspacePathRow", () => {
-  it("reveals the full path when its value is truncated", async () => {
-    mockCopyableLabelTruncation(true);
-    const path =
-      "/Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/components/right-panel";
-    render(
-      <TooltipProvider delayDuration={0}>
-        <WorkspacePathRow environment={makeEnvironment({ path })} />
-      </TooltipProvider>,
-    );
-
-    fireEvent.focus(screen.getByRole("button", { name: `Copy path: ${path}` }));
-    expect((await screen.findByRole("tooltip")).textContent).toBe(path);
-  });
-
-  it("keeps the concise copy tooltip when the full path fits", async () => {
-    mockCopyableLabelTruncation(false);
-    const path = "/workspace";
-    render(
-      <TooltipProvider delayDuration={0}>
-        <WorkspacePathRow environment={makeEnvironment({ path })} />
-      </TooltipProvider>,
-    );
-
-    fireEvent.focus(screen.getByRole("button", { name: `Copy path: ${path}` }));
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Copy path");
   });
 });

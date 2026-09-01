@@ -146,7 +146,6 @@ interface ThreadDetailPromptAreaProps {
   canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
-  environmentCompactLabel?: string;
   environmentGoneStatus: Extract<
     EnvironmentStatus,
     "destroying" | "destroyed"
@@ -343,7 +342,6 @@ export function ThreadDetailPromptArea({
   canUseGitUi,
   contextWindowUsage,
   environmentCheckout,
-  environmentCompactLabel,
   environmentGoneStatus,
   environmentHostId,
   environmentIcon,
@@ -1179,7 +1177,6 @@ export function ThreadDetailPromptArea({
         <ThreadEnvironmentSummary
           projectName={projectName}
           environmentLabel={environmentLabel}
-          environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
           environmentTypeLabel={environmentTypeLabel}
           environmentCheckout={environmentCheckout}
@@ -1190,7 +1187,6 @@ export function ThreadDetailPromptArea({
       ) : null,
     [
       environmentCheckout,
-      environmentCompactLabel,
       environmentIcon,
       environmentLabel,
       environmentMachineConnected,

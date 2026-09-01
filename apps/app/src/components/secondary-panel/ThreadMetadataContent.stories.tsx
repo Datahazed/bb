@@ -15,35 +15,9 @@ export default {
 };
 
 function render(overrides: Partial<ThreadMetadataContentProps>) {
-  return <MetadataFixture overrides={overrides} />;
-}
-
-function MetadataFixture({
-  overrides,
-}: {
-  overrides: Partial<ThreadMetadataContentProps>;
-}) {
-  const initialEnvironment = Object.prototype.hasOwnProperty.call(
-    overrides,
-    "environment",
-  )
-    ? (overrides.environment ?? null)
-    : baseProps.environment;
-  const workspaceStatus = Object.prototype.hasOwnProperty.call(
-    overrides,
-    "workspaceStatus",
-  )
-    ? overrides.workspaceStatus
-    : baseProps.workspaceStatus;
-
   return (
     <PanelStage>
-      <ThreadMetadataContent
-        {...baseProps}
-        {...overrides}
-        environment={initialEnvironment}
-        workspaceStatus={workspaceStatus}
-      />
+      <ThreadMetadataContent {...baseProps} {...overrides} />
     </PanelStage>
   );
 }

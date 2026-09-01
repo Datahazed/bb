@@ -181,23 +181,25 @@ export function GitDiffToolbar({
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
   const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
-  const checkoutCopyAction = checkout?.copyAction ?? null;
+  const checkoutCopyValue = checkout?.copyValue ?? null;
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
       {checkout ? (
         <div className="mb-2 flex min-w-0 items-center gap-2 text-xs">
-          {checkoutCopyAction !== null ? (
+          {checkoutCopyValue !== null ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  aria-label={checkoutCopyAction.accessibleLabel}
+                  aria-label={`${checkout.copyLabel}: ${checkoutCopyValue}`}
                   className="inline-flex h-6 min-w-0 items-center gap-1 rounded-md px-1 text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => {
-                    void copyToClipboardWithToast(checkoutCopyAction.value, {
-                      successMessage: checkoutCopyAction.successMessage,
-                      errorMessage: checkoutCopyAction.errorMessage,
+                    void copyToClipboardWithToast(checkoutCopyValue, {
+                      successMessage:
+                        checkout.copySuccessMessage ?? "Value copied",
+                      errorMessage:
+                        checkout.copyErrorMessage ?? "Failed to copy value",
                     });
                   }}
                 >
@@ -205,7 +207,7 @@ export function GitDiffToolbar({
                   <span className="truncate">{checkout.label}</span>
                 </button>
               </TooltipTrigger>
-              <TooltipContent>{checkoutCopyAction.label}</TooltipContent>
+              <TooltipContent>{checkout.copyLabel}</TooltipContent>
             </Tooltip>
           ) : (
             <Tooltip>
@@ -219,9 +221,7 @@ export function GitDiffToolbar({
                   <span className="truncate">{checkout.label}</span>
                 </span>
               </TooltipTrigger>
-              <TooltipContent>
-                {checkout.detailTooltip ?? checkout.label}
-              </TooltipContent>
+              <TooltipContent>{checkout.title}</TooltipContent>
             </Tooltip>
           )}
         </div>

@@ -14,8 +14,7 @@ export default {
 
 const USAGE: Partial<Record<IconName, string>> = {
   AlertCircle: "Dialog warning state",
-  AlertTriangle:
-    "Warning and degraded states, including offline machines and missing project folders",
+  AlertTriangle: "“Project folder not found” indicator on sidebar project rows",
   AlignLeft: "Left-aligned menu",
   AppWindow: "Right-panel app fallback and HTML/mockup file visual",
   Archive: "Archived threads settings navigation and archived-thread banner",
@@ -68,7 +67,6 @@ const USAGE: Partial<Record<IconName, string>> = {
   GitPullRequestDraft: "Draft pull request glyph",
   Info: "Right panel “thread info” tab, informational banners",
   Laptop: "Persistent host icon (resolved via PersistentHostIconName)",
-  LaptopIssue: "(currently unused — replaced by AlertTriangle for offline status)",
   ListTodo: "Plan prompt action, todo prompt-stack card header",
   Loading: "Loading03 thread row working spinner",
   Mail: "Mark unread thread action",

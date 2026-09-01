@@ -31,13 +31,12 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
       }),
     ).toEqual({
       label: "Provisioning",
-      compactLabel: "Provisioning",
       icon: "Loading",
       typeLabel: "Worktree",
     });
   });
 
-  it("uses the machine name as an unnamed worktree fallback without changing its type", () => {
+  it("uses the host for a worktree without a custom name", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -53,13 +52,12 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
       }),
     ).toMatchObject({
       label: "Build Mac mini",
-      compactLabel: "Build Mac mini",
       icon: "FolderGit",
       typeLabel: "Worktree",
     });
   });
 
-  it("uses the custom worktree name as the primary label", () => {
+  it("preserves a real custom worktree name", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -74,76 +72,27 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
       }),
     ).toMatchObject({
       label: "Design system polish",
-      compactLabel: "Design system polish",
-    });
-  });
-
-  it("uses the machine name and machine icon for a direct environment", () => {
-    expect(
-      getEnvironmentWorkspaceSummaryDisplay({
-        display: {
-          modeLabel: "Working locally",
-          compactModeLabel: "Local",
-          lifecycle: null,
-          id: "env_test",
-          mode: "direct",
-          workspaceDisplayKind: "other",
-        },
-        environmentName: null,
-        hostName: "Bersabel's MacBook Pro",
-      }),
-    ).toMatchObject({
-      label: "Bersabel's MacBook Pro",
-      compactLabel: "Bersabel's MacBook Pro",
-      icon: "Laptop",
-      typeLabel: "Machine",
     });
   });
 });
 
 describe("shouldShowWorktreeMachineInComposer", () => {
-  it("hides the only connected local machine", () => {
-    expect(
-      shouldShowWorktreeMachineInComposer({
-        connected: true,
-        hasCustomName: true,
-        locality: "local",
-        machineCount: 1,
-      }),
-    ).toBe(false);
-  });
-
-  it("does not render an unnamed worktree fallback as a separate machine", () => {
-    expect(
-      shouldShowWorktreeMachineInComposer({
-        connected: true,
-        hasCustomName: false,
-        locality: "remote",
-        machineCount: 2,
-      }),
-    ).toBe(false);
-  });
-
   it.each([
-    {
-      connected: true,
-      hasCustomName: true,
-      locality: "remote",
-      machineCount: 1,
+    [true, true, "local", 1, false],
+    [true, false, "remote", 2, false],
+    [true, true, "remote", 1, true],
+    [false, true, "local", 1, true],
+  ] as const)(
+    "maps connected=%s named=%s locality=%s count=%s to %s",
+    (connected, hasCustomName, locality, machineCount, expected) => {
+      expect(
+        shouldShowWorktreeMachineInComposer({
+          connected,
+          hasCustomName,
+          locality,
+          machineCount,
+        }),
+      ).toBe(expected);
     },
-    {
-      connected: true,
-      hasCustomName: true,
-      locality: "local",
-      machineCount: 2,
-    },
-    {
-      connected: false,
-      hasCustomName: true,
-      locality: "local",
-      machineCount: 1,
-    },
-  ] as const)("shows salient machine context for %o", (input) => {
-    expect(shouldShowWorktreeMachineInComposer(input)).toBe(true);
-  });
+  );
 });

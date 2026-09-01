@@ -2495,7 +2495,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
-      environmentCompactLabel={composerEnvironmentSummary?.compactLabel}
       environmentIcon={composerEnvironmentSummary?.icon}
       environmentLabel={composerEnvironmentSummary?.label}
       environmentMachineConnected={

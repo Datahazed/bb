@@ -232,27 +232,43 @@ interface EnvironmentRowProps {
 interface DetailValueTooltipProps {
   accessibleLabel: string;
   children: ReactNode;
+  measurementKey?: string;
   tooltip: string;
 }
 
 function DetailValueTooltip({
   accessibleLabel,
   children,
+  measurementKey,
   tooltip,
 }: DetailValueTooltipProps) {
-  return (
+  const { elementRef, isTruncated } = useIsElementTruncated({
+    measurementKey: measurementKey ?? "",
+  });
+  const showTooltip = measurementKey === undefined || isTruncated;
+  const content = (
+    <span
+      tabIndex={showTooltip ? 0 : undefined}
+      aria-label={accessibleLabel}
+      className={cn(
+        "inline-flex min-w-0 items-center gap-1 rounded-sm",
+        showTooltip &&
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <span ref={elementRef} className="min-w-0 truncate text-foreground">
+        {children}
+      </span>
+    </span>
+  );
+
+  return showTooltip ? (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          tabIndex={0}
-          aria-label={accessibleLabel}
-          className="inline-flex min-w-0 items-center gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {children}
-        </span>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
       <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
+  ) : (
+    content
   );
 }
 
@@ -301,17 +317,16 @@ export function EnvironmentRow({
     >
       <DetailValueTooltip
         accessibleLabel={`Worktree: ${environmentTitle}`}
+        measurementKey={worktreeTitle}
         tooltip={environmentTitle}
       >
-        <span className="min-w-0 truncate text-foreground">
-          {worktreeTitle}
-        </span>
-        {lifecycleTitle ? (
-          <span className="shrink-0 text-muted-foreground">
-            · {lifecycleTitle}
-          </span>
-        ) : null}
+        {worktreeTitle}
       </DetailValueTooltip>
+      {lifecycleTitle ? (
+        <span className="shrink-0 text-muted-foreground">
+          · {lifecycleTitle}
+        </span>
+      ) : null}
       {showCreateThreadButton ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -337,34 +352,10 @@ interface MachineRowProps {
 }
 
 export function MachineRow({ name, connected = true }: MachineRowProps) {
-  const { elementRef: nameRef, isTruncated: isNameTruncated } =
-    useIsElementTruncated({ measurementKey: name ?? "" });
   if (!name) return null;
   const accessibleLabel = connected
     ? `Machine: ${name}`
     : `Machine: ${name}, offline`;
-  const nameDisplay = (
-    <span
-      tabIndex={isNameTruncated ? 0 : undefined}
-      aria-label={accessibleLabel}
-      className={cn(
-        "inline-flex min-w-0 items-center gap-1 rounded-sm",
-        isNameTruncated &&
-          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      )}
-    >
-      <span
-        ref={nameRef}
-        className="min-w-0 truncate text-foreground"
-        data-machine-name-text=""
-      >
-        {name}
-      </span>
-      {connected ? null : (
-        <span className="shrink-0 text-muted-foreground">· Offline</span>
-      )}
-    </span>
-  );
   return (
     <DetailRow
       label={
@@ -399,13 +390,17 @@ export function MachineRow({ name, connected = true }: MachineRowProps) {
       }
       valueClassName="flex min-w-0 items-center gap-1"
     >
-      {isNameTruncated ? (
-        <Tooltip>
-          <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
-          <TooltipContent>{name}</TooltipContent>
-        </Tooltip>
-      ) : (
-        nameDisplay
+      <DetailValueTooltip
+        accessibleLabel={accessibleLabel}
+        measurementKey={name}
+        tooltip={name}
+      >
+        {name}
+      </DetailValueTooltip>
+      {connected ? null : (
+        <span aria-hidden className="shrink-0 text-muted-foreground">
+          · Offline
+        </span>
       )}
     </DetailRow>
   );
@@ -468,20 +463,22 @@ export function BranchRow({ workspaceStatus }: BranchRowProps) {
       }
       valueClassName="min-w-0 truncate"
     >
-      {checkoutDisplay.copyAction !== null ? (
+      {checkoutDisplay.copyValue !== null ? (
         <CopyableInlineLabel
-          text={checkoutDisplay.copyAction.value}
-          label={checkoutDisplay.copyAction.accessibleLabel}
-          tooltip={checkoutDisplay.copyAction.label}
-          successMessage={checkoutDisplay.copyAction.successMessage}
-          errorMessage={checkoutDisplay.copyAction.errorMessage}
+          text={checkoutDisplay.copyValue}
+          label={`${checkoutDisplay.copyLabel}: ${checkoutDisplay.copyValue}`}
+          tooltip={checkoutDisplay.copyLabel ?? "Copy Git value"}
+          successMessage={checkoutDisplay.copySuccessMessage ?? "Value copied"}
+          errorMessage={
+            checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
+          }
         >
           {checkoutDisplay.label}
         </CopyableInlineLabel>
       ) : (
         <DetailValueTooltip
           accessibleLabel={`${checkoutDisplay.rowLabel}: ${checkoutDisplay.label}`}
-          tooltip={checkoutDisplay.detailTooltip ?? checkoutDisplay.label}
+          tooltip={checkoutDisplay.title}
         >
           <span className="block truncate">{checkoutDisplay.label}</span>
         </DetailValueTooltip>

@@ -21,7 +21,6 @@ const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor
 interface ThreadEnvironmentSummaryProps {
   projectName?: string;
   environmentLabel?: string;
-  environmentCompactLabel?: string;
   environmentIcon?: IconName;
   environmentTypeLabel?: EnvironmentWorkspaceTypeLabel;
   environmentCheckout?: WorkspaceCheckoutDisplay;
@@ -42,10 +41,7 @@ function OfflineMachineIcon({ compact = false }: { compact?: boolean }) {
         >
           <Icon
             name="AlertTriangle"
-            className={cn(
-              compact ? "size-3.5" : "size-4",
-              "text-warning-text",
-            )}
+            className={cn(compact ? "size-3.5" : "size-4", "text-warning-text")}
             aria-hidden
           />
         </span>
@@ -55,62 +51,60 @@ function OfflineMachineIcon({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function EnvironmentName({
-  label,
+function NameDisplay({
+  accessibleLabel,
+  kind,
   name,
-  compactName,
-  connected,
+  option = false,
 }: {
-  label: string;
+  accessibleLabel: string;
+  kind: "environment" | "machine";
   name: string;
-  compactName?: string;
-  connected?: boolean;
+  option?: boolean;
 }) {
-  const { elementRef: fullNameRef, isTruncated: isFullNameTruncated } =
-    useIsElementTruncated({ measurementKey: name });
-  const { elementRef: compactNameRef, isTruncated: isCompactNameTruncated } =
-    useIsElementTruncated({ measurementKey: compactName ?? "" });
-  const isNameTruncated = isFullNameTruncated || isCompactNameTruncated;
-  const accessibleLabel =
-    connected === false ? `${label}: ${name}, offline` : `${label}: ${name}`;
-  const display = (
+  const { elementRef, isTruncated } = useIsElementTruncated({
+    measurementKey: name,
+  });
+  const text = (
+    <span
+      ref={elementRef}
+      className="min-w-0 truncate"
+      data-environment-name-text={kind === "environment" ? "" : undefined}
+      data-machine-name-text={kind === "machine" ? "" : undefined}
+    >
+      {name}
+    </span>
+  );
+  const display = option ? (
     <div
       data-option-display=""
-      tabIndex={isNameTruncated ? 0 : undefined}
+      tabIndex={isTruncated ? 0 : undefined}
       aria-label={accessibleLabel}
       className={cn(
         "inline-flex h-6 min-w-0 shrink px-0",
         OPTION_BASE_CLASS_NAME,
         OPTION_MUTED_CLASS_NAME,
-        isNameTruncated &&
+        isTruncated &&
           "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       )}
     >
-      <span className={OPTION_CONTENT_CLASS_NAME}>
-        <span className="sr-only">{label}: </span>
-        <span
-          ref={fullNameRef}
-          className="min-w-0 truncate"
-          data-promptbox-full-label=""
-          data-environment-name-text=""
-        >
-          {name}
-        </span>
-        {compactName ? (
-          <span
-            ref={compactNameRef}
-            className="min-w-0 truncate"
-            data-promptbox-compact-label=""
-            data-environment-name-text=""
-          >
-            {compactName}
-          </span>
-        ) : null}
-      </span>
+      <span className={OPTION_CONTENT_CLASS_NAME}>{text}</span>
     </div>
+  ) : (
+    <span
+      tabIndex={isTruncated ? 0 : undefined}
+      aria-label={accessibleLabel}
+      className={cn(
+        "inline-flex min-w-0 rounded-md",
+        isTruncated &&
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
+    >
+      {text}
+    </span>
   );
 
-  return isNameTruncated ? (
+  return isTruncated ? (
     <Tooltip>
       <TooltipTrigger asChild>{display}</TooltipTrigger>
       <TooltipContent>{name}</TooltipContent>
@@ -129,41 +123,6 @@ function MachineContext({
 }) {
   const accessibleLabel =
     connected === false ? `Machine: ${name}, offline` : `Machine: ${name}`;
-  const { elementRef: fullNameRef, isTruncated: isFullNameTruncated } =
-    useIsElementTruncated({ measurementKey: name });
-  const { elementRef: compactNameRef, isTruncated: isCompactNameTruncated } =
-    useIsElementTruncated({ measurementKey: name });
-  const isNameTruncated = isFullNameTruncated || isCompactNameTruncated;
-
-  const nameDisplay = (
-    <span
-      tabIndex={isNameTruncated ? 0 : undefined}
-      aria-label={accessibleLabel}
-      className={cn(
-        "inline-flex min-w-0 rounded-md",
-        isNameTruncated &&
-          "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-      )}
-    >
-      <span
-        ref={fullNameRef}
-        className="min-w-0 truncate"
-        data-promptbox-full-label=""
-        data-machine-name-text=""
-      >
-        {name}
-      </span>
-      <span
-        ref={compactNameRef}
-        className="min-w-0 truncate"
-        data-promptbox-compact-label=""
-        data-machine-name-text=""
-      >
-        {name}
-      </span>
-    </span>
-  );
-
   return (
     <span
       data-promptbox-secondary-context=""
@@ -176,14 +135,11 @@ function MachineContext({
         <Icon name="Laptop" className="size-4 shrink-0" aria-hidden />
       )}
       <span data-promptbox-machine-name-context="" className="contents">
-        {isNameTruncated ? (
-          <Tooltip>
-            <TooltipTrigger asChild>{nameDisplay}</TooltipTrigger>
-            <TooltipContent>{name}</TooltipContent>
-          </Tooltip>
-        ) : (
-          nameDisplay
-        )}
+        <NameDisplay
+          accessibleLabel={accessibleLabel}
+          kind="machine"
+          name={name}
+        />
       </span>
     </span>
   );
@@ -192,7 +148,6 @@ function MachineContext({
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   projectName,
   environmentLabel,
-  environmentCompactLabel,
   environmentIcon,
   environmentTypeLabel,
   environmentCheckout,
@@ -215,7 +170,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
     return null;
   }
 
-  const checkoutCopyAction = environmentCheckout?.copyAction ?? null;
+  const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
   return (
     <div
       data-promptbox-offline-machine-summary={
@@ -270,19 +225,19 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           {showPrimaryOffline && isWorktree ? (
             <span className="inline-flex min-w-0 shrink items-center gap-1">
               <OfflineMachineIcon compact />
-              <EnvironmentName
-                label="Worktree"
+              <NameDisplay
+                accessibleLabel={`Worktree: ${environmentLabel}, offline`}
+                kind="environment"
                 name={environmentLabel}
-                compactName={environmentCompactLabel}
-                connected={false}
+                option
               />
             </span>
           ) : (
-            <EnvironmentName
-              label={environmentTypeLabel ?? "Worktree"}
+            <NameDisplay
+              accessibleLabel={`${environmentTypeLabel ?? "Worktree"}: ${environmentLabel}${showOfflineAsPrimaryIcon ? ", offline" : ""}`}
+              kind="environment"
               name={environmentLabel}
-              compactName={environmentCompactLabel}
-              connected={showOfflineAsPrimaryIcon ? false : undefined}
+              option
             />
           )}
         </div>
@@ -290,18 +245,21 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
       {machineName ? (
         <MachineContext name={machineName} connected={machineConnected} />
       ) : null}
-      {environmentCheckout && checkoutCopyAction !== null ? (
+      {environmentCheckout && checkoutCopyValue !== null ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label={checkoutCopyAction.accessibleLabel}
+              aria-label={`${environmentCheckout.copyLabel}: ${checkoutCopyValue}`}
               data-promptbox-hide-branch-compact=""
               className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
               onClick={() => {
-                void copyToClipboardWithToast(checkoutCopyAction.value, {
-                  successMessage: checkoutCopyAction.successMessage,
-                  errorMessage: checkoutCopyAction.errorMessage,
+                void copyToClipboardWithToast(checkoutCopyValue, {
+                  successMessage:
+                    environmentCheckout.copySuccessMessage ?? "Value copied",
+                  errorMessage:
+                    environmentCheckout.copyErrorMessage ??
+                    "Failed to copy value",
                 });
               }}
             >
@@ -309,7 +267,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               <span className="truncate">{environmentCheckout.label}</span>
             </button>
           </TooltipTrigger>
-          <TooltipContent>{checkoutCopyAction.label}</TooltipContent>
+          <TooltipContent>{environmentCheckout.copyLabel}</TooltipContent>
         </Tooltip>
       ) : environmentCheckout ? (
         <Tooltip>
@@ -324,9 +282,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               <span className="truncate">{environmentCheckout.label}</span>
             </span>
           </TooltipTrigger>
-          <TooltipContent>
-            {environmentCheckout.detailTooltip ?? environmentCheckout.label}
-          </TooltipContent>
+          <TooltipContent>{environmentCheckout.title}</TooltipContent>
         </Tooltip>
       ) : null}
       {onCreateNewThreadInWorktree ? (

@@ -26,10 +26,6 @@ import {
 } from "@/components/promptbox/follow-up-placeholder";
 import { getEnvironmentWorkspaceSummaryDisplay } from "@/lib/environment-workspace-display";
 import {
-  formatWorkspaceCheckoutDisplay,
-  type WorkspaceCheckoutDisplay,
-} from "@/lib/workspace-checkout-display";
-import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
   type PromptBoxAction,
@@ -46,6 +42,10 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import {
+  formatWorkspaceCheckoutDisplay,
+  type WorkspaceCheckoutDisplay,
+} from "@/lib/workspace-checkout-display";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -72,14 +72,6 @@ export default {
 
 const noop = () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
-const STORY_WORKTREE_NAME = "Design system polish";
-const STORY_CHECKOUT_DISPLAY = formatWorkspaceCheckoutDisplay({
-  checkout: {
-    kind: "branch",
-    branchName: STORY_BRANCH_NAME,
-    headSha: null,
-  },
-});
 
 const baseExecution = makeExecutionControlsProps({
   provider: {
@@ -176,9 +168,9 @@ const readOnlyPermission: ExecutionPermissionConfig = {
 interface EnvironmentSummaryArgs {
   environment: Environment;
   host: EnvironmentDisplayHostContext;
-  connected?: boolean;
   projectName?: string;
-  hostName?: string;
+  machineName?: string;
+  branchName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
   onCreateNewThreadInWorktree?: () => void;
 }
@@ -186,9 +178,9 @@ interface EnvironmentSummaryArgs {
 function makeEnvironmentSummary({
   environment,
   host,
-  connected,
   projectName,
-  hostName,
+  machineName,
+  branchName,
   environmentCheckout,
   onCreateNewThreadInWorktree,
 }: EnvironmentSummaryArgs): ReactNode {
@@ -199,17 +191,26 @@ function makeEnvironmentSummary({
   const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
     display,
     environmentName: environment.name,
-    hostName,
+    hostName: machineName,
   });
+  const checkoutDisplay =
+    environmentCheckout ??
+    (branchName
+      ? formatWorkspaceCheckoutDisplay({
+          checkout: {
+            kind: "branch",
+            branchName,
+            headSha: null,
+          },
+        })
+      : undefined);
   return (
     <ThreadEnvironmentSummary
       projectName={projectName}
       environmentLabel={summaryDisplay.label}
-      environmentCompactLabel={summaryDisplay.compactLabel}
       environmentIcon={summaryDisplay.icon}
       environmentTypeLabel={summaryDisplay.typeLabel}
-      environmentCheckout={environmentCheckout}
-      machineConnected={connected}
+      environmentCheckout={checkoutDisplay}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
     />
   );
@@ -233,7 +234,8 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  hostName: "Bersabel's MacBook Pro",
+  machineName: "Bersabel's MacBook Pro",
+  branchName: STORY_BRANCH_NAME,
 });
 
 const longHostEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -245,7 +247,8 @@ const longHostEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   projectName: "bb UI QA",
-  hostName: "Bersabel's MacBook Pro",
+  machineName: "Bersabel's MacBook Pro",
+  branchName: STORY_BRANCH_NAME,
 });
 
 const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -256,34 +259,9 @@ const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: remoteEnvironmentDisplayHost,
-  hostName: "Build Mac mini",
+  machineName: "Build Mac mini",
+  branchName: STORY_BRANCH_NAME,
 });
-
-const offlineDirectEnvironmentSummary: ReactNode = makeEnvironmentSummary({
-  environment: makeEnvironment({
-    managed: false,
-    isWorktree: false,
-    workspaceProvisionType: "unmanaged",
-    status: "ready",
-  }),
-  host: remoteEnvironmentDisplayHost,
-  connected: false,
-  hostName: "Build Mac mini",
-});
-
-const offlineWorktreeWithoutCustomNameSummary: ReactNode =
-  makeEnvironmentSummary({
-    environment: makeEnvironment({
-      name: null,
-      isWorktree: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "ready",
-    }),
-    host: localEnvironmentDisplayHost,
-    connected: false,
-    hostName: "Bersabel's MacBook Pro",
-    environmentCheckout: STORY_CHECKOUT_DISPLAY,
-  });
 
 const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
@@ -292,8 +270,8 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  hostName: "Bersabel's MacBook Pro",
-  environmentCheckout: STORY_CHECKOUT_DISPLAY,
+  machineName: "Bersabel's MacBook Pro",
+  branchName: STORY_BRANCH_NAME,
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -304,8 +282,8 @@ const remoteWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: remoteEnvironmentDisplayHost,
-  hostName: "Build Mac mini",
-  environmentCheckout: STORY_CHECKOUT_DISPLAY,
+  machineName: "Build Mac mini",
+  branchName: STORY_BRANCH_NAME,
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -318,8 +296,20 @@ const unmanagedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  hostName: "Bersabel's MacBook Pro",
-  environmentCheckout: STORY_CHECKOUT_DISPLAY,
+  machineName: "Bersabel's MacBook Pro",
+  branchName: STORY_BRANCH_NAME,
+  onCreateNewThreadInWorktree: noop,
+});
+
+const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    name: "Design system polish",
+    isWorktree: true,
+    workspaceProvisionType: "managed-worktree",
+    status: "ready",
+  }),
+  host: localEnvironmentDisplayHost,
+  branchName: STORY_BRANCH_NAME,
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -330,7 +320,7 @@ const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  hostName: "Bersabel's MacBook Pro",
+  machineName: "Bersabel's MacBook Pro",
   environmentCheckout: formatWorkspaceCheckoutDisplay({
     checkout: {
       kind: "detached",
@@ -887,12 +877,7 @@ export function Overview() {
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="active"
           contextWindowUsage={usage}
-          environmentSummary={
-            <WorktreeEnvironmentSummaryFixture
-              fixtureId="overview-queue"
-              initialName={STORY_WORKTREE_NAME}
-            />
-          }
+          environmentSummary={worktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -933,12 +918,7 @@ export function Overview() {
           isFollowUpSubmitting
           threadRuntimeDisplayStatus="active"
           initialMessage="And confirm the new env summary renders correctly."
-          environmentSummary={
-            <WorktreeEnvironmentSummaryFixture
-              fixtureId="overview-submitting"
-              initialName={STORY_WORKTREE_NAME}
-            />
-          }
+          environmentSummary={namedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1066,12 +1046,7 @@ export function Overview() {
           stack={contextBannerElement}
           queuedMessages={queuedMessages}
           contextWindowUsage={usage}
-          environmentSummary={
-            <WorktreeEnvironmentSummaryFixture
-              fixtureId="overview-stacked"
-              initialName={STORY_WORKTREE_NAME}
-            />
-          }
+          environmentSummary={namedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1097,16 +1072,11 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="env: named worktree"
-        hint="custom worktree name replaces the machine fallback; branch remains separate"
+        hint="existing environment name + worktree icon"
       >
         <Row
           submitMode={{ kind: "ready" }}
-          environmentSummary={
-            <WorktreeEnvironmentSummaryFixture
-              fixtureId="overview-named"
-              initialName={STORY_WORKTREE_NAME}
-            />
-          }
+          environmentSummary={namedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1164,7 +1134,7 @@ export function EnvironmentMatrix() {
     <StoryCard>
       <StoryRow
         label="provisioning"
-        hint="loading icon + Provisioning value; resource remains a Worktree"
+        hint="runtime loading icon + lifecycle label; no environment-type tooltip yet"
       >
         <Row
           submitMode={{ kind: "stop-only", onStop: noop }}
@@ -1172,45 +1142,21 @@ export function EnvironmentMatrix() {
           environmentSummary={provisioningEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow
-        label="ready · local"
-        hint="laptop icon · fitting machine name has no tooltip"
-      >
+      <StoryRow label="ready · local" hint="laptop icon · Local tooltip">
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={localEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow
-        label="ready · remote"
-        hint="laptop icon · fitting machine name has no tooltip"
-      >
+      <StoryRow label="ready · remote" hint="laptop icon · Remote tooltip">
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
-        label="offline · direct"
-        hint="alert icon owns the Offline tooltip; fitting machine name does not"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={offlineDirectEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="offline · no custom name"
-        hint="worktree icon preserves resource identity; amber alert marks the fallback machine Offline"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={offlineWorktreeWithoutCustomNameSummary}
-        />
-      </StoryRow>
-      <StoryRow
         label="ready · local worktree"
-        hint="managed worktree · worktree icon · Worktree tooltip"
+        hint="managed worktree · worktree icon · Local worktree tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1219,7 +1165,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · remote worktree"
-        hint="managed worktree · worktree icon · Worktree tooltip"
+        hint="managed worktree · worktree icon · Remote worktree tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1237,21 +1183,16 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · named worktree"
-        hint="visible worktree name · redundant local machine hidden"
+        hint="worktree icon · custom environment name"
       >
         <Row
           submitMode={{ kind: "ready" }}
-          environmentSummary={
-            <WorktreeEnvironmentSummaryFixture
-              fixtureId="matrix-named"
-              initialName={STORY_WORKTREE_NAME}
-            />
-          }
+          environmentSummary={namedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
         label="ready · detached worktree"
-        hint="worktree icon · detached commit"
+        hint="worktree icon · detached commit checkout"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1285,32 +1226,6 @@ export function ProvisioningEnvironmentSummary() {
       </StoryRow>
     </StoryCard>
   );
-}
-
-function WorktreeEnvironmentSummaryFixture({
-  fixtureId,
-  initialName,
-}: {
-  fixtureId: string;
-  initialName: string | null;
-}) {
-  const environmentId = `env_${fixtureId}`;
-
-  const summary = makeEnvironmentSummary({
-    environment: makeEnvironment({
-      id: environmentId,
-      name: initialName,
-      isWorktree: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "ready",
-    }),
-    host: localEnvironmentDisplayHost,
-    hostName: "Bersabel's MacBook Pro",
-    environmentCheckout: STORY_CHECKOUT_DISPLAY,
-    onCreateNewThreadInWorktree: noop,
-  });
-
-  return summary;
 }
 
 export function QueuedWorkspace() {

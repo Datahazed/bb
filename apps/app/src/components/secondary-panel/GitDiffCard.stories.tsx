@@ -824,30 +824,15 @@ function InteractiveDiffPanel({
   );
 }
 
-export function BranchAndCommit() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="branch"
-        hint="branch name appears directly above the diff selector"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <InteractiveDiffPanel diffs={[]} checkout={BRANCH_CHECKOUT} />
-      </StoryRow>
-      <StoryRow
-        label="detached"
-        hint="detached commit appears directly above the diff selector"
-        className="max-sm:grid-cols-1 max-sm:gap-y-3"
-      >
-        <InteractiveDiffPanel diffs={[]} checkout={DETACHED_CHECKOUT} />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
 export function Overview() {
   return (
     <StoryCard>
+      <StoryRow
+        label="detached commit"
+        hint="commit identity replaces the branch above the diff selector"
+      >
+        <InteractiveDiffPanel diffs={[]} checkout={DETACHED_CHECKOUT} />
+      </StoryRow>
       <StoryRow
         label="modified file"
         hint="single hunk in a real-looking ProjectRow.tsx; click ↑/↓/⇅ in the gaps to expand 30 lines at a time"

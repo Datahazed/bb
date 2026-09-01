@@ -13,7 +13,6 @@ interface EnvironmentWorkspaceSummaryDisplayArgs {
 
 export interface EnvironmentWorkspaceSummaryDisplay {
   label: string | undefined;
-  compactLabel: string | undefined;
   icon: IconName;
   typeLabel: EnvironmentWorkspaceTypeLabel | undefined;
 }
@@ -44,7 +43,6 @@ export function getEnvironmentWorkspaceSummaryDisplay({
   if (display.lifecycle === "provisioning") {
     return {
       label: "Provisioning",
-      compactLabel: "Provisioning",
       icon: "Loading",
       typeLabel: getEnvironmentWorkspaceTypeLabel(display.workspaceDisplayKind),
     };
@@ -57,7 +55,6 @@ export function getEnvironmentWorkspaceSummaryDisplay({
 
   return {
     label: environmentSummaryLabel,
-    compactLabel: environmentSummaryLabel,
     icon: getEnvironmentWorkspaceLabelIconName(display.workspaceDisplayKind),
     typeLabel: getEnvironmentWorkspaceTypeLabel(display.workspaceDisplayKind),
   };

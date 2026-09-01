@@ -12,12 +12,8 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyAction: {
-        accessibleLabel: "Copy branch name: bb/thread",
-        label: "Copy branch name",
-        value: "bb/thread",
-      },
-      detailTooltip: null,
+      copyLabel: "Copy branch name",
+      copyValue: "bb/thread",
       label: "bb/thread",
       rowLabel: "Branch",
     });
@@ -32,12 +28,8 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyAction: {
-        accessibleLabel: "Copy commit SHA: abcdef1234567890",
-        label: "Copy commit SHA",
-        value: "abcdef1234567890",
-      },
-      detailTooltip: null,
+      copyLabel: "Copy commit SHA",
+      copyValue: "abcdef1234567890",
       label: "Detached at abcdef1",
       rowLabel: "Commit",
     });
@@ -52,8 +44,7 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyAction: null,
-      detailTooltip: "Detached HEAD",
+      copyValue: null,
       label: "Detached HEAD",
       rowLabel: "Commit",
     });
@@ -68,8 +59,7 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyAction: null,
-      detailTooltip: "Empty branch: main",
+      copyValue: null,
       label: "main (empty)",
       rowLabel: "Branch",
     });
@@ -84,8 +74,7 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyAction: null,
-      detailTooltip: "Empty repository",
+      copyValue: null,
       label: "empty repo",
       rowLabel: "Repository",
     });
@@ -100,8 +89,7 @@ describe("formatWorkspaceCheckoutDisplay", () => {
         },
       }),
     ).toMatchObject({
-      copyAction: null,
-      detailTooltip: "Unknown Git state: HEAD is missing",
+      copyValue: null,
       label: "unknown state",
       rowLabel: "Git",
     });
