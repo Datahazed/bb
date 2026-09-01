@@ -180,10 +180,21 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it("places the project disclosure after its label and keeps root threads flush", () => {
+  it("uses one depth step for each project and worktree boundary", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",
-      threads: [makeThread()],
+      threads: [
+        makeThread(),
+        makeThread({
+          id: "thr_worktree",
+          title: "Worktree child",
+          titleFallback: "Worktree child",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentBranchName: "feat/sidebar-depth",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+      ],
     });
 
     const disclosure = screen.getByRole("button", {
@@ -193,6 +204,12 @@ describe("ProjectRow interactions", () => {
     const threadLink = result.container.querySelector(
       '[data-sidebar-thread-id="thr_test"]',
     );
+    const worktreeRow = screen
+      .getByText("Feature workspace")
+      .closest("[data-sidebar-row]");
+    const worktreeThreadRow = result.container
+      .querySelector('[data-sidebar-thread-id="thr_worktree"]')
+      ?.closest("[data-sidebar-row]");
     const projectGroup = result.container.querySelector(
       "[data-sidebar-sticky-project-item]",
     );
@@ -212,8 +229,19 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
-      threadLink?.parentElement?.getAttribute("data-sidebar-row-depth"),
+      label
+        .closest("[data-sidebar-row]")
+        ?.getAttribute("data-sidebar-row-depth"),
     ).toBe("0");
+    expect(
+      threadLink
+        ?.closest("[data-sidebar-row]")
+        ?.getAttribute("data-sidebar-row-depth"),
+    ).toBe("1");
+    expect(worktreeRow?.getAttribute("data-sidebar-row-depth")).toBe("1");
+    expect(worktreeThreadRow?.getAttribute("data-sidebar-row-depth")).toBe(
+      "2",
+    );
     expect(projectGroup?.getAttribute("data-sidebar-project-id")).toBe(
       "proj_test",
     );
@@ -395,7 +423,7 @@ describe("ProjectRow interactions", () => {
       },
     });
 
-    render(
+    const result = render(
       <TooltipProvider>
         <Provider store={store}>
           <QueryClientProvider client={queryClient}>
@@ -434,6 +462,16 @@ describe("ProjectRow interactions", () => {
     const disclosure = screen.getByRole("button", {
       name: "Collapse Active work section",
     });
+    const sectionRow = screen
+      .getByTitle("Active work")
+      .closest("[data-sidebar-row]");
+    const sectionThreadRow = result.container
+      .querySelector('[data-sidebar-thread-id="thr_section_active"]')
+      ?.closest("[data-sidebar-row]");
+    expect(sectionRow?.getAttribute("data-sidebar-row-depth")).toBe("0");
+    expect(sectionThreadRow?.getAttribute("data-sidebar-row-depth")).toBe(
+      "1",
+    );
     expect(
       newThread.compareDocumentPosition(more) &
         Node.DOCUMENT_POSITION_FOLLOWING,
