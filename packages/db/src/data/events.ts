@@ -1123,7 +1123,7 @@ export interface ListStoredTurnStartedKeysArgs {
   keys: readonly ThreadTurnKey[];
 }
 
-export interface ListRecentStoredEventRowsArgs {
+export interface ListStoredThreadTimelineEventRowsArgs {
   excludedTypes?: readonly ThreadEventType[];
   maxInlineOutputChars: InlineOutputCharLimit;
   threadId: string;
@@ -1573,24 +1573,6 @@ export function listStoredDelegatingItemRowsByItemIds(
     .all();
 }
 
-export function isTimelineCursorSequencePresent(
-  db: DbConnection,
-  args: TimelineSegmentAnchorLookupArgs,
-): boolean {
-  const row = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.sequence, args.sequence),
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
-}
-
 export interface ScopedItemRef {
   itemId: string;
   scopeKind: ThreadEventScopeKind;
@@ -1598,7 +1580,7 @@ export interface ScopedItemRef {
 }
 
 export function scopedItemRefKey(ref: ScopedItemRef): string {
-  return `${ref.scopeKind} ${ref.turnId ?? ""} ${ref.itemId}`;
+  return `${ref.scopeKind}\u0000${ref.turnId ?? ""}\u0000${ref.itemId}`;
 }
 
 function dedupeScopedItemRefs(
@@ -1970,33 +1952,6 @@ export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
   threadId: string;
 }
 
-export interface ListLatestOpenBackgroundTaskStateRowsForThreadArgs {
-  threadId: string;
-}
-
-export interface ListTodoSnapshotEventRowsForThreadArgs {
-  threadId: string;
-}
-
-export function listTodoSnapshotEventRowsForThread(
-  db: DbConnection,
-  args: ListTodoSnapshotEventRowsForThreadArgs,
-): StoredEventRow[] {
-  const row = db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        sql`((${events.itemKind} = 'planSteps' AND ${events.type} = 'item/completed') OR ${events.type} = 'turn/plan/updated')`,
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-  return row ? [row] : [];
-}
-
 export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
   threadIds: readonly string[];
 }
@@ -2046,57 +2001,6 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     )
     .orderBy(events.sequence)
     .all();
-}
-
-export function listLatestOpenBackgroundTaskStateRowsForThread(
-  db: DbConnection,
-  args: ListLatestOpenBackgroundTaskStateRowsForThreadArgs,
-): StoredEventRow[] {
-  const startedType = "item/started" satisfies ThreadEventType;
-  const progressType =
-    "item/backgroundTask/progress" satisfies ThreadEventType;
-  const completedType =
-    "item/backgroundTask/completed" satisfies ThreadEventType;
-  const completed = alias(events, "completed_background_task_state");
-  const latest = alias(events, "latest_open_background_task_state");
-
-  const latestSequences = db
-    .select({ sequence: max(latest.sequence) })
-    .from(latest)
-    .where(
-      and(
-        eq(latest.threadId, args.threadId),
-        eq(latest.itemKind, "backgroundTask"),
-        inArray(latest.type, [startedType, progressType]),
-        isNotNull(latest.itemId),
-      ),
-    )
-    .groupBy(latest.itemId);
-  const completedItemIds = db
-    .select({ itemId: completed.itemId })
-    .from(completed)
-    .where(
-      and(
-        eq(completed.threadId, args.threadId),
-        eq(completed.type, completedType),
-        isNotNull(completed.itemId),
-      ),
-    );
-
-  const rows = db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        inArray(events.sequence, latestSequences),
-        sql`json_extract(${events.data}, '$.item.status') = 'pending'`,
-        notInArray(events.itemId, completedItemIds),
-      ),
-    )
-    .all();
-
-  return rows.sort((left, right) => left.sequence - right.sequence);
 }
 
 export function listActiveBackgroundTaskCountsByThreadIds(
@@ -2359,9 +2263,9 @@ export function findLastRootStoredTurnStarted(
   return row?.turnId ? { sequence: row.sequence, turnId: row.turnId } : null;
 }
 
-export function listRecentStoredEventRows(
+export function listStoredThreadTimelineEventRows(
   db: DbConnection,
-  args: ListRecentStoredEventRowsArgs,
+  args: ListStoredThreadTimelineEventRowsArgs,
 ): StoredEventRow[] {
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
@@ -2523,190 +2427,6 @@ export function listStoredConversationOutlineEventRows(
     structuralRows,
   ).all();
   return rows.sort((left, right) => left.sequence - right.sequence);
-}
-
-export interface StandardTimelineSegmentAnchorRow {
-  rowId: string;
-  sequence: number;
-}
-
-function timelineSegmentAnchorSelection() {
-  return {
-    rowId: sql<string>`${events.threadId} || ':user-seed:' || ${events.sequence}`,
-    sequence: events.sequence,
-  };
-}
-
-function timelineSegmentAnchorConditions(threadId: string): SQL | undefined {
-  return and(
-    eq(events.threadId, threadId),
-    eq(events.type, "client/turn/requested"),
-    sql`(
-      COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
-        IN ('thread-start', 'new-turn')
-      OR (
-        json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
-        AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
-      )
-    )`,
-    sql`EXISTS (
-      SELECT 1
-      FROM json_each(${events.data}, '$.input') AS input_part
-      WHERE (
-        json_extract(input_part.value, '$.type') = 'text'
-        AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
-      )
-      OR json_extract(input_part.value, '$.type')
-        IN ('image', 'localImage', 'localFile')
-    )`,
-  );
-}
-
-export interface ListTimelineSegmentAnchorsDescendingArgs {
-  threadId: string;
-  beforeSequence?: number;
-  limit: number;
-}
-
-export interface FindTimelineWindowBudgetFloorSequenceArgs {
-  excludedTypes: readonly ThreadEventType[];
-  eventBudget: number;
-  threadId: string;
-  beforeSequence?: number;
-}
-
-export function findTimelineWindowBudgetFloorSequence(
-  db: DbConnection,
-  args: FindTimelineWindowBudgetFloorSequenceArgs,
-): number | undefined {
-  const conditions: SQL[] = [
-    eq(events.threadId, args.threadId),
-    isNotSupersededBackgroundTaskProgress,
-  ];
-  if (args.excludedTypes.length > 0) {
-    conditions.push(notInArray(events.type, [...args.excludedTypes]));
-  }
-  if (args.beforeSequence !== undefined) {
-    conditions.push(lt(events.sequence, args.beforeSequence));
-  }
-
-  const row = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(and(...conditions))
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .offset(args.eventBudget)
-    .get();
-  return row?.sequence;
-}
-
-export interface TimelineTurnBoundaryLookupArgs {
-  sequence: number;
-  threadId: string;
-}
-
-export function hasParentedEventCrossingSequence(
-  db: DbConnection,
-  args: TimelineTurnBoundaryLookupArgs,
-): boolean {
-  const row = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gte(events.sequence, args.sequence),
-        isNotNull(events.parentToolCallId),
-        sql`EXISTS (
-          SELECT 1
-          FROM events AS parent_event
-          WHERE parent_event.thread_id = ${events.threadId}
-            AND parent_event.item_id = ${events.parentToolCallId}
-            AND parent_event.item_kind IN ('toolCall', 'delegation')
-            AND parent_event.sequence < ${args.sequence}
-        )`,
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
-}
-
-export function findUnfinishedTurnCoveringSequence(
-  db: DbConnection,
-  args: TimelineTurnBoundaryLookupArgs,
-): string | null {
-  const turnRows = db
-    .selectDistinct({ turnId: events.turnId })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gte(events.sequence, args.sequence),
-        isNotNull(events.turnId),
-      ),
-    )
-    .limit(2)
-    .all();
-  const turnId = turnRows[0]?.turnId;
-  if (turnRows.length !== 1 || !turnId) {
-    return null;
-  }
-
-  const completed = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.type, "turn/completed"),
-        eq(events.turnId, turnId),
-      ),
-    )
-    .limit(1)
-    .get();
-  return completed === undefined ? turnId : null;
-}
-
-export function listTimelineSegmentAnchorsDescending(
-  db: DbConnection,
-  args: ListTimelineSegmentAnchorsDescendingArgs,
-): StandardTimelineSegmentAnchorRow[] {
-  const conditions = timelineSegmentAnchorConditions(args.threadId);
-  const where =
-    args.beforeSequence === undefined
-      ? conditions
-      : and(conditions, lt(events.sequence, args.beforeSequence));
-  return db
-    .select(timelineSegmentAnchorSelection())
-    .from(events)
-    .where(where)
-    .orderBy(desc(events.sequence))
-    .limit(args.limit)
-    .all();
-}
-
-export interface TimelineSegmentAnchorLookupArgs {
-  threadId: string;
-  sequence: number;
-}
-
-export function getTimelineSegmentAnchorAtSequence(
-  db: DbConnection,
-  args: TimelineSegmentAnchorLookupArgs,
-): StandardTimelineSegmentAnchorRow | undefined {
-  return db
-    .select(timelineSegmentAnchorSelection())
-    .from(events)
-    .where(
-      and(
-        timelineSegmentAnchorConditions(args.threadId),
-        eq(events.sequence, args.sequence),
-      ),
-    )
-    .limit(1)
-    .get();
 }
 
 function storedTimelineWindowConditions(

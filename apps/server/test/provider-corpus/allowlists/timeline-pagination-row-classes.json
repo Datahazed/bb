@@ -1,0 +1,174 @@
+[
+  {
+    "name": "byte-page-fragments-consolidated",
+    "reason": "Raw byte windows split one semantic row into per-page fragments with ':sequence-page:' suffixed ids and clamped source ranges; the canonical projection emits the single logical row instead.",
+    "match": {
+      "removed": {}
+    }
+  },
+  {
+    "name": "seam-rows-restored",
+    "reason": "Rows that fell between raw window cuts (user seeds, assistant replies, provisioning/warning/provider-unhandled ops, error rows, delegation shells) are emitted again; the recombination gate proves every page walk now equals the unpaginated projection.",
+    "match": {
+      "added": {}
+    }
+  },
+  {
+    "name": "bisected-items-consolidated",
+    "reason": "An item straddling a window cut rendered twice with conflicting status (completed on one page, interrupted on another) or as a root-level fragment; it now renders once, nested in its turn, with its full source range.",
+    "match": {
+      "moved": {}
+    }
+  },
+  {
+    "name": "turn-fragments-resegmented",
+    "reason": "Completed turns split across byte pages rendered one summary row per page; the canonical projection renders the turn's true summary segmentation.",
+    "match": {
+      "resegmented": {}
+    }
+  },
+  {
+    "name": "turn-bounds-whole",
+    "reason": "Turn summary rows now carry whole-turn source bounds and counts instead of window-clamped ones.",
+    "match": {
+      "changed": {
+        "kind": "turn",
+        "fields": [
+          "sourceSeqStart",
+          "sourceSeqEnd",
+          "startedAt",
+          "createdAt",
+          "completedAt",
+          "summaryCount",
+          "id"
+        ]
+      }
+    }
+  },
+  {
+    "name": "context-shells-rendered-truthfully",
+    "reason": "A parent tool call dragged into a byte window as closure context rendered as an empty delegation shell; the canonical projection renders the call as it actually is (e.g. an agent-resume tool call with its result).",
+    "match": {
+      "reshaped": {
+        "from": {
+          "kind": "work",
+          "workKind": "delegation"
+        },
+        "to": {
+          "kind": "work",
+          "workKind": "tool"
+        },
+        "fields": [
+          "approvalStatus",
+          "background",
+          "childRef",
+          "createdAt",
+          "description",
+          "id",
+          "subagentType",
+          "toolArgs"
+        ]
+      }
+    }
+  },
+  {
+    "name": "items-carry-final-state",
+    "reason": "Items whose completion fell past a window cut rendered pending/interrupted with truncated bounds; the canonical projection carries their final status, output, and full source range.",
+    "match": {
+      "changed": {
+        "kind": "work",
+        "fields": [
+          "completedAt",
+          "createdAt",
+          "exitCode",
+          "output",
+          "sourceSeqEnd",
+          "sourceSeqStart",
+          "status",
+          "id"
+        ]
+      }
+    }
+  },
+  {
+    "name": "page-shape-timelinePage",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "timelinePage"
+      }
+    }
+  },
+  {
+    "name": "page-shape-maxSeq",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "maxSeq"
+      }
+    }
+  },
+  {
+    "name": "page-shape-goal",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "goal"
+      }
+    }
+  },
+  {
+    "name": "page-shape-pendingTodos",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "pendingTodos"
+      }
+    }
+  },
+  {
+    "name": "page-shape-activeThinking",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "activeThinking"
+      }
+    }
+  },
+  {
+    "name": "page-shape-activePromptMode",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "activePromptMode"
+      }
+    }
+  },
+  {
+    "name": "page-shape-activeWorkflows",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "activeWorkflows"
+      }
+    }
+  },
+  {
+    "name": "page-shape-activeBackgroundCommands",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "activeBackgroundCommands"
+      }
+    }
+  },
+  {
+    "name": "page-shape-modelFallback",
+    "reason": "Pages are slices of one canonical projection: page boundaries, counts, and which page index carries head-state fields all change with the pagination model. Row content equality across the full walk is enforced by the page-recombination gate.",
+    "match": {
+      "pageField": {
+        "field": "modelFallback"
+      }
+    }
+  }
+]

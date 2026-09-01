@@ -102,12 +102,20 @@ every `provider-corpus/` directory except the in-repo harness and scripts.
 - Layout: `manifest.json` (thread selection and reasons), `profile.json`,
   `threads/<provider>/<threadId>/{meta.json,events.ndjson}`, and the generated
   `snapshots/` directory described below.
+- Minting: `pnpm exec tsx scripts/provider-corpus/extract-corpus.ts --db <bb.db copy> --out <corpus dir>`
+  extracts a corpus from a production database copy (never the live
+  `~/.bb/bb.db`), validates every thread through the real reader, and tags the
+  10 largest threads per provider with the `largest` reason the perf gate
+  reads. Re-extraction preserves the `snapshots/` directory.
 - Reader: `@bb/test-helpers` exports `corpusAvailable()`,
   `listCorpusThreads({ provider?, reasons? })`, and `loadCorpusThread(id)`.
   Event rows decode through the same `parseStoredThreadEvent` the server uses.
 
 Gates under `apps/server/test/provider-corpus/`:
 
+- `page-recombination.test.ts` walks every timeline page of each thread at
+  several segment limits and asserts the concatenation exactly equals the
+  unpaginated projection — the pagination correctness invariant.
 - `row-snapshots.test.ts` loads each thread into in-memory SQLite and projects
   every timeline page the way `GET /threads/:id/timeline` does (default and
   nested variants), then compares the rows with

@@ -14,15 +14,12 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   appendDaemonEventsInTransaction,
-  hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestThreadStateEventRowsByThreadIds,
-  listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
   listStoredEventRows,
   listStoredEventRowsByParentToolCallIds,
-  listTodoSnapshotEventRowsForThread,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
@@ -323,35 +320,6 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("resolves parent crossings through the covering delegating-item index", () => {
-    const { db, thread } = setup();
-
-    const captured = captureStatements(db, () => {
-      expect(
-        hasParentedEventCrossingSequence(db, {
-          sequence: 2,
-          threadId: thread.id,
-        }),
-      ).toBe(false);
-    });
-    const query = captured.find((entry) =>
-      entry.sql.includes("parent_event.item_id"),
-    );
-    if (!query) {
-      throw new Error("Expected the parent-crossing lookup SQL");
-    }
-    const details = queryPlanDetails({
-      db,
-      params: query.params,
-      sql: query.sql,
-    });
-    expect(details).toMatch(
-      /SEARCH parent_event .*USING COVERING INDEX events_delegating_item_lookup_idx/u,
-    );
-
-    db.$client.close();
-  });
-
   it("loads parented timeline rows through the normalized parent index", () => {
     const { db, thread } = setup();
 
@@ -458,64 +426,6 @@ describe("slow query index plans", () => {
       /USING COVERING INDEX events_background_task_thread_type_item_sequence_idx/u,
     );
     expect(details).not.toMatch(/SCAN events/u);
-
-    db.$client.close();
-  });
-
-  it("loads the newest plan snapshot through the kind-based plan-steps index", () => {
-    const { db, thread } = setup();
-
-    const captured = captureStatements(db, () => {
-      expect(
-        listTodoSnapshotEventRowsForThread(db, { threadId: thread.id }),
-      ).toEqual([]);
-    });
-    const query = captured.find((entry) => entry.sql.includes("planSteps"));
-    if (!query) {
-      throw new Error("Expected the plan snapshot SQL");
-    }
-    expect(query.sql).not.toContain("json_extract");
-    expect(query.sql).not.toContain("tool_name");
-    expect(query.params).toEqual([thread.id, 1]);
-    expect(
-      queryPlanDetails({ db, params: query.params, sql: query.sql }),
-    ).toContain("events_plan_steps_thread_sequence_idx");
-
-    db.$client.close();
-  });
-
-  it("resolves open background-task state without per-row subqueries", () => {
-    const { db, logger, thread } = setup();
-
-    listLatestOpenBackgroundTaskStateRowsForThread(db, {
-      threadId: thread.id,
-    });
-
-    const debugLog = findOnlyDebugLog({
-      logger,
-      predicate: (fields) =>
-        fields.operation === "all" &&
-        fields.sql.includes("completed_background_task_state"),
-    });
-    const params = [
-      thread.id,
-      thread.id,
-      "backgroundTask",
-      "item/started",
-      "item/backgroundTask/progress",
-      thread.id,
-      "item/backgroundTask/completed",
-    ];
-    assertEmittedQueryPlanUsesIndex({
-      db,
-      debugLog,
-      indexName: "events_background_task_thread_type_item_sequence_idx",
-      params,
-    });
-
-    expect(
-      queryPlanDetails({ db, params, sql: debugLog.fields.sql }),
-    ).not.toMatch(/CORRELATED/);
 
     db.$client.close();
   });

@@ -31,7 +31,7 @@ import {
   getLatestStoredEventTip,
   getThreadConversationOutlineRecord,
   listContextWindowUsageRows,
-  listRecentStoredEventRows,
+  listStoredThreadTimelineEventRows,
   listStoredConversationOutlineEventRows,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsByParentToolCallIds,
@@ -618,7 +618,7 @@ function selectTimelineEventRows(
   thread: Thread,
   maxInlineOutputChars: InlineOutputCharLimit,
 ): StoredEventRow[] {
-  return listRecentStoredEventRows(db, {
+  return listStoredThreadTimelineEventRows(db, {
     threadId: thread.id,
     excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
     maxInlineOutputChars,
