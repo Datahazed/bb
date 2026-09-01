@@ -49,3 +49,13 @@ export function resolveConversationCollapseControl({
 }
 
 export const RIGHT_PANEL_TOGGLE_ICON_NAME = "PanelRight";
+
+export function getCompactPanelPresentation(
+  activeTabKind: string | undefined,
+  fallbackTabKind?: string,
+): "shelf" | "full" {
+  const resolvedTabKind = activeTabKind ?? fallbackTabKind;
+  return resolvedTabKind === undefined || resolvedTabKind === "thread-info"
+    ? "shelf"
+    : "full";
+}
