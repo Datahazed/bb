@@ -156,6 +156,8 @@ export interface BuildRouteTimelinePageArgs {
   registry: ProviderRegistryService;
   thread: Thread;
   variant: TimelineVariant;
+  /** Overrides the production event budget (defaults to the feature flag). */
+  eventBudget?: number;
 }
 
 export function buildRouteTimelinePage(
@@ -169,7 +171,8 @@ export function buildRouteTimelinePage(
     args.db,
     args.thread,
     {
-      eventBudget: defaultFeatureFlags.timelineWindowEventBudget,
+      eventBudget:
+        args.eventBudget ?? defaultFeatureFlags.timelineWindowEventBudget,
       includeProviderUnhandledOperations: true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
@@ -204,11 +207,13 @@ export function latestTimelinePage(): ThreadTimelinePageRequest {
 }
 
 export function buildAllRouteTimelinePages(
-  args: Omit<BuildRouteTimelinePageArgs, "page">,
+  args: Omit<BuildRouteTimelinePageArgs, "page"> & { segmentLimit?: number },
 ): BuiltTimelinePage[] {
+  const segmentLimit =
+    args.segmentLimit ?? THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT;
   const pages: BuiltTimelinePage[] = [];
   const seenCursors = new Set<string>();
-  let page = latestTimelinePage();
+  let page: ThreadTimelinePageRequest = { kind: "latest", segmentLimit };
   for (;;) {
     const built = buildRouteTimelinePage({ ...args, page });
     pages.push(built);
@@ -225,7 +230,7 @@ export function buildAllRouteTimelinePages(
     seenCursors.add(cursorKey);
     page = {
       kind: "older",
-      segmentLimit: THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
+      segmentLimit,
       beforeCursor: olderCursor,
     };
   }
