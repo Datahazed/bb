@@ -19,7 +19,7 @@ function renderedSectionIds(): string[] {
 }
 
 describe("SidebarTopLevelSections", () => {
-  it("lets the thread toolbar own its preceding divider", () => {
+  it("draws structural dividers between all populated major regions", () => {
     const view = render(<SidebarTopLevelSections sections={sections} />);
 
     expect(renderedSectionIds()).toEqual([
@@ -30,15 +30,15 @@ describe("SidebarTopLevelSections", () => {
     const dividers = view.container.querySelectorAll(
       "[data-sidebar-top-level-divider]",
     );
-    expect(dividers).toHaveLength(1);
+    expect(dividers).toHaveLength(2);
     for (const divider of dividers) {
       expect(divider.getAttribute("aria-hidden")).toBe("true");
       expect(divider.getAttribute("tabindex")).toBeNull();
       expect(divider.classList.contains("bg-sidebar-border")).toBe(true);
     }
     expect(
-      view.container.querySelector('[data-sidebar-region="threads"]'),
-    ).toHaveAttribute("data-sidebar-integrated-divider", "");
+      view.container.querySelector("[data-sidebar-integrated-divider]"),
+    ).toBeNull();
     expect(
       screen.getAllByRole("button").map((button) => button.textContent),
     ).toEqual(["New thread", "Plugin page", "Thread row"]);
@@ -65,7 +65,7 @@ describe("SidebarTopLevelSections", () => {
     ).toEqual(["New thread", "Plugin page", "Thread row"]);
   });
 
-  it("renders regions and keyboard order in the persisted order", () => {
+  it("renders the reorderable regions in persisted order and keeps Threads last", () => {
     render(
       <SidebarTopLevelSections
         order={["threads", "bb-controls", "plugins"]}
@@ -74,13 +74,13 @@ describe("SidebarTopLevelSections", () => {
     );
 
     expect(renderedSectionIds()).toEqual([
-      "thread-list",
       "new-thread-extensions",
       "plugin-pages",
+      "thread-list",
     ]);
     expect(
       screen.getAllByRole("button").map((button) => button.textContent),
-    ).toEqual(["Thread row", "New thread", "Plugin page"]);
+    ).toEqual(["New thread", "Plugin page", "Thread row"]);
   });
 
   it("draws no divider beside empty regions", () => {
@@ -113,10 +113,7 @@ describe("SidebarTopLevelSections", () => {
     ]);
     expect(
       view.container.querySelectorAll("[data-sidebar-top-level-divider]"),
-    ).toHaveLength(0);
-    expect(
-      view.container.querySelector('[data-sidebar-region="threads"]'),
-    ).toHaveAttribute("data-sidebar-integrated-divider", "");
+    ).toHaveLength(1);
   });
 
   it("collapses an empty BB-controls region after reordering", () => {
@@ -127,7 +124,7 @@ describe("SidebarTopLevelSections", () => {
       />,
     );
 
-    expect(renderedSectionIds()).toEqual(["thread-list", "plugin-pages"]);
+    expect(renderedSectionIds()).toEqual(["plugin-pages", "thread-list"]);
     expect(
       view.container.querySelectorAll("[data-sidebar-top-level-divider]"),
     ).toHaveLength(1);

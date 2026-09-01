@@ -19,8 +19,13 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import {
   ProjectListSectionIconButton,
+  SidebarDisplayOptionsMenu,
   TopLevelSidebarSection,
 } from "./ProjectList";
+import {
+  sidebarChronologicalSortAtom,
+  sidebarOrganizationModeAtom,
+} from "./sidebarCollapsedAtoms";
 
 afterEach(() => {
   cleanup();
@@ -76,6 +81,45 @@ describe("ProjectListSectionIconButton", () => {
   });
 });
 
+describe("SidebarDisplayOptionsMenu", () => {
+  it("restores exclusive view choices, sort icons, and the expected close behavior", async () => {
+    const store = createStore();
+    store.set(sidebarOrganizationModeAtom, "project");
+    store.set(sidebarChronologicalSortAtom, "updated");
+    render(
+      <Provider store={store}>
+        <TooltipProvider>
+          <SidebarDisplayOptionsMenu />
+        </TooltipProvider>
+      </Provider>,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "Sidebar display options",
+    });
+    expect(trigger).toHaveClass("text-subtle-foreground", "opacity-60");
+
+    fireEvent.pointerDown(trigger, { button: 0 });
+    const organizeOptions = await screen.findAllByRole("menuitemradio");
+    expect(organizeOptions).toHaveLength(6);
+    expect(document.querySelector('[data-icon="Folder"]')).not.toBeNull();
+    expect(document.querySelector('[data-icon="Clock"]')).not.toBeNull();
+    expect(document.querySelector('[data-icon="Calendar"]')).not.toBeNull();
+    expect(document.querySelector('[data-icon="Alphabetical"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "By machine" }));
+    expect(store.get(sidebarOrganizationModeAtom)).toBe("machine");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Created at" }),
+    );
+    expect(store.get(sidebarChronologicalSortAtom)).toBe("created");
+    expect(screen.getByRole("menu")).not.toBeNull();
+  });
+});
+
 describe("TopLevelSidebarSection", () => {
   it("exposes stable identity only for persisted sections", () => {
     const result = render(
@@ -123,11 +167,10 @@ describe("TopLevelSidebarSection", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the disclosure in the fixed final slot after section actions", () => {
+  it("renders the disclosure after the section label without a leading icon", () => {
     const result = render(
       <TopLevelSidebarSection
         label="Pinned"
-        actions={<button type="button">Section action</button>}
         collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
       >
         <div>Pinned thread</div>
@@ -139,38 +182,12 @@ describe("TopLevelSidebarSection", () => {
     });
     const icon = result.container.querySelector('[data-icon="Pin"]');
     const label = screen.getByTitle("Pinned");
-    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
-    const row = caretSlot?.parentElement;
-    const trailingControls = row?.querySelector(
-      "[data-sidebar-collapsible-trailing-controls]",
-    );
-    const groupStatusSlot = row?.querySelector(
-      "[data-sidebar-group-status-slot]",
-    );
-    const action = screen.getByRole("button", { name: "Section action" });
 
     expect(icon).toBeNull();
+    expect(disclosure).toHaveClass("text-subtle-foreground", "opacity-60");
+    expect(disclosure).not.toHaveClass("bb-sidebar-hover-actions");
     expect(
       label.compareDocumentPosition(disclosure) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(disclosure.classList.contains("text-subtle-foreground/75")).toBe(
-      true,
-    );
-    expect(disclosure.classList.contains("text-subtle-foreground")).toBe(false);
-    expect(
-      disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
-    ).toBe(true);
-    expect(caretSlot?.classList.contains("w-6")).toBe(true);
-    expect(row?.lastElementChild).toBe(caretSlot);
-    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
-    expect(groupStatusSlot).not.toBeNull();
-    expect(
-      label.compareDocumentPosition(groupStatusSlot!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(
-      groupStatusSlot!.compareDocumentPosition(action) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
   });
@@ -196,7 +213,7 @@ describe("TopLevelSidebarSection", () => {
           {
             type: "pane",
             paneId: "pane-compose",
-            content: { kind: "new-thread", draftSlotId: "draft-compose" },
+            content: { kind: "new-thread" },
           },
         ],
       },
@@ -215,14 +232,10 @@ describe("TopLevelSidebarSection", () => {
       </Provider>,
     );
 
-    const splitIndicator = screen.getByRole("img", {
-      name: "Pinned — contains a thread open in split",
-    });
     expect(
-      splitIndicator.closest("[data-sidebar-item-status-slot]"),
-    ).not.toBeNull();
-    expect(
-      splitIndicator.closest("[data-sidebar-group-status-slot]"),
+      screen.getByRole("img", {
+        name: "Pinned — contains a thread open in split",
+      }),
     ).not.toBeNull();
     expect(screen.queryByText("Pinned thread")).toBeNull();
   });

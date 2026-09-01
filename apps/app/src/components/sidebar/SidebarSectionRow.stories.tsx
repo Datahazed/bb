@@ -83,7 +83,7 @@ function SplitViewSidebarStage({ children }: { children: ReactNode }) {
           {
             type: "pane",
             paneId: "pane-compose",
-            content: { kind: "new-thread", draftSlotId: "story-compose" },
+            content: { kind: "new-thread" },
           },
         ],
       },
@@ -220,7 +220,7 @@ export function DragInto() {
       </StoryRow>
       <StoryRow
         label="loose-list drop"
-        hint="dragging a thread out of a section previews the same slot at root depth in Threads"
+        hint="dragging a thread out of a section previews the same slot at root depth in Unorganized"
       >
         <SidebarStage>
           <DropPreviewRow depth={0} />

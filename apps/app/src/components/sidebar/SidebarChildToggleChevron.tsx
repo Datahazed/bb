@@ -1,9 +1,6 @@
 import { Icon } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import {
-  SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
-} from "@/components/ui/sidebar-hover-actions.js";
+import { SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface SidebarChildToggleChevronProps {
@@ -21,18 +18,13 @@ export function SidebarChildToggleChevron({
   onToggle,
   revealOnHover = false,
 }: SidebarChildToggleChevronProps) {
-  const shouldRevealOnHover = revealOnHover && !isCollapsed;
-
   return (
     <button
       type="button"
-      data-sidebar-collapse-caret=""
       aria-expanded={!isCollapsed}
       aria-label={isCollapsed ? expandLabel : collapseLabel}
       data-sidebar-hover-actions-mobile={
-        shouldRevealOnHover
-          ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-          : undefined
+        revealOnHover ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE : undefined
       }
       onClick={(event) => {
         event.preventDefault();
@@ -40,10 +32,8 @@ export function SidebarChildToggleChevron({
         onToggle();
       }}
       className={cn(
-        shouldRevealOnHover
-          ? SIDEBAR_HOVER_ACTIONS_CLASS
-          : "pointer-events-auto",
-        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground/75 outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+        "pointer-events-auto",
+        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground opacity-60 outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:opacity-100",
         LIST_HOVER_TRANSITION,
       )}
     >

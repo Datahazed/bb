@@ -7,10 +7,10 @@ import {
   SidebarRow,
   SidebarRowAccessory,
   SidebarRowActions,
-  SidebarRowBody,
   SidebarRowContent,
   SidebarRowDisclosureRail,
   SidebarRowIdentityRail,
+  SidebarRowLeadingAction,
   SidebarRowStatusRail,
 } from "./SidebarRow";
 
@@ -40,15 +40,11 @@ describe("SidebarRow", () => {
     button.focus();
 
     expect(button.tagName).toBe("BUTTON");
-    expect(button.getAttribute("data-domain-row")).toBe("tools");
-    expect(button.getAttribute("data-sidebar-row-anatomy")).toBe(
-      "navigation",
-    );
-    expect(button.getAttribute("data-sidebar-row-density")).toBe("compact");
-    expect(button.getAttribute("data-sidebar-row-depth")).toBe("2");
-    expect(button.getAttribute("data-sidebar-row-variant")).toBe(
-      "groupLabel",
-    );
+    expect(button).toHaveAttribute("data-domain-row", "tools");
+    expect(button).toHaveAttribute("data-sidebar-row-anatomy", "navigation");
+    expect(button).toHaveAttribute("data-sidebar-row-density", "compact");
+    expect(button).toHaveAttribute("data-sidebar-row-depth", "2");
+    expect(button).toHaveAttribute("data-sidebar-row-variant", "groupLabel");
     expect(button.style.getPropertyValue("--sidebar-row-depth")).toBe("2");
     expect(document.activeElement).toBe(button);
     expect(ref.current).toBe(button);
@@ -58,11 +54,10 @@ describe("SidebarRow", () => {
     const { container } = render(
       <SidebarRow anatomy="tree" depth={3}>
         <SidebarRowStatusRail />
-        <SidebarRowBody>
-          <SidebarRowIdentityRail>Icon</SidebarRowIdentityRail>
-          <SidebarRowContent>Nested thread</SidebarRowContent>
-          <SidebarRowAccessory>Meta</SidebarRowAccessory>
-        </SidebarRowBody>
+        <SidebarRowLeadingAction>Archive</SidebarRowLeadingAction>
+        <SidebarRowIdentityRail>Icon</SidebarRowIdentityRail>
+        <SidebarRowContent>Nested thread</SidebarRowContent>
+        <SidebarRowAccessory>Meta</SidebarRowAccessory>
         <SidebarRowActions>Actions</SidebarRowActions>
         <SidebarRowDisclosureRail />
       </SidebarRow>,
@@ -73,92 +68,23 @@ describe("SidebarRow", () => {
     const content = container.querySelector(
       '[data-sidebar-row-slot="content"]',
     );
-    const body = container.querySelector('[data-sidebar-row-slot="body"]');
     const disclosure = container.querySelector(
       '[data-sidebar-row-slot="disclosure"]',
     );
+    const leadingAction = container.querySelector(
+      "[data-sidebar-row-leading-action]",
+    );
 
-    expect(row?.getAttribute("data-sidebar-row-anatomy")).toBe("tree");
-    expect(row?.getAttribute("data-sidebar-row-depth")).toBe("3");
-    expect(row?.classList.contains("relative")).toBe(false);
-    expect(row?.className).toContain(
-      "[grid-template-areas:'status_body_actions_disclosure']",
-    );
-    expect(row?.className).toContain("[--sidebar-row-depth-step:0.75rem]");
-    expect(row?.className).toContain(
-      "[--sidebar-row-body-inset:calc(var(--sidebar-row-depth)*var(--sidebar-row-depth-step))]",
-    );
-    expect(status?.childElementCount).toBe(0);
-    expect(status?.classList.contains("[grid-area:status]")).toBe(true);
+    expect(row).toHaveAttribute("data-sidebar-row-anatomy", "tree");
+    expect(row).toHaveAttribute("data-sidebar-row-depth", "3");
+    expect(status).toBeEmptyDOMElement();
+    expect(status).toHaveClass("[grid-area:status]");
     expect(status?.className).not.toContain("translate");
-    expect(body?.classList.contains("[grid-area:body]")).toBe(true);
-    expect(body?.className).toContain(
-      "[grid-template-areas:'identity_content_accessory']",
-    );
-    expect(body?.className).toContain(
-      "[grid-template-columns:var(--sidebar-row-identity-rail)_minmax(0,1fr)_auto]",
-    );
-    expect(body?.className).toContain("pl-[var(--sidebar-row-body-inset)]");
-    expect(content?.classList.contains("[grid-area:content]")).toBe(true);
-    expect(disclosure?.childElementCount).toBe(0);
-    expect(disclosure?.classList.contains("[grid-area:disclosure]")).toBe(
-      true,
-    );
-    expect(disclosure?.classList.contains("justify-center")).toBe(true);
-  });
-
-  it("does not move the fixed tree rails when optional row content changes", () => {
-    const { container } = render(
-      <>
-        <SidebarRow anatomy="tree" data-testid="plain-row">
-          <SidebarRowStatusRail />
-          <SidebarRowBody>
-            <SidebarRowContent>Plain thread</SidebarRowContent>
-          </SidebarRowBody>
-        </SidebarRow>
-        <SidebarRow anatomy="tree" data-testid="collapsible-row">
-          <SidebarRowStatusRail />
-          <SidebarRowBody>
-            <SidebarRowIdentityRail>Icon</SidebarRowIdentityRail>
-            <SidebarRowContent>Parent thread</SidebarRowContent>
-          </SidebarRowBody>
-          <SidebarRowActions>Actions</SidebarRowActions>
-          <SidebarRowDisclosureRail>Disclosure</SidebarRowDisclosureRail>
-        </SidebarRow>
-      </>,
-    );
-
-    const plainRow = screen.getByTestId("plain-row");
-    const collapsibleRow = screen.getByTestId("collapsible-row");
-    const plainStatus = plainRow.querySelector(
-      '[data-sidebar-row-slot="status"]',
-    );
-    const collapsibleStatus = collapsibleRow.querySelector(
-      '[data-sidebar-row-slot="status"]',
-    );
-    const disclosure = collapsibleRow.querySelector(
-      '[data-sidebar-row-slot="disclosure"]',
-    );
-    const plainBody = plainRow.querySelector(
-      '[data-sidebar-row-slot="body"]',
-    );
-    const collapsibleBody = collapsibleRow.querySelector(
-      '[data-sidebar-row-slot="body"]',
-    );
-
-    expect(plainRow.className).toContain(
-      "[grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]",
-    );
-    expect(collapsibleRow.className).toContain(
-      "[grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]",
-    );
-    expect(plainStatus?.className).toBe(collapsibleStatus?.className);
-    expect(plainBody?.className).toBe(collapsibleBody?.className);
-    expect(plainBody?.className).toContain(
-      "[grid-template-columns:var(--sidebar-row-identity-rail)_minmax(0,1fr)_auto]",
-    );
-    expect(disclosure?.classList.contains("justify-center")).toBe(true);
-    expect(container.querySelectorAll("[data-sidebar-row]")).toHaveLength(2);
+    expect(leadingAction).toHaveClass("absolute", "left-0");
+    expect(leadingAction).not.toHaveAttribute("data-sidebar-row-slot");
+    expect(content).toHaveClass("[grid-area:content]");
+    expect(disclosure).toBeEmptyDOMElement();
+    expect(disclosure).toHaveClass("[grid-area:disclosure]");
   });
 
   it("keeps recipe and density choices orthogonal to anatomy", () => {
@@ -168,39 +94,29 @@ describe("SidebarRow", () => {
       </SidebarRow>,
     );
 
-    expect(
-      screen
-        .getByText("Projects")
-        .closest("[data-sidebar-row]")
-        ?.getAttribute("data-sidebar-row-variant"),
-    ).toBe("viewHeader");
-    expect(
-      screen
-        .getByText("Projects")
-        .closest("[data-sidebar-row]")
-        ?.getAttribute("data-sidebar-row-density"),
-    ).toBe("label");
+    expect(screen.getByText("Projects").parentElement).toHaveAttribute(
+      "data-sidebar-row-variant",
+      "viewHeader",
+    );
+    expect(screen.getByText("Projects").parentElement).toHaveAttribute(
+      "data-sidebar-row-density",
+      "label",
+    );
 
     rerender(
       <SidebarRow anatomy="tree" density="standard" variant="item">
         <SidebarRowStatusRail />
-        <SidebarRowBody>
-          <SidebarRowContent>Thread</SidebarRowContent>
-        </SidebarRowBody>
+        <SidebarRowContent>Thread</SidebarRowContent>
       </SidebarRow>,
     );
 
-    expect(
-      screen
-        .getByText("Thread")
-        .closest("[data-sidebar-row]")
-        ?.getAttribute("data-sidebar-row-variant"),
-    ).toBe("item");
-    expect(
-      screen
-        .getByText("Thread")
-        .closest("[data-sidebar-row]")
-        ?.getAttribute("data-sidebar-row-density"),
-    ).toBe("standard");
+    expect(screen.getByText("Thread").parentElement).toHaveAttribute(
+      "data-sidebar-row-variant",
+      "item",
+    );
+    expect(screen.getByText("Thread").parentElement).toHaveAttribute(
+      "data-sidebar-row-density",
+      "standard",
+    );
   });
 });
