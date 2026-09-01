@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -38,8 +39,17 @@ import {
   recordPaletteRecent,
 } from "@/lib/command-palette/palette-recents";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
-import { getPluginSlotSnapshot } from "@/lib/plugin-slots";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import { buildSettingsPaletteActions } from "@/lib/command-palette/palette-settings-actions";
+import { buildPluginPagePaletteActions } from "@/lib/command-palette/palette-plugin-page-actions";
+import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
+import {
+  buildPluginSettingsEntries,
+  type PluginSettingsCandidate,
+} from "@/components/settings/plugin-settings-entries";
+import { useSettingsNavSections } from "@/components/settings/settings-nav";
+import { appQueryClient } from "@/lib/app-query-client";
 import {
   PALETTE_MODE_ENTRY_COMMANDS,
   PALETTE_MODES,
@@ -58,9 +68,15 @@ const MODE_BY_ACTION_ID = new Map(
 export interface CommandPaletteProps {
   threadId: string | null;
   projectId: string | null;
+  onSplit?: () => void;
 }
 
-export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
+export function CommandPalette({
+  threadId,
+  projectId,
+  onSplit,
+}: CommandPaletteProps) {
+  const navigate = useNavigate();
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
   const paletteShortcut = useAppCommandShortcut("palette.open");
@@ -72,8 +88,38 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const [actions, setActions] = useState<readonly PaletteAction[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [activeModeId, setActiveModeId] = useState<string | null>(null);
+  const [installedPlugins, setInstalledPlugins] = useState<
+    readonly PluginSettingsCandidate[]
+  >([]);
   const [recents, setRecents] = useState<readonly string[]>(() =>
     readPaletteRecents(),
+  );
+  const pluginSlots = usePluginSlots();
+  const settingsSections = useSettingsNavSections(pluginSlots.fileOpeners);
+  const pluginSettingsEntries = useMemo(
+    () =>
+      buildPluginSettingsEntries({
+        installedPlugins,
+        settingsSections: pluginSlots.settingsSections,
+      }),
+    [installedPlugins, pluginSlots.settingsSections],
+  );
+  const settingsActions = useMemo(
+    () =>
+      buildSettingsPaletteActions({
+        navigate: (path) => void navigate(path),
+        pluginEntries: pluginSettingsEntries,
+        sections: settingsSections,
+      }),
+    [navigate, pluginSettingsEntries, settingsSections],
+  );
+  const pluginPageActions = useMemo(
+    () =>
+      buildPluginPagePaletteActions({
+        navigate: (path) => void navigate(path),
+        panels: pluginSlots.navPanels,
+      }),
+    [navigate, pluginSlots.navPanels],
   );
   const openTargetRef = useRef<EventTarget | null>(null);
   const pendingRunRef = useRef<(() => void) | null>(null);
@@ -86,8 +132,20 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         dispatch: runner.dispatch,
         shortcuts,
       }),
+      ...(onSplit === undefined
+        ? []
+        : [
+            {
+              id: "internal:thread.split",
+              bucket: "Actions",
+              group: "Window and layout",
+              title: "Split",
+              shortcut: null,
+              run: onSplit,
+            } satisfies PaletteAction,
+          ]),
       ...buildPluginPaletteActions({
-        slots: getPluginSlotSnapshot().commandPaletteActions,
+        slots: pluginSlots.commandPaletteActions,
         threadId,
         projectId,
         openThreadPanel: getActiveThreadPanelOpener(),
@@ -99,8 +157,16 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       runner.isCommandAvailable,
       shortcuts,
       threadId,
+      onSplit,
+      pluginSlots.commandPaletteActions,
     ],
   );
+
+  const loadInstalledPlugins = useCallback(() => {
+    void appQueryClient
+      .fetchQuery(pluginListQueryOptions({ enabled: true }))
+      .then(setInstalledPlugins, () => {});
+  }, []);
 
   const prepareOpen = useCallback(
     (target: EventTarget | null) => {
@@ -108,8 +174,9 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       setActions(buildActions(target));
       setQuery("");
       setHighlightedIndex(0);
+      loadInstalledPlugins();
     },
-    [buildActions],
+    [buildActions, loadInstalledPlugins],
   );
 
   useAppCommandHandler("palette.open", (invocation) => {
@@ -138,9 +205,18 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     MODE_ENTRY_HANDLER_PRIORITY,
   );
 
+  const availableActions = useMemo(
+    () => [...actions, ...settingsActions, ...pluginPageActions],
+    [actions, pluginPageActions, settingsActions],
+  );
   const ranked = useMemo(
-    () => rankPaletteActions({ actions, query, recentIds: recents }),
-    [actions, query, recents],
+    () =>
+      rankPaletteActions({
+        actions: availableActions,
+        query,
+        recentIds: recents,
+      }),
+    [availableActions, query, recents],
   );
   const isGroupedRoot = query.trim() === "";
   const rootGroups = useMemo(() => {
