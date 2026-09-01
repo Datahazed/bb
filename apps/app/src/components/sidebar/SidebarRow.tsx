@@ -17,10 +17,10 @@ import {
 } from "./sidebarRowClasses";
 
 const SIDEBAR_ROW_GEOMETRY_CLASS =
-  "[--sidebar-row-action-gap:0.125rem] [--sidebar-row-column-gap:0.5rem] [--sidebar-row-content-inset:calc(var(--sidebar-row-column-gap)+var(--sidebar-row-depth)*var(--sidebar-row-depth-step))] [--sidebar-row-depth:0] [--sidebar-row-depth-step:1.5rem] [--sidebar-row-disclosure-rail:1.5rem] [--sidebar-row-identity-inset:calc(var(--sidebar-row-column-gap)+var(--sidebar-row-depth)*var(--sidebar-row-depth-step))] [--sidebar-row-identity-rail:1rem] [--sidebar-row-inline-padding:0.5rem] [--sidebar-row-status-rail:0.875rem] has-[[data-sidebar-row-slot=identity]]:[--sidebar-row-content-inset:var(--sidebar-row-column-gap)] max-md:pointer-coarse:[--sidebar-row-identity-rail:1.25rem] max-md:pointer-coarse:[--sidebar-row-status-rail:1.25rem]";
+  "[--sidebar-row-accessory-margin:var(--sidebar-row-column-gap)] [--sidebar-row-action-gap:0.125rem] [--sidebar-row-body-inset:calc(var(--sidebar-row-column-gap)+var(--sidebar-row-depth)*var(--sidebar-row-depth-step))] [--sidebar-row-column-gap:0.5rem] [--sidebar-row-content-inset:0px] [--sidebar-row-depth:0] [--sidebar-row-depth-step:0.75rem] [--sidebar-row-disclosure-rail:1.5rem] [--sidebar-row-identity-inset:0px] [--sidebar-row-identity-justify:flex-end] [--sidebar-row-identity-padding:var(--sidebar-row-identity-inset)] [--sidebar-row-identity-rail:1rem] [--sidebar-row-identity-slot-width:100%] [--sidebar-row-inline-padding:0.5rem] [--sidebar-row-status-rail:0.875rem] max-md:pointer-coarse:[--sidebar-row-identity-rail:1.25rem] max-md:pointer-coarse:[--sidebar-row-status-rail:1.25rem]";
 
 const SIDEBAR_TREE_ROW_GRID_CLASS =
-  "!grid [grid-template-areas:'status_content_accessory_actions'] [grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_auto] has-[[data-sidebar-row-slot=identity]]:[grid-template-areas:'status_identity_content_accessory_actions'] has-[[data-sidebar-row-slot=identity]]:[grid-template-columns:var(--sidebar-row-status-rail)_calc(var(--sidebar-row-identity-inset)+var(--sidebar-row-identity-rail))_minmax(0,1fr)_auto_auto] has-[[data-sidebar-row-slot=disclosure]]:[grid-template-areas:'status_content_accessory_actions_disclosure'] has-[[data-sidebar-row-slot=disclosure]]:[grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_auto_calc(var(--sidebar-row-column-gap)+var(--sidebar-row-disclosure-rail))] has-[[data-sidebar-row-slot=identity]]:has-[[data-sidebar-row-slot=disclosure]]:[grid-template-areas:'status_identity_content_accessory_actions_disclosure'] has-[[data-sidebar-row-slot=identity]]:has-[[data-sidebar-row-slot=disclosure]]:[grid-template-columns:var(--sidebar-row-status-rail)_calc(var(--sidebar-row-identity-inset)+var(--sidebar-row-identity-rail))_minmax(0,1fr)_auto_auto_calc(var(--sidebar-row-column-gap)+var(--sidebar-row-disclosure-rail))]";
+  "!grid [grid-template-areas:'status_body_actions_disclosure'] [grid-template-columns:var(--sidebar-row-status-rail)_minmax(0,1fr)_auto_var(--sidebar-row-disclosure-rail)]";
 
 const SIDEBAR_NAVIGATION_ROW_GRID_CLASS =
   "!grid [--sidebar-row-content-inset:0px] [--sidebar-row-identity-inset:0px] [grid-template-areas:'content_accessory_actions'] [grid-template-columns:minmax(0,1fr)_auto_auto] has-[[data-sidebar-row-slot=identity]]:[--sidebar-row-content-inset:var(--sidebar-row-column-gap)] has-[[data-sidebar-row-slot=identity]]:[grid-template-areas:'identity_content_accessory_actions'] has-[[data-sidebar-row-slot=identity]]:[grid-template-columns:var(--sidebar-row-identity-rail)_minmax(0,1fr)_auto_auto]";
@@ -143,6 +143,19 @@ export function SidebarRowStatusRail({
   );
 }
 
+export function SidebarRowBody({ className, ...props }: SidebarRowRailProps) {
+  return (
+    <SidebarRowRail
+      data-sidebar-row-slot="body"
+      className={cn(
+        "[--sidebar-row-accessory-margin:0px] [--sidebar-row-content-inset:0px] [--sidebar-row-identity-justify:center] [--sidebar-row-identity-padding:0px] [--sidebar-row-identity-slot-width:var(--sidebar-row-identity-rail)] [grid-area:body] inline-flex h-full min-w-0 items-center gap-[var(--sidebar-row-column-gap)] pl-[var(--sidebar-row-body-inset)]",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function SidebarRowIdentityRail({
   className,
   ...props
@@ -151,7 +164,7 @@ export function SidebarRowIdentityRail({
     <SidebarRowRail
       data-sidebar-row-slot="identity"
       className={cn(
-        "[grid-area:identity] inline-flex h-full w-full shrink-0 items-center justify-end pl-[var(--sidebar-row-identity-inset)]",
+        "[grid-area:identity] inline-flex h-full w-[var(--sidebar-row-identity-slot-width)] shrink-0 items-center justify-[var(--sidebar-row-identity-justify)] pl-[var(--sidebar-row-identity-padding)]",
         className,
       )}
       {...props}
@@ -171,7 +184,7 @@ export function SidebarRowContent({
     <SidebarRowRail
       data-sidebar-row-slot="content"
       className={cn(
-        "[grid-area:content] min-w-0 pl-[var(--sidebar-row-content-inset)]",
+        "[grid-area:content] min-w-0 flex-1 pl-[var(--sidebar-row-content-inset)]",
         className,
       )}
       {...props}
@@ -187,7 +200,7 @@ export function SidebarRowAccessory({
     <SidebarRowRail
       data-sidebar-row-slot="accessory"
       className={cn(
-        "[grid-area:accessory] ml-[var(--sidebar-row-column-gap)] min-w-0 shrink",
+        "[grid-area:accessory] ml-[var(--sidebar-row-accessory-margin)] min-w-0 shrink",
         className,
       )}
       {...props}
@@ -219,7 +232,7 @@ export function SidebarRowDisclosureRail({
     <SidebarRowRail
       data-sidebar-row-slot="disclosure"
       className={cn(
-        "[grid-area:disclosure] inline-flex h-full w-full shrink-0 items-center justify-end pl-[var(--sidebar-row-column-gap)]",
+        "[grid-area:disclosure] inline-flex h-full w-full shrink-0 items-center justify-center",
         className,
       )}
       {...props}

@@ -145,6 +145,14 @@ describe("SidebarDraftRows", () => {
       container.querySelectorAll('[data-sidebar-item-status="draft"]'),
     ).toHaveLength(2);
     expect(screen.getAllByLabelText("Draft")).toHaveLength(2);
+    expect(
+      rows.every(
+        (row) =>
+          row.querySelector('[data-sidebar-row-slot="status"]') !== null &&
+          row.querySelector('[data-sidebar-row-slot="body"]') !== null &&
+          row.querySelector('[data-sidebar-row-slot="actions"]') !== null,
+      ),
+    ).toBe(true);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open draft Older draft" }),
@@ -329,6 +337,15 @@ describe("SidebarArchivedThreadGroup", () => {
     expect(archivedState?.getAttribute("aria-label")).toBe("Archived");
     expect(
       archivedState?.closest('[data-sidebar-row-slot="status"]'),
+    ).not.toBeNull();
+    const archivedRow = archivedState?.closest(
+      "[data-sidebar-archived-thread-id]",
+    );
+    expect(
+      archivedRow?.querySelector('[data-sidebar-row-slot="body"]'),
+    ).not.toBeNull();
+    expect(
+      archivedRow?.querySelector('[data-sidebar-row-slot="actions"]'),
     ).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Unarchive thread" }));
     expect(threadActions.unarchiveThread).toHaveBeenCalledWith(

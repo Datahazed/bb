@@ -39,6 +39,7 @@ import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 import {
   SidebarRow,
   SidebarRowActions,
+  SidebarRowBody,
   SidebarRowContent,
   SidebarRowDisclosureRail,
   SidebarRowIdentityRail,
@@ -175,20 +176,6 @@ export function TopLevelSidebarSection({
           {...dragBindings?.attributes}
           {...(dragBindings?.listeners ?? {})}
         >
-          {leadingIcon ? (
-            <SidebarRowIdentityRail className="relative z-10 text-subtle-foreground">
-              <Icon
-                name={leadingIcon}
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
-                aria-hidden="true"
-              />
-            </SidebarRowIdentityRail>
-          ) : null}
-          <SidebarRowContent className="relative z-10 flex items-center text-left">
-            <span className="min-w-0 truncate" title={label}>
-              {label}
-            </span>
-          </SidebarRowContent>
           <SidebarRowStatusRail
             data-sidebar-group-status-slot=""
             className="relative z-20 inline-flex shrink-0 items-center"
@@ -201,6 +188,22 @@ export function TopLevelSidebarSection({
               </SidebarItemStatusSlot>
             ) : null}
           </SidebarRowStatusRail>
+          <SidebarRowBody>
+            {leadingIcon ? (
+              <SidebarRowIdentityRail className="relative z-10 text-subtle-foreground">
+                <Icon
+                  name={leadingIcon}
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                  aria-hidden="true"
+                />
+              </SidebarRowIdentityRail>
+            ) : null}
+            <SidebarRowContent className="relative z-10 flex items-center text-left">
+              <span className="min-w-0 truncate" title={label}>
+                {label}
+              </span>
+            </SidebarRowContent>
+          </SidebarRowBody>
           {actions ? (
             <SidebarRowActions
               data-sidebar-collapsible-trailing-controls=""
@@ -244,7 +247,6 @@ export function TopLevelSidebarSection({
                     : `Collapse ${label} section`
                 }
                 className={cn(
-                  !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
                   "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground/75 outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
                   LIST_HOVER_TRANSITION,
                 )}

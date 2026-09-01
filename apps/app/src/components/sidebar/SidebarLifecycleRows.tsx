@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/sidebar.js";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
-  SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -49,6 +48,8 @@ import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { SidebarItemStatusSlot } from "./SidebarItemStatus";
 import {
   SidebarRow,
+  SidebarRowActions,
+  SidebarRowBody,
   SidebarRowContent,
   SidebarRowStatusRail,
 } from "./SidebarRow";
@@ -258,29 +259,28 @@ function SidebarDraftRow({
             />
           </SidebarItemStatusSlot>
         </SidebarRowStatusRail>
-        <SidebarRowContent
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-            "flex min-w-0 flex-1 items-center gap-2",
-          )}
-        >
-          <span className="min-w-0 truncate" title={draft.title}>
-            {draft.title}
+        <SidebarRowBody>
+          <SidebarRowContent className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="min-w-0 truncate" title={draft.title}>
+              {draft.title}
+            </span>
+          </SidebarRowContent>
+        </SidebarRowBody>
+        <SidebarRowActions>
+          <span
+            data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "relative z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+            )}
+          >
+            <DraftActionsMenu
+              onDelete={draft.delete}
+              onOpenInSplit={splitEnabled ? draftSplit.openInSplit : undefined}
+              onOpenChange={setDropdownOpen}
+            />
           </span>
-        </SidebarRowContent>
-        <span
-          data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_CLASS,
-            "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
-          )}
-        >
-          <DraftActionsMenu
-            onDelete={draft.delete}
-            onOpenInSplit={splitEnabled ? draftSplit.openInSplit : undefined}
-            onOpenChange={setDropdownOpen}
-          />
-        </span>
+        </SidebarRowActions>
       </div>
     </SidebarRow>
   );
@@ -395,37 +395,36 @@ function SidebarArchivedThreadRow({
             />
           </SidebarItemStatusSlot>
         </SidebarRowStatusRail>
-        <SidebarRowContent
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-            "flex min-w-0 flex-1 items-center gap-2",
-          )}
-        >
-          <span className="min-w-0 truncate" title={title}>
-            {title}
-          </span>
-        </SidebarRowContent>
-        <span
-          data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_CLASS,
-            "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
-          )}
-        >
-          <ThreadArchiveQuickAction
-            thread={thread}
-            showLabel
-            className="h-6 px-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
-          />
-          <ThreadActionsMenu
-            thread={thread}
-            triggerClassName={cn(
-              "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+        <SidebarRowBody>
+          <SidebarRowContent className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="min-w-0 truncate" title={title}>
+              {title}
+            </span>
+          </SidebarRowContent>
+        </SidebarRowBody>
+        <SidebarRowActions>
+          <span
+            data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "relative z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
             )}
-            onOpenChange={setDropdownOpen}
-          />
-        </span>
+          >
+            <ThreadArchiveQuickAction
+              thread={thread}
+              showLabel
+              className="h-6 px-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+            />
+            <ThreadActionsMenu
+              thread={thread}
+              triggerClassName={cn(
+                "text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+              )}
+              onOpenChange={setDropdownOpen}
+            />
+          </span>
+        </SidebarRowActions>
       </div>
     </SidebarRow>
   );
