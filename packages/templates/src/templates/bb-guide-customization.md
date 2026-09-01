@@ -176,10 +176,11 @@ below inspect and repair that registry.
 
 `add` is an upsert by token: a known token refreshes its label and last-seen
 time and keeps its id. Expo tokens that are no longer registered are removed
-automatically after a failed delivery. `BB_PUSH_NOTIFICATIONS=false` (startup
-only) stops sending while keeping registrations; `BB_EXPO_PUSH_URL` points the
-sender at a stub for testing. Add --json to any of these commands for
-machine-readable output.
+automatically after a failed delivery. Use `bb settings general
+pushNotifications <true|false>` to control delivery without a restart.
+`BB_EXPO_PUSH_URL` changes the endpoint at server start. Add `--json` to any
+device command for machine-readable output. The list returns token suffixes,
+not full tokens.
 
 Host files and voice transcription
 

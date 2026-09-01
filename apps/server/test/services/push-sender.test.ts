@@ -1,12 +1,14 @@
 import {
-  applyThreadLifecycleEvent,
+  applyThreadLifecycleEvent as applyDbThreadLifecycleEvent,
   archiveThread,
   listPushSubscriptions,
+  setAppSettings,
   setPendingInteractionResolved,
   updateThread,
   upsertPushSubscription,
 } from "@bb/db";
-import { threadScope, turnScope } from "@bb/domain";
+import { defaultAppSettings, threadScope, turnScope } from "@bb/domain";
+import { EnvHttpProxyAgent } from "undici";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPushSender,
@@ -36,7 +38,6 @@ interface FakeExpo {
   fetch: PushSenderFetch;
   requests: ExpoPushMessage[][];
   sentAt: number[];
-  /** Per-token ticket overrides; defaults to `ok`. */
   ticketErrors: Map<string, string>;
 }
 
@@ -47,6 +48,7 @@ function createFakeExpo(): FakeExpo {
   const fetch: PushSenderFetch = async (url, init) => {
     expect(url).toBe(EXPO_URL);
     expect(init.headers["content-type"]).toBe("application/json");
+    expect(init.dispatcher).toBeInstanceOf(EnvHttpProxyAgent);
     const batch = JSON.parse(init.body) as ExpoPushMessage[];
     requests.push(batch);
     sentAt.push(Date.now());
@@ -78,6 +80,18 @@ async function waitForCoalesce(sender: PushSender): Promise<void> {
   await sender.settle();
 }
 
+function applyThreadLifecycleEvent(
+  db: TestAppHarness["db"],
+  hub: TestAppHarness["hub"],
+  args: Parameters<typeof applyDbThreadLifecycleEvent>[1],
+) {
+  const outcome = applyDbThreadLifecycleEvent(db, args);
+  if (outcome.applied) {
+    hub.notifyThread(args.threadId, ["status-changed"]);
+  }
+  return outcome;
+}
+
 describe("push sender", () => {
   let harness: TestAppHarness;
   let expo: FakeExpo;
@@ -90,7 +104,6 @@ describe("push sender", () => {
       db: harness.db,
       hub: harness.hub,
       logger: testLogger,
-      enabled: true,
       expoPushUrl: EXPO_URL,
       fetch: expo.fetch,
       coalesceMs: COALESCE_MS,
@@ -117,8 +130,6 @@ describe("push sender", () => {
       turnId: "turn-1",
       providerThreadId: "provider-thread-1",
     });
-    // A thread is born read (lastReadAt = createdAt); let the clock tick so
-    // the turn finishing below lands in a later millisecond, as in production.
     await new Promise((resolve) => setTimeout(resolve, 2));
     return fixture;
   }
@@ -172,6 +183,31 @@ describe("push sender", () => {
       channelId: "default",
       priority: "high",
     });
+    expect(messages[0]?.data).not.toHaveProperty("serverUrl");
+  });
+
+  it("includes the configured server URL in the notification data", async () => {
+    sender.stop();
+    sender = createPushSender({
+      db: harness.db,
+      hub: harness.hub,
+      logger: testLogger,
+      expoPushUrl: EXPO_URL,
+      serverUrl: "https://bb.example.com",
+      fetch: expo.fetch,
+      coalesceMs: COALESCE_MS,
+    });
+    sender.start();
+    const { thread } = await seedActiveThread();
+    applyThreadLifecycleEvent(harness.db, harness.hub, {
+      threadId: thread.id,
+      event: { type: "run.succeeded" },
+    });
+    await waitForCoalesce(sender);
+
+    expect(sentMessages(expo)[0]?.data.serverUrl).toBe(
+      "https://bb.example.com",
+    );
   });
 
   it("skips the push when a client read the thread inside the coalesce window", async () => {
@@ -180,7 +216,6 @@ describe("push sender", () => {
       threadId: thread.id,
       event: { type: "run.succeeded" },
     });
-    // The web marks the thread read as soon as attention lands while visible.
     updateThread(harness.db, harness.hub, thread.id, {
       lastReadAt: Date.now() + 1,
     });
@@ -228,7 +263,6 @@ describe("push sender", () => {
       threadId: thread.id,
       event: { type: "run.succeeded" },
     });
-    // A second attention bump in the same window (re-run + finish) merges.
     applyThreadLifecycleEvent(harness.db, harness.hub, {
       threadId: thread.id,
       event: { type: "run.started" },
@@ -240,7 +274,6 @@ describe("push sender", () => {
     await waitForCoalesce(sender);
     expect(sentMessages(expo)).toHaveLength(1);
 
-    // Right after a send, the next trigger waits out another window.
     applyThreadLifecycleEvent(harness.db, harness.hub, {
       threadId: thread.id,
       event: { type: "run.started" },
@@ -262,7 +295,6 @@ describe("push sender", () => {
       threadId: thread.id,
       event: { type: "run.succeeded" },
     });
-    // A queued message auto-sent before the window closed.
     applyThreadLifecycleEvent(harness.db, harness.hub, {
       threadId: thread.id,
       event: { type: "run.started" },
@@ -321,7 +353,6 @@ describe("push sender", () => {
       }),
     ]);
 
-    // An approval answered on the desktop before the window closes is silent.
     const other = seedThreadFixture(harness, {
       thread: { status: "active", title: "Other" },
     });
@@ -344,7 +375,6 @@ describe("push sender", () => {
     if (approval.outcome !== "created") {
       throw new Error(`unexpected outcome ${approval.outcome}`);
     }
-    // Resolve through the data layer: the lifecycle would need a live daemon.
     setPendingInteractionResolved(harness.db, {
       id: approval.interaction.id,
       resolution: JSON.stringify({ decision: "deny" }),
@@ -426,46 +456,68 @@ describe("push sender", () => {
     expect(expo.requests.map((batch) => batch.length)).toEqual([100, 21]);
   });
 
-  it("stays silent when disabled and survives Expo outages", async () => {
-    const disabledExpo = createFakeExpo();
-    const disabled = createPushSender({
-      db: harness.db,
-      hub: harness.hub,
-      logger: testLogger,
-      enabled: false,
-      expoPushUrl: EXPO_URL,
-      fetch: disabledExpo.fetch,
-      coalesceMs: COALESCE_MS,
+  it("reads the push setting at each flush", async () => {
+    setAppSettings(harness.db, {
+      ...defaultAppSettings,
+      pushNotifications: false,
     });
-    disabled.start();
+    const disabledThread = await seedActiveThread("Disabled");
+    applyThreadLifecycleEvent(harness.db, harness.hub, {
+      threadId: disabledThread.thread.id,
+      event: { type: "run.succeeded" },
+    });
+    await waitForCoalesce(sender);
+    expect(sentMessages(expo)).toEqual([]);
+
+    setAppSettings(harness.db, defaultAppSettings);
+    const enabledThread = await seedActiveThread("Enabled");
+    applyThreadLifecycleEvent(harness.db, harness.hub, {
+      threadId: enabledThread.thread.id,
+      event: { type: "run.succeeded" },
+    });
+    await waitForCoalesce(sender);
+    expect(sentMessages(expo)).toHaveLength(1);
+  });
+
+  it("limits network failure warnings to one per hour", async () => {
     const warn = vi.fn();
+    let now = 10_000;
     sender.stop();
     sender = createPushSender({
       db: harness.db,
       hub: harness.hub,
       logger: { ...testLogger, warn },
-      enabled: true,
       expoPushUrl: EXPO_URL,
       fetch: async () => {
         throw new Error("ECONNREFUSED");
       },
       coalesceMs: COALESCE_MS,
+      now: () => now,
     });
     sender.start();
 
-    const { thread } = await seedActiveThread();
-    applyThreadLifecycleEvent(harness.db, harness.hub, {
-      threadId: thread.id,
-      event: { type: "run.succeeded" },
-    });
-    await waitForCoalesce(sender);
-    await waitForCoalesce(disabled);
+    const trigger = async (title: string) => {
+      const { thread } = await seedActiveThread(title);
+      applyThreadLifecycleEvent(harness.db, harness.hub, {
+        threadId: thread.id,
+        event: { type: "run.succeeded" },
+      });
+      await waitForCoalesce(sender);
+    };
 
-    expect(disabledExpo.requests).toEqual([]);
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ count: 1 }),
-      "Expo push request failed",
-    );
-    disabled.stop();
+    await trigger("First");
+    now += 3_599_999;
+    await trigger("Second");
+    now += 1;
+    await trigger("Third");
+
+    expect(warn).toHaveBeenCalledTimes(2);
+    for (const [fields, message] of warn.mock.calls) {
+      expect(message).toBe("Expo push request failed");
+      expect(fields).toEqual({
+        pushSubscriptionIds: [expect.stringMatching(/^push_/u)],
+      });
+      expect(JSON.stringify(fields)).not.toContain("ExponentPushToken");
+    }
   });
 });

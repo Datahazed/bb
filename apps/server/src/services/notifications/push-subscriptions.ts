@@ -6,6 +6,7 @@ import {
 } from "@bb/db";
 import type {
   PushSubscription,
+  PushSubscriptionSummary,
   RegisterPushSubscriptionRequest,
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
@@ -20,18 +21,17 @@ export type RegisterPushSubscriptionResult =
   | { outcome: "created"; subscription: PushSubscription }
   | { outcome: "updated"; subscription: PushSubscription };
 
-/** Every device registered for push, oldest first. */
 export function listRegisteredPushSubscriptions(
   deps: Pick<PushSubscriptionServiceDeps, "db">,
-): PushSubscription[] {
-  return listPushSubscriptions(deps.db);
+): PushSubscriptionSummary[] {
+  return listPushSubscriptions(deps.db).map(
+    ({ expoPushToken, ...subscription }) => ({
+      ...subscription,
+      tokenSuffix: expoPushToken.slice(-6),
+    }),
+  );
 }
 
-/**
- * Register a device token or refresh an existing registration. The request
- * carries every field explicitly (the contract has no defaults), so the row
- * is exactly what the device told us.
- */
 export function registerPushSubscription(
   deps: PushSubscriptionServiceDeps,
   request: RegisterPushSubscriptionRequest,
@@ -53,7 +53,6 @@ export function registerPushSubscription(
   return result;
 }
 
-/** Remove a registration by id; 404 when it does not exist. */
 export function removePushSubscription(
   deps: PushSubscriptionServiceDeps,
   id: string,

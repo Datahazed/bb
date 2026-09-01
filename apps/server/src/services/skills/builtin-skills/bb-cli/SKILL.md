@@ -1,6 +1,6 @@
 ---
 name: bb-cli
-description: Use this when controlling bb. The bb CLI inspects and manages threads, environments, projects, machines, providers, skills, plugins, settings, terminals, and other BB services.
+description: Use this when controlling bb. The bb CLI inspects and manages threads, environments, projects, machines, providers, notifications, skills, plugins, settings, terminals, and other BB services.
 ---
 
 # BB CLI
@@ -41,6 +41,15 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Read references/plugins.md for plugin discovery, install, build, update,
   configuration, runtime, and contributed commands.
 - Read references/app-settings.md for complete app setting keys and effects.
+
+## Mobile push notifications
+
+Use `bb notifications push-subscriptions list` to inspect registered devices.
+The list shows token suffixes only. Use `add` to register a full Expo token.
+Use `remove <id>` to delete a registration.
+
+Use `bb settings general pushNotifications <true|false>` to control delivery.
+The setting takes effect without a server restart.
 
 ## Command habits
 

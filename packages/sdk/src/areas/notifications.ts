@@ -1,6 +1,7 @@
 import type {
   DeletePushSubscriptionResponse,
   PushSubscription,
+  PushSubscriptionSummary,
   RegisterPushSubscriptionRequest,
 } from "@bb/server-contract";
 import {
@@ -13,12 +14,10 @@ import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 export interface PushSubscriptionListArgs {
   signal?: AbortSignal;
 }
-export type PushSubscriptionListResult = PushSubscription[];
+export type PushSubscriptionListResult = PushSubscriptionSummary[];
 
-/** Every field is required: the device reports its own platform and name. */
 export type PushSubscriptionAddArgs = RegisterPushSubscriptionRequest;
 export interface PushSubscriptionAddResult {
-  /** `true` when the token was new, `false` when an existing row was refreshed. */
   created: boolean;
   subscription: PushSubscription;
 }
@@ -29,7 +28,6 @@ export interface PushSubscriptionRemoveArgs {
 export type PushSubscriptionRemoveResult = DeletePushSubscriptionResponse;
 
 export interface PushSubscriptionsArea {
-  /** Register an Expo push token, or refresh the registration for a known one. */
   add(args: PushSubscriptionAddArgs): Promise<PushSubscriptionAddResult>;
   list(args?: PushSubscriptionListArgs): Promise<PushSubscriptionListResult>;
   remove(
@@ -38,7 +36,6 @@ export interface PushSubscriptionsArea {
 }
 
 export interface NotificationsArea {
-  /** Devices the server pushes thread updates to through the Expo Push API. */
   pushSubscriptions: PushSubscriptionsArea;
 }
 
@@ -46,9 +43,6 @@ export function createNotificationsArea(
   args: CreateSdkAreaArgs,
 ): NotificationsArea {
   const { transport } = args;
-  // Resolve lazily, like every other area: the CLI test harness builds the SDK
-  // over a partial hono client, and an eager dereference here would throw for
-  // every command that never touches notifications.
   const endpoint = () => transport.api.v1.notifications["push-subscriptions"];
   const pushSubscriptions: PushSubscriptionsArea = {
     async add(input) {

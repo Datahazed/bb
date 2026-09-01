@@ -54,9 +54,18 @@ describe("public push subscriptions", () => {
       const list = pushSubscriptionListResponseSchema.parse(
         await readJson(listed),
       );
-      expect(list.subscriptions.map((row) => row.id)).toEqual([
-        subscription.id,
+      expect(list.subscriptions).toEqual([
+        {
+          id: subscription.id,
+          platform: "ios",
+          deviceLabel: "iPhone 17",
+          createdAt: subscription.createdAt,
+          lastSeenAt: expect.any(Number),
+          tokenSuffix: "n[abc]",
+        },
       ]);
+      expect(listed.headers.get("content-type")).toContain("application/json");
+      expect(JSON.stringify(list)).not.toContain("ExponentPushToken");
 
       const removed = await harness.app.request(`${PATH}/${subscription.id}`, {
         method: "DELETE",

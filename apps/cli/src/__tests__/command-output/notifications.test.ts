@@ -17,6 +17,14 @@ const subscription = {
   createdAt: 1_000,
   lastSeenAt: Date.now(),
 };
+const subscriptionSummary = {
+  id: subscription.id,
+  platform: subscription.platform,
+  deviceLabel: subscription.deviceLabel,
+  createdAt: subscription.createdAt,
+  lastSeenAt: subscription.lastSeenAt,
+  tokenSuffix: "n[abc]",
+};
 
 describe("bb notifications push-subscriptions commands", () => {
   setupCommandOutputTestEnvironment();
@@ -27,7 +35,7 @@ describe("bb notifications push-subscriptions commands", () => {
   it("lists registered devices as a table and as JSON", async () => {
     stubServerApi({
       "v1.notifications.push-subscriptions.$get": vi.fn(async () => ({
-        subscriptions: [subscription],
+        subscriptions: [subscriptionSummary],
       })),
     });
 
@@ -38,6 +46,9 @@ describe("bb notifications push-subscriptions commands", () => {
     expect(lines).toContain("Sawyer's iPhone");
     expect(lines).toContain("ios");
     expect(lines).toContain("just now");
+    expect(lines).toContain("Token suffix");
+    expect(lines).toContain("n[abc]");
+    expect(lines).not.toContain("ExponentPushToken");
 
     vi.mocked(console.log).mockClear();
     await runCommand(
@@ -45,7 +56,7 @@ describe("bb notifications push-subscriptions commands", () => {
       register,
     );
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      JSON.stringify([subscription], null, 2),
+      JSON.stringify([subscriptionSummary], null, 2),
     ]);
   });
 

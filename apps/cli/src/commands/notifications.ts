@@ -2,8 +2,8 @@ import { Command } from "commander";
 import {
   pushSubscriptionPlatformSchema,
   pushSubscriptionPlatformValues,
-  type PushSubscription,
   type PushSubscriptionPlatform,
+  type PushSubscriptionSummary,
 } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -11,7 +11,6 @@ import { renderBorderlessTable } from "../table.js";
 import { formatMachineLastSeen } from "./machine.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 
-// Commander enforces the three required options before the action runs.
 interface PushSubscriptionAddCommandOptions extends JsonOutputOptions {
   token: string;
   platform: string;
@@ -29,7 +28,7 @@ function parsePlatform(value: string): PushSubscriptionPlatform {
 }
 
 function printPushSubscriptionTable(
-  subscriptions: readonly PushSubscription[],
+  subscriptions: readonly PushSubscriptionSummary[],
 ): void {
   const now = Date.now();
   const rows = subscriptions.map((subscription) => [
@@ -37,20 +36,20 @@ function printPushSubscriptionTable(
     subscription.deviceLabel,
     subscription.platform,
     formatMachineLastSeen(subscription.lastSeenAt, now),
-    subscription.expoPushToken,
+    subscription.tokenSuffix,
   ]);
   const widths = [
     Math.max(2, ...rows.map((row) => row[0].length)),
     Math.max(6, ...rows.map((row) => row[1].length)),
     Math.max(8, ...rows.map((row) => row[2].length)),
     Math.max(9, ...rows.map((row) => row[3].length)),
-    Math.max(5, ...rows.map((row) => row[4].length)),
+    Math.max(12, ...rows.map((row) => row[4].length)),
   ];
   console.log("");
   console.log(
     renderBorderlessTable(
       {
-        head: ["ID", "Device", "Platform", "Last seen", "Token"],
+        head: ["ID", "Device", "Platform", "Last seen", "Token suffix"],
         colWidths: widths,
         trimTrailingWhitespace: true,
       },

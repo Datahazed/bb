@@ -307,11 +307,29 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.6-luna");
     expect(serverConfig.BB_INFERENCE_FALLBACK).toBe("codex/gpt-5.4-mini");
     expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-transcribe");
+    expect(serverConfig.BB_EXPO_PUSH_URL).toBe(
+      "https://exp.host/--/api/v2/push/send",
+    );
     expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       timelineWindowEventBudget: 1_500,
     });
+  });
+
+  it("reads an Expo push URL override", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_EXPO_PUSH_URL: "http://127.0.0.1:4999/push",
+      }),
+    });
+
+    expect(serverConfig.BB_EXPO_PUSH_URL).toBe("http://127.0.0.1:4999/push");
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_EXPO_PUSH_URL: "not-a-url" }),
+      }),
+    ).toThrow(/BB_EXPO_PUSH_URL/u);
   });
 
   it("carries the launcher's server launch id only when it is set", () => {

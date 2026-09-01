@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   pushSubscriptionPlatformSchema,
   pushSubscriptionSchema,
+  pushSubscriptionSummarySchema,
 } from "@bb/domain";
 
 export {
@@ -11,24 +12,19 @@ export {
   pushSubscriptionPlatformSchema,
   pushSubscriptionPlatformValues,
   pushSubscriptionSchema,
+  pushSubscriptionSummarySchema,
 } from "@bb/domain";
 export type {
   PushNotificationData,
   PushNotificationKind,
   PushSubscription,
   PushSubscriptionPlatform,
+  PushSubscriptionSummary,
 } from "@bb/domain";
 
-// Expo tokens look like `ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]`; the cap
-// only bounds request size.
 export const EXPO_PUSH_TOKEN_MAX_LENGTH = 512;
 export const PUSH_SUBSCRIPTION_DEVICE_LABEL_MAX_LENGTH = 120;
 
-/**
- * Registers a device for push, or refreshes its row when the token is already
- * known (same id, new label and `lastSeenAt`). Every field is required: the
- * device knows its own platform and name, and the server never guesses them.
- */
 export const registerPushSubscriptionRequestSchema = z
   .object({
     expoPushToken: z.string().trim().min(1).max(EXPO_PUSH_TOKEN_MAX_LENGTH),
@@ -46,7 +42,7 @@ export type RegisterPushSubscriptionRequest = z.infer<
 
 export const pushSubscriptionListResponseSchema = z
   .object({
-    subscriptions: z.array(pushSubscriptionSchema),
+    subscriptions: z.array(pushSubscriptionSummarySchema),
   })
   .strict();
 export type PushSubscriptionListResponse = z.infer<

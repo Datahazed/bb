@@ -120,6 +120,7 @@ export type {
 export {
   getAppKeybindingOverrides,
   getAppSettings,
+  getPushNotificationsEnabled,
   setAppKeybindingOverrides,
   setAppSettings,
 } from "./app-settings.js";

@@ -23,7 +23,6 @@ import {
   BB_INFERENCE_ENV,
   BB_MARKETPLACE_URL_ENV,
   BB_POSTHOG_API_KEY_ENV,
-  BB_PUSH_NOTIFICATIONS_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
   BB_TELEMETRY_ENV,
@@ -37,7 +36,6 @@ import {
   DEFAULT_BB_INFERENCE,
   DEFAULT_BB_MARKETPLACE_URL,
   DEFAULT_BB_POSTHOG_API_KEY,
-  DEFAULT_BB_PUSH_NOTIFICATIONS,
   DEFAULT_BB_SERVER_BIND_HOST,
   DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
@@ -64,7 +62,6 @@ export interface ServerConfig
   BB_INFERENCE: string;
   BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
-  BB_PUSH_NOTIFICATIONS: boolean;
   BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_SERVER_LAUNCH_ID?: string;
@@ -175,12 +172,6 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
       definition: BB_POSTHOG_API_KEY_ENV,
-      env: loader.env,
-    }),
-    BB_PUSH_NOTIFICATIONS: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_PUSH_NOTIFICATIONS,
-      definition: BB_PUSH_NOTIFICATIONS_ENV,
       env: loader.env,
     }),
     BB_SERVER_BIND_HOST: readEnvVarWithDefault({

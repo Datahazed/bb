@@ -130,14 +130,12 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
-  // Push fan-out listens to the hub's change stream; it needs no daemon
-  // cooperation and nothing about it crosses the host protocol.
   const pushSender = createPushSender({
     db,
-    enabled: serverConfig.BB_PUSH_NOTIFICATIONS,
     expoPushUrl: serverConfig.BB_EXPO_PUSH_URL,
     hub,
     logger,
+    ...(appUrl === undefined ? {} : { serverUrl: appUrl }),
   });
   pushSender.start();
 

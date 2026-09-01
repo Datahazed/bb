@@ -1973,10 +1973,18 @@ describe("@bb/sdk", () => {
       createdAt: 1,
       lastSeenAt: 2,
     };
+    const subscriptionSummary = {
+      id: subscription.id,
+      platform: subscription.platform,
+      deviceLabel: subscription.deviceLabel,
+      createdAt: subscription.createdAt,
+      lastSeenAt: subscription.lastSeenAt,
+      tokenSuffix: "n[abc]",
+    };
     const queue = createFetchQueue([
       { body: subscription, status: 201 },
       { body: { ...subscription, lastSeenAt: 3 } },
-      { body: { subscriptions: [subscription] } },
+      { body: { subscriptions: [subscriptionSummary] } },
       { body: { ok: true } },
       {
         body: {
@@ -2009,7 +2017,7 @@ describe("@bb/sdk", () => {
       subscription: { ...subscription, lastSeenAt: 3 },
     });
     await expect(sdk.notifications.pushSubscriptions.list()).resolves.toEqual([
-      subscription,
+      subscriptionSummary,
     ]);
     await expect(
       sdk.notifications.pushSubscriptions.remove({ id: "push_123" }),

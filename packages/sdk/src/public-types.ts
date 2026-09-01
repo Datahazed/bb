@@ -8,6 +8,7 @@ export type {
   PushNotificationKind,
   PushSubscription,
   PushSubscriptionPlatform,
+  PushSubscriptionSummary,
   ReasoningLevel,
   ServiceTier,
   ThreadStatus,

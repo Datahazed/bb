@@ -50,6 +50,13 @@ every window and client sees the same value.
   software-keyboard Return path stays a newline; iPadOS WebKit preserves the
   Enter shortcuts for a connected Magic Keyboard.
 
+## Push notifications
+
+- `pushNotifications` defaults to true. Set it with
+  `bb settings general pushNotifications <true|false|on|off>`.
+- The setting controls delivery to all registered mobile devices.
+- The server keeps registrations while delivery is off.
+
 ## Streamer mode
 
 - `streamerMode` defaults to false. Set it with

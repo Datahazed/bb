@@ -298,8 +298,21 @@ function dropThreadConversationOutlinesTable(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS thread_conversation_outlines").run();
 }
 
+function dropPushSubscriptionsSchema(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS push_subscriptions").run();
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(app_settings)")
+    .all();
+  if (columns.some((column) => column.name === "push_notifications")) {
+    db.$client
+      .prepare("ALTER TABLE app_settings DROP COLUMN push_notifications")
+      .run();
+  }
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
   dropThreadConversationOutlinesTable(db);
+  dropPushSubscriptionsSchema(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
@@ -810,6 +823,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 }
 
 function dropPost0023Tables(db: DbConnection): void {
+  dropPushSubscriptionsSchema(db);
   dropEventParentToolCallIdColumn(db);
   dropQueueReworkSchema(db);
   dropEnvironmentRetireRequestedAtColumn(db);
@@ -1599,6 +1613,7 @@ describe("migrate", () => {
 
       expect(getAppSettings(db)).toEqual({
         showKeyboardHints: false,
+        pushNotifications: true,
         steerActiveThreadOnEnter: true,
         showUnhandledProviderEvents: true,
         providerOrder: [],
@@ -2140,6 +2155,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(permissionModesMigrationWhen);
+      dropPushSubscriptionsSchema(db);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
@@ -2545,6 +2561,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      dropPushSubscriptionsSchema(db);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
@@ -2647,6 +2664,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      dropPushSubscriptionsSchema(db);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
@@ -5234,6 +5252,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(eventParentToolCallMigrationWhen);
+      dropPushSubscriptionsSchema(db);
       db.$client.exec(`
         INSERT INTO events (
           id, thread_id, scope_kind, turn_id, sequence, type, item_id, item_kind, data, created_at

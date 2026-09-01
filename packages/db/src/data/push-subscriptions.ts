@@ -16,7 +16,6 @@ export type UpsertPushSubscriptionResult =
   | { outcome: "created"; subscription: PushSubscriptionRow }
   | { outcome: "updated"; subscription: PushSubscriptionRow };
 
-/** Every registered device, oldest first, for listings and push fan-out. */
 export function listPushSubscriptions(
   db: DbQueryConnection,
 ): PushSubscriptionRow[] {
@@ -53,11 +52,6 @@ export function getPushSubscriptionByToken(
   );
 }
 
-/**
- * Register a device token, or refresh the existing row for that token: the
- * label and `lastSeenAt` move, the id and `createdAt` stay stable so clients
- * can keep the id they were first handed.
- */
 export function upsertPushSubscription(
   db: DbConnection,
   input: UpsertPushSubscriptionInput,
@@ -98,7 +92,6 @@ export function upsertPushSubscription(
   });
 }
 
-/** Returns true when a row was removed. */
 export function deletePushSubscription(db: DbConnection, id: string): boolean {
   return (
     db
@@ -109,7 +102,6 @@ export function deletePushSubscription(db: DbConnection, id: string): boolean {
   );
 }
 
-/** Returns true when a row was removed. */
 export function deletePushSubscriptionByToken(
   db: DbConnection,
   expoPushToken: string,

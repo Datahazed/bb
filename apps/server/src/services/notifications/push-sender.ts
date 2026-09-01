@@ -1,6 +1,7 @@
 import {
   deletePushSubscriptionByToken,
   getActivePendingInteractionForThread,
+  getPushNotificationsEnabled,
   getThread,
   listPushSubscriptions,
   type DbConnection,
@@ -12,6 +13,8 @@ import type {
   PushNotificationKind,
   PushSubscription,
 } from "@bb/domain";
+import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
+import type { Dispatcher } from "undici";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
@@ -23,24 +26,18 @@ import {
 
 type ThreadRow = NonNullable<ReturnType<typeof getThread>>;
 
-/** Expo accepts at most 100 messages per request. */
 const EXPO_PUSH_BATCH_SIZE = 100;
-/** Burst window per thread: later triggers merge into one push, and two pushes for one thread are never closer than this. */
 const DEFAULT_COALESCE_MS = 2_000;
 const PUSH_TITLE_MAX_LENGTH = 80;
 const PUSH_BODY_MAX_LENGTH = 180;
 const ATTENTION_MEMORY_LIMIT = 10_000;
-/** Most actionable first: one push per flush carries the top kind. */
+const NETWORK_WARNING_INTERVAL_MS = 60 * 60 * 1_000;
 const PUSH_KIND_PRIORITY: readonly PushNotificationKind[] = [
   "pending-interaction",
   "thread-error",
   "turn-finished",
 ];
 
-/**
- * Expo Push API ticket response. Tickets line up with the request messages;
- * a `DeviceNotRegistered` ticket means the token is dead and must be dropped.
- */
 const expoPushTicketSchema = z.union([
   z.object({ status: z.literal("ok"), id: z.string().optional() }),
   z.object({
@@ -73,17 +70,20 @@ export interface ExpoPushMessage {
 
 export type PushSenderFetch = (
   url: string,
-  init: { method: "POST"; headers: Record<string, string>; body: string },
+  init: {
+    method: "POST";
+    headers: Record<string, string>;
+    body: string;
+    dispatcher: Dispatcher;
+  },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 export interface CreatePushSenderArgs {
   db: DbConnection;
   hub: Pick<NotificationHub, "onChangedMessage">;
   logger: ServerLogger;
-  /** `BB_PUSH_NOTIFICATIONS`: when false the sender never subscribes. */
-  enabled: boolean;
-  /** `BB_EXPO_PUSH_URL`. */
   expoPushUrl: string;
+  serverUrl?: string;
   fetch?: PushSenderFetch;
   coalesceMs?: number;
   now?: () => number;
@@ -92,13 +92,11 @@ export interface CreatePushSenderArgs {
 export interface PushSender {
   start(): void;
   stop(): void;
-  /** Test hook: wait for every in-flight Expo request to settle. */
   settle(): Promise<void>;
 }
 
 interface PendingThreadPush {
   kinds: Set<PushNotificationKind>;
-  /** When the newest trigger landed; a read after it cancels the push. */
   eventAt: number;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -184,34 +182,23 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return chunks;
 }
 
-/**
- * Fans push-worthy thread changes out to every registered mobile device.
- *
- * Triggers (from the hub's change stream): a new pending interaction
- * (`interactions-changed` with `hasPendingInteraction`), a root thread's
- * turn finishing or a run failing (any change that advanced
- * `latestAttentionAt`). Triggers coalesce per thread for `coalesceMs`; at
- * flush the thread is re-read and the push is dropped when a client already
- * read it, the interaction was answered, the agent is working again, or the
- * thread was archived/deleted.
- */
 export function createPushSender(args: CreatePushSenderArgs): PushSender {
   const {
     db,
     hub,
     logger,
-    enabled,
     expoPushUrl,
+    serverUrl,
     coalesceMs = DEFAULT_COALESCE_MS,
     now = () => Date.now(),
   } = args;
-  const fetchImpl: PushSenderFetch =
-    args.fetch ?? ((url, init) => globalThis.fetch(url, init));
+  const fetchImpl: PushSenderFetch = args.fetch ?? undiciFetch;
+  const dispatcher = new EnvHttpProxyAgent();
   const pending = new Map<string, PendingThreadPush>();
-  /** Last `latestAttentionAt` seen per thread, to spot a fresh bump. */
   const seenAttentionAt = new Map<string, number>();
   const inFlight = new Set<Promise<void>>();
   let startedAt = 0;
+  let lastNetworkWarningAt = Number.NEGATIVE_INFINITY;
   let unsubscribe: (() => void) | null = null;
 
   function rememberAttention(threadId: string, attentionAt: number): void {
@@ -245,8 +232,6 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       existing.eventAt = Math.max(existing.eventAt, eventAt);
       return;
     }
-    // Every flush waits out the window, so two pushes for one thread are
-    // always at least `coalesceMs` apart.
     const timer = setTimeout(() => {
       const entry = pending.get(threadId);
       pending.delete(threadId);
@@ -274,8 +259,6 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       cancel(threadId);
       return;
     }
-    // First sighting: attention older than this sender (or as old as the
-    // thread itself, which is born read) is history, not a trigger.
     const previous =
       seenAttentionAt.get(threadId) ??
       Math.max(thread.createdAt, startedAt - 1);
@@ -344,7 +327,6 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       }
     }
     if (isThreadRead(thread) && (thread.lastReadAt ?? 0) >= entry.eventAt) {
-      // A client showed the thread after the trigger: nothing to announce.
       kinds.delete("turn-finished");
       kinds.delete("thread-error");
     }
@@ -391,6 +373,9 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     threadId: string,
     entry: PendingThreadPush,
   ): Promise<void> {
+    if (!getPushNotificationsEnabled(db)) {
+      return;
+    }
     const thread = getThread(db, threadId);
     if (
       !thread ||
@@ -414,6 +399,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       kind: resolved.kind,
       projectId: thread.projectId,
       threadId: thread.id,
+      ...(serverUrl === undefined ? {} : { serverUrl }),
     };
     const messages: ExpoPushMessage[] = subscriptions.map((subscription) => ({
       to: subscription.expoPushToken,
@@ -443,14 +429,27 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
           "content-type": "application/json",
         },
         body: JSON.stringify(batch),
+        dispatcher,
       });
       status = response.status;
       responseText = await response.text();
-    } catch (error) {
-      logger.warn(
-        { err: error, count: batch.length },
-        "Expo push request failed",
-      );
+    } catch {
+      const warningAt = now();
+      if (warningAt - lastNetworkWarningAt >= NETWORK_WARNING_INTERVAL_MS) {
+        lastNetworkWarningAt = warningAt;
+        logger.warn(
+          {
+            pushSubscriptionIds: subscriptions
+              .filter((subscription) =>
+                batch.some(
+                  (message) => message.to === subscription.expoPushToken,
+                ),
+              )
+              .map((subscription) => subscription.id),
+          },
+          "Expo push request failed",
+        );
+      }
       return;
     }
     let parsed: z.infer<typeof expoPushResponseSchema>;
@@ -465,7 +464,10 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
     if (parsed.errors && parsed.errors.length > 0) {
       logger.warn(
-        { status, errors: parsed.errors },
+        {
+          status,
+          errorCodes: parsed.errors.map((error) => error.code ?? null),
+        },
         "Expo push request was rejected",
       );
       return;
@@ -496,7 +498,10 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       logger.warn(
         {
           error: ticket.details?.error ?? null,
-          message: ticket.message ?? null,
+          pushSubscriptionId:
+            subscriptions.find(
+              (subscription) => subscription.expoPushToken === message.to,
+            )?.id ?? null,
         },
         "Expo push ticket reported an error",
       );
@@ -505,7 +510,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
 
   return {
     start() {
-      if (!enabled || unsubscribe !== null) {
+      if (unsubscribe !== null) {
         return;
       }
       startedAt = now();
