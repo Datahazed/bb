@@ -136,6 +136,33 @@ describe("worktree server entry", () => {
     await host.harness.dispose();
   });
 
+  it("restarts a stale creating launch left behind by a server restart", async () => {
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: { projects: { get: async () => projectWithSource() } },
+      experimental_callHostRpc: () => ({ path: "/hosts/worktrees/thread-1/repo" }),
+    });
+    await plugin(host.bb);
+    await host.bb.storage.kv.set("launch:thread-1", {
+      phase: "creating",
+      progress: "Creating worktree…",
+    });
+    const target =
+      host.harness.registrations.environmentTargets.get("worktree");
+
+    await expect(
+      target!.provision(provisionContext(CONFIGURATION)),
+    ).resolves.toEqual({ action: "wait", reason: "Creating worktree…" });
+    await vi.waitFor(() => {
+      expect(host.harness.recheckCount).toBe(1);
+    });
+    expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
+    await expect(
+      target!.provision(provisionContext(CONFIGURATION)),
+    ).resolves.toMatchObject({ action: "ready" });
+    await host.harness.dispose();
+  });
+
   it("answers a retryable wait after the host create fails", async () => {
     const host = createFakePluginHost({
       pluginId: "worktree",

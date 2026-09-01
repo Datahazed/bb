@@ -147,6 +147,9 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       }
       switch (launch.phase) {
         case "creating":
+          if (!launchingThreadIds.has(thread.id)) {
+            void create(thread.id, project.id, parsed.data);
+          }
           return { action: "wait", reason: launch.progress };
         case "failed":
           return {
