@@ -45,11 +45,6 @@ function toSidebarRegionId(value: unknown): SidebarRegionId | null {
   return REGION_BY_LEGACY_SECTION_ID[value] ?? null;
 }
 
-/**
- * Keeps every code-owned region exactly once. Unknown and duplicate ids are
- * discarded, while regions introduced after a preference was written append
- * in their default relative order.
- */
 export function normalizeSidebarRegionOrder(value: unknown): SidebarRegionId[] {
   const presentOrder: SidebarRegionId[] = [];
   if (Array.isArray(value)) {

@@ -18,6 +18,13 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
 });
+
+function expectClasses(element: Element, ...classNames: string[]): void {
+  for (const className of classNames) {
+    expect(element.classList.contains(className)).toBe(true);
+  }
+}
+
 function renderMenu() {
   const store = createStore();
   render(
@@ -44,9 +51,11 @@ describe("SidebarTopRegionCustomizeMenu", () => {
       </TooltipProvider>,
     );
 
-    expect(
+    expectClasses(
       screen.getByRole("button", { name: "Customize sidebar" }),
-    ).toHaveClass("text-subtle-foreground", "opacity-60");
+      "text-subtle-foreground",
+      "opacity-60",
+    );
   });
 
   it("shows exactly the four host-owned rows in stored order", async () => {
@@ -79,7 +88,8 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     expect(
       document.querySelectorAll("[data-sidebar-customize-drag-handle]"),
     ).toHaveLength(4);
-    expect(screen.getByText("Customize")).toHaveClass(
+    expectClasses(
+      screen.getByText("Customize"),
       "text-sm",
       "font-medium",
       "text-popover-foreground",
@@ -107,7 +117,8 @@ describe("SidebarTopRegionCustomizeMenu", () => {
     )) {
       expect(dragIcon.classList.contains("size-4")).toBe(true);
     }
-    expect(screen.getByText("Sidebar order")).toHaveClass(
+    expectClasses(
+      screen.getByText("Sidebar order"),
       "text-xs",
       "font-normal",
       "text-subtle-foreground/75",
