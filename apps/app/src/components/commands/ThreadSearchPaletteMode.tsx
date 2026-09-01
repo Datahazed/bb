@@ -359,7 +359,17 @@ function ThreadSearchScopeFilter({
             cycle(event.key === "ArrowDown" ? 1 : -1);
             return;
           }
-          if (event.key === "Enter" || event.key === "Escape") {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            if (open) {
+              returnToInput();
+            } else {
+              setOpen(true);
+            }
+            return;
+          }
+          if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
             returnToInput();
