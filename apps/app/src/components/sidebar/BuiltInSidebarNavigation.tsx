@@ -1,11 +1,20 @@
 import type { ComponentProps } from "react";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import {
+  AutomationsNavSidebarItem,
+  ExtensionsNavSidebarItem,
+  getTraditionalPluginNavPanelEntries,
+  PluginNavSidebarItems,
+} from "@/components/plugin/PluginNavSidebarItems";
+import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
+import { AUTOMATIONS_PLUGIN_ID } from "@/lib/route-paths";
 import { ProjectListActionButtons } from "./ProjectList";
 
 export type BuiltInSidebarNavigationProps = ComponentProps<
   typeof ProjectListActionButtons
 > &
-  ComponentProps<typeof PluginNavSidebarItems>;
+  ComponentProps<typeof PluginNavSidebarItems> & {
+    toolsRoutePath?: string;
+  };
 
 export function BuiltInSidebarNavigation({
   newThreadSplit,
@@ -15,6 +24,14 @@ export function BuiltInSidebarNavigation({
   splitEnabled,
   toolsRoutePath,
 }: BuiltInSidebarNavigationProps) {
+  const pluginNavPanels = usePluginNavPanelChrome();
+  const automationsNavPanel = pluginNavPanels.find(
+    ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
+  );
+  const traditionalPluginNavPanels = getTraditionalPluginNavPanelEntries(
+    pluginNavPanels,
+  );
+
   return (
     <div className="contents" data-testid="built-in-sidebar-navigation">
       <div
@@ -27,11 +44,23 @@ export function BuiltInSidebarNavigation({
           onNewChat={onNewChat}
           onSearchThreads={onSearchThreads}
         />
+        {toolsRoutePath ? (
+          <ExtensionsNavSidebarItem
+            routePath={toolsRoutePath}
+            onNavigate={onNavigate}
+          />
+        ) : null}
+        {automationsNavPanel ? (
+          <AutomationsNavSidebarItem
+            chrome={automationsNavPanel.chrome}
+            onNavigate={onNavigate}
+          />
+        ) : null}
       </div>
       <PluginNavSidebarItems
+        entries={traditionalPluginNavPanels}
         onNavigate={onNavigate}
         splitEnabled={splitEnabled}
-        toolsRoutePath={toolsRoutePath}
       />
     </div>
   );
