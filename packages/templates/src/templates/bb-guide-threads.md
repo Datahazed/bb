@@ -23,7 +23,7 @@ Spawning:
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
-    --base-branch <branch>         Base branch for a new managed worktree
+    --base-branch <branch>         Exact Git ref for a new managed worktree
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
@@ -60,6 +60,8 @@ Spawning:
   workspace. It cannot be combined with an existing environment ID because that
   environment already selects its machine. Without the flag, local/primary
   machine resolution is unchanged.
+  Omit --base-branch for bb's default. Explicit values are exact; use
+  origin/<branch> for a remote ref.
 
 Forking:
 
@@ -149,7 +151,7 @@ Inspecting:
     --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit
     --diff-sha <sha>                       Commit SHA (for --diff-target commit)
     --diff-merge-base <branch>             Override merge-base branch for diff
-    --merge-base-branches                  List available merge-base branches
+    --merge-base-branches                  List available local and remote merge-base branches
 
   Shows pull request status for the attached environment branch when available.
 
