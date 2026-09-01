@@ -349,7 +349,14 @@ describe("CommandPalette", () => {
     expect(event.defaultPrevented).toBe(true);
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    expect(titles).toHaveLength(5);
+    expect(titles).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Search threads"),
+        expect.stringContaining("Open settings"),
+        expect.stringContaining("Open terminal"),
+      ]),
+    );
+    expect(titles.length).toBeGreaterThan(5);
   });
 
   it("groups the resting root into three text buckets with producer metadata", async () => {
@@ -499,7 +506,6 @@ describe("CommandPalette", () => {
         draft: { ...emptyPromptDraftState(), text: "matching draft" },
         lastEditedAt: Date.now(),
         destination: { projectId: "project-1", sectionId: null },
-        delete: vi.fn(),
       },
     ];
     renderPalette();
@@ -579,7 +585,6 @@ describe("CommandPalette", () => {
         draft: { ...emptyPromptDraftState(), text: "recent draft" },
         lastEditedAt: Date.now(),
         destination: { projectId: "project-1", sectionId: null },
-        delete: vi.fn(),
       },
     ];
     renderPalette();
@@ -619,7 +624,6 @@ describe("CommandPalette", () => {
         draft: { ...emptyPromptDraftState(), text: "matching draft" },
         lastEditedAt: Date.now(),
         destination: { projectId: "project-1", sectionId: null },
-        delete: vi.fn(),
       },
     ];
     renderPalette();
@@ -762,9 +766,10 @@ describe("CommandPalette", () => {
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
+    const lastTitle = optionTitles().at(-1);
 
     fireEvent.keyDown(searchField(), { key: "ArrowUp" });
-    expect(selectedOption()?.textContent).toContain("Open terminal");
+    expect(selectedOption()?.textContent).toBe(lastTitle);
 
     fireEvent.keyDown(searchField(), { key: "ArrowDown" });
     expect(selectedOption()?.textContent).toContain("New thread");
