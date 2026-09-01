@@ -564,12 +564,18 @@ function makeQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg_1",
+    threadId: "thr_1",
     content: [{ type: "text", text: "Already queued", mentions: [] }],
     model: "gpt-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    failureReason: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 1,
     updatedAt: 1,
     ...overrides,

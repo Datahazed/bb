@@ -74,6 +74,7 @@ export function useSettingsNavState(): SettingsNavState {
           ? sectionParam
           : "general";
 
+  const installedPlugins = pluginListQuery.data?.plugins ?? [];
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
       return (
@@ -82,7 +83,7 @@ export function useSettingsNavState(): SettingsNavState {
     }
     return true;
   });
-  const pluginEntries = (pluginListQuery.data?.plugins ?? [])
+  const pluginEntries = installedPlugins
     .filter(
       (plugin) =>
         plugin.enabled &&

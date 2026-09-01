@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -422,6 +423,7 @@ export function ThreadDetailPromptArea({
     commitInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
     beginEditQueuedMessage,
+    queuedMessageDraftSession,
   } = useInlineQueuedMessageEditing({
     ownerThreadId: thread.id,
     queuedMessages,
@@ -430,6 +432,8 @@ export function ThreadDetailPromptArea({
       setEditFocusNonce((nonce) => nonce + 1);
     },
   });
+  const inlineDraftSession = queuedMessageDraftSession;
+  const inlineDraftSessionRef = useLatestRef(inlineDraftSession);
   const promptHistoryEnabled = usePromptHistoryEnabled();
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
     thread.id,
@@ -460,9 +464,8 @@ export function ThreadDetailPromptArea({
       projectId,
       threadId: thread.id,
     },
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
+    inlineDraft: inlineEditingQueuedMessage?.draft ?? null,
+    inlineSessionRef: inlineDraftSessionRef,
   });
   const subscribeInlineQueuedDraft = useComposerHostDraftNotifier(
     inlineEditingQueuedMessage?.draft ?? null,
@@ -498,9 +501,8 @@ export function ThreadDetailPromptArea({
   } = useComposerAttachmentUploads({
     projectId,
     addDraftAttachment: promptDraft.addAttachment,
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
+    inlineEditSessionId: inlineDraftSession?.editSessionId ?? null,
+    inlineSessionRef: inlineDraftSessionRef,
   });
   const {
     attachmentError: sentMessageAttachmentError,
@@ -726,6 +728,13 @@ export function ThreadDetailPromptArea({
   const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
+  const submitScheduledRef = useRef<
+    (options: { sendAt: number }) => Promise<void>
+  >(async () => {});
+  const submitScheduledThroughRef = useCallback(
+    (options: { sendAt: number }) => submitScheduledRef.current(options),
+    [],
+  );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "thread", threadId: thread.id },
@@ -734,6 +743,7 @@ export function ThreadDetailPromptArea({
       subscribeDraft: promptDraft.subscribe,
       setDraft: promptDraft.setDraft,
       focus: focusBottomPluginComposer,
+      submit: submitScheduledThroughRef,
     }),
     [
       focusBottomPluginComposer,
@@ -741,6 +751,7 @@ export function ThreadDetailPromptArea({
       promptDraft.setDraft,
       promptDraft.storageKey,
       promptDraft.subscribe,
+      submitScheduledThroughRef,
       thread.id,
     ],
   );
@@ -835,6 +846,51 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
+  const submitScheduled = useCallback(
+    async ({ sendAt }: { sendAt: number }) => {
+      if (isDefaultExecutionOptionsLoading) {
+        throw new Error("This thread's model options are still loading.");
+      }
+      const submittedDraft = promptDraft.getCurrent();
+      const request = buildAutoFollowUpRequest({
+        threadId: thread.id,
+        input: promptDraftToInput(submittedDraft),
+        execution: followUpExecutionSelection,
+      });
+      if (request === null) {
+        throw new Error("Type a message before scheduling it.");
+      }
+      const clearedSubmittedDraft =
+        promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      try {
+        await sendMessage.mutateAsync({ ...request, sendAt });
+      } catch (scheduleError) {
+        if (clearedSubmittedDraft) {
+          promptDraft.restoreIfEmpty(submittedDraft);
+        }
+        throw new Error(
+          getMutationErrorMessage({
+            error: scheduleError,
+            fallbackMessage: "Failed to schedule message",
+            lifecycleOperation: "send_message",
+          }),
+        );
+      }
+    },
+    [
+      followUpExecutionSelection,
+      isDefaultExecutionOptionsLoading,
+      promptDraft,
+      sendMessage,
+      setBottomAttachmentError,
+      thread.id,
+    ],
+  );
+  useEffect(() => {
+    submitScheduledRef.current = submitScheduled;
+  }, [submitScheduled]);
+
   const handleModifierSubmit = useCallback(async () => {
     if (!canSubmitModifierShortcut) {
       return;

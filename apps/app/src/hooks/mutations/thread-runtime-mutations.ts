@@ -163,6 +163,7 @@ export function useSendThreadMessage() {
       reasoningLevel,
       permissionMode,
       mode,
+      sendAt,
       senderThreadId,
       executionInputSources,
     }: SendThreadMessageMutationRequest) => {
@@ -173,6 +174,7 @@ export function useSendThreadMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
+        ...(sendAt === undefined ? {} : { sendAt }),
         executionInputSources,
         mode,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
@@ -192,7 +194,7 @@ export function useSendThreadMessage() {
     },
     onSuccess: (data, variables, context) => {
       applySendThreadMessageSuccess({
-        delivery: data.delivery ?? "sent",
+        delivery: data.delivery,
         queryClient,
         realtimeConnected: wsManager.getConnectionState() === "connected",
         request: variables,

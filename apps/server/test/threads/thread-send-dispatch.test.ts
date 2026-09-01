@@ -121,7 +121,7 @@ function parseThreadMessages(
   });
 }
 
-describe("queued message dispatch gate", () => {
+describe("queued message dispatch hook", () => {
   it("rolls back and sends no host command when the idle thread was archived between claim and dispatch", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedProviderThreadFixture({ harness, value: 1 });
@@ -141,6 +141,7 @@ describe("queued message dispatch gate", () => {
           threadId: thread.id,
           queuedMessageId: queued.id,
           mode: "auto",
+          sendNow: false,
         }),
       ).rejects.toMatchObject({
         body: { code: "queued_message_claim_lost" },
@@ -177,6 +178,7 @@ describe("queued message dispatch gate", () => {
           threadId: thread.id,
           queuedMessageId: queued.id,
           mode: "auto",
+          sendNow: false,
         }),
       ).rejects.toMatchObject({
         body: { code: "queued_message_claim_lost" },
@@ -208,6 +210,7 @@ describe("queued message auto-send notification", () => {
         threadId: thread.id,
         queuedMessageId: queued.id,
         mode: "auto",
+        sendNow: false,
       });
 
       const statusMessages = parseThreadMessages(socket.messages).filter(

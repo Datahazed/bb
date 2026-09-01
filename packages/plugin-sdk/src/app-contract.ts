@@ -1614,6 +1614,54 @@ export interface PluginComposerApi {
   insertMention(mention: PluginComposerMention): void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
+  /**
+   * Submit this composer's draft through the composer's OWN submit pipeline,
+   * queued until `sendAt` instead of dispatched now.
+   *
+   * This is a real submission, not a plugin-issued send: the host builds the
+   * request exactly as pressing Enter would, so the draft's attachments and
+   * @-mentions, and — in the new-thread composer — the provider, model,
+   * reasoning level, service tier, permission mode and environment the user
+   * has selected on screen, all travel with it. A plugin cannot assemble that
+   * tuple itself, which is why sending from the backend instead would silently
+   * run the message with different settings than the ones in front of the user.
+   *
+   * In a thread composer the message is queued as a row instead of being
+   * sent or queued for the next idle moment. In the new-thread composer the
+   * thread is created `pending` and its first message becomes the queued row.
+   * Either way the resulting row is core's: the queued card above the
+   * composer, the countdown, Send now and Delete all work with no further
+   * plugin involvement.
+   *
+   * Resolves once the host has accepted the submission and cleared the draft.
+   * Rejects when the composer refused to submit — a scope with no submit
+   * pipeline (a queued-message editor, a side chat), an empty draft, or a
+   * composer that is not ready (still loading its execution defaults, missing
+   * an environment). The rejection's message is safe to show to the user.
+   * Failures of the underlying request are reported by bb's own submit error
+   * handling and restore the draft, exactly as an interactive failure does.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_submit(
+    options: ExperimentalComposerSubmitOptions,
+  ): Promise<void>;
+}
+
+/**
+ * What `experimental_submit` does differently from pressing Enter.
+ *
+ * There is deliberately no zero-argument overload and no "submit now" arm: a
+ * plugin that wants a draft sent immediately is asking for the affordance the
+ * user already has, and handing plugins an unconditional "send this draft"
+ * button is a much larger surface than scheduling needs.
+ */
+export interface ExperimentalComposerSubmitOptions {
+  /**
+   * Epoch ms the submission should dispatch at. Must be in the future; the
+   * host does not second-guess how far ahead it is.
+   */
+  sendAt: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1692,7 +1740,13 @@ export interface ThreadChatProps {
 // experimental_ProviderModelPicker — host-owned execution selection.
 // ---------------------------------------------------------------------------
 
-/** The controlled execution selection resolved by the picker. */
+/**
+ * The controlled execution selection resolved by the picker.
+ *
+ * Deliberately a single concrete shape, not a union: this value exists to be
+ * forwarded verbatim to `bb.sdk.threads.spawn`, so it must name a real
+ * provider and model.
+ */
 export interface ExperimentalProviderModelPickerValue {
   providerId: string;
   model: string;
@@ -1783,6 +1837,14 @@ export interface NewThreadRequest {
   executionInputSources: CreateExecutionInputSources;
   environment: CreateThreadEnvironmentArgs;
   input: PromptInput[];
+  /**
+   * Epoch ms the first turn should dispatch at. Present only when the
+   * submission came from `useComposer().experimental_submit` — a scheduled
+   * create — and absent otherwise, which is what makes an ordinary submission
+   * start work at once. Forward it to `threads.spawn` unchanged: the thread is
+   * created `pending` and its first message is queued as a row until then.
+   */
+  sendAt?: number;
 }
 
 /**
