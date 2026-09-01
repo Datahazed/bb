@@ -1,5 +1,9 @@
 import path from "node:path";
-import { updateEnvironmentMetadata } from "@bb/db";
+import {
+  countLiveThreadsInEnvironment,
+  listEnvironments,
+  updateEnvironmentMetadata,
+} from "@bb/db";
 import {
   type GitBranchRefClassification,
   resolveEnvironmentWorkspaceDisplayKind,
@@ -24,6 +28,7 @@ import {
   WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
 } from "../constants.js";
 import { ApiError } from "../errors.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../services/environments/lifecycle-outcome.js";
 import {
   requireEnvironment,
   requireReadyEnvironment,
@@ -265,10 +270,54 @@ function resolveGitDiffWorkspaceTarget(deps: AppDeps, environmentId: string) {
 }
 
 export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
-  const { get, patch, post } = typedRoutes<PublicApiSchema>(app, {
+  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
+
+  get(routes.list, (context, query) =>
+    context.json(
+      listEnvironments(deps.db, query?.projectId).filter(
+        (environment) => environment.status !== "destroyed",
+      ),
+    ),
+  );
+
+  del(routes.delete, (context) => {
+    const environment = requireEnvironment(deps.db, context.req.param("id"));
+    if (environment.workspaceProvisionType === "personal") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "A personal workspace cannot be deleted",
+      );
+    }
+    if (
+      countLiveThreadsInEnvironment(deps.db, {
+        environmentId: environment.id,
+      }) > 0
+    ) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Environment still has live threads",
+      );
+    }
+    if (environment.status !== "destroyed") {
+      const outcome = applyLoggedEnvironmentLifecycleEvent(deps, {
+        environmentId: environment.id,
+        event: { type: "destroy.recorded" },
+      });
+      if (!outcome.applied) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          `Environment cannot be deleted while ${environment.status}`,
+        );
+      }
+    }
+    return context.json({ ok: true } as const);
+  });
 
   get(routes.get, (context) =>
     context.json(requireEnvironment(deps.db, context.req.param("id"))),

@@ -10,6 +10,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -386,6 +387,100 @@ describe("public environments", () => {
       );
 
       expect(response.status).toBe(409);
+    });
+  });
+});
+
+describe("environment list and delete", () => {
+  it("lists non-destroyed environments, scoped to a project", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, { id: "host-env-list" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const { project: other } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/env-list-other",
+      });
+      const mine = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/env-list-a",
+      });
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: other.id,
+        path: "/tmp/env-list-b",
+      });
+
+      const scoped = await readJson<Array<{ id: string }>>(
+        await harness.app.request(
+          `/api/v1/environments?projectId=${project.id}`,
+        ),
+      );
+      expect(scoped.map((environment) => environment.id)).toEqual([mine.id]);
+
+      const everything = await readJson<Array<{ id: string }>>(
+        await harness.app.request("/api/v1/environments"),
+      );
+      expect(everything.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("records a deleted environment as destroyed and hides it from the list", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, { id: "host-env-del" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/env-delete",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}`,
+        { method: "DELETE" },
+      );
+      expect(response.status).toBe(200);
+      const after = getEnvironment(harness.db, environment.id);
+      expect(after?.status).toBe("destroyed");
+      expect(after?.path).toBeNull();
+
+      const listed = await readJson<Array<{ id: string }>>(
+        await harness.app.request(
+          `/api/v1/environments?projectId=${project.id}`,
+        ),
+      );
+      expect(listed).toEqual([]);
+    });
+  });
+
+  it("refuses to delete an environment with live threads", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, { id: "host-env-live" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/env-delete-live",
+      });
+      seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}`,
+        { method: "DELETE" },
+      );
+      expect(response.status).toBe(409);
+      expect(getEnvironment(harness.db, environment.id)?.status).not.toBe(
+        "destroyed",
+      );
     });
   });
 });

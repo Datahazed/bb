@@ -242,6 +242,8 @@ type ExpectedRealtimeKey = "subscribe";
 type ExpectedEnvironmentsKey =
   | "archiveThreads"
   | "commit"
+  | "delete"
+  | "list"
   | "diff"
   | "diffBranches"
   | "diffFile"

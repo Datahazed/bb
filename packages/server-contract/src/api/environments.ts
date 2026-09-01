@@ -31,6 +31,11 @@ export type UpdateEnvironmentRequest = z.infer<
   typeof updateEnvironmentRequestSchema
 >;
 
+export const listEnvironmentsQuerySchema = z.object({
+  projectId: z.string().min(1).optional(),
+});
+export type ListEnvironmentsQuery = z.infer<typeof listEnvironmentsQuerySchema>;
+
 export const environmentPathsQuerySchema = z.object({
   query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.string().regex(/^\d+$/).optional(),

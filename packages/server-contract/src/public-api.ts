@@ -204,6 +204,7 @@ import type {
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
+  ListEnvironmentsQuery,
   UpdateEnvironmentRequest,
   UpdateThreadSectionRequest,
   UpdateTerminalRequest,
@@ -308,6 +309,7 @@ import {
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
+  listEnvironmentsQuerySchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
   updateHostPermissionCeilingRequestSchema,
@@ -773,6 +775,23 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    list: defineRoute({
+      path: "/environments",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, ListEnvironmentsQuery>(
+        listEnvironmentsQuerySchema,
+      ),
+      response: jsonResponse<Environment[]>(),
+    }),
+    delete: defineRoute({
+      path: "/environments/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: [
+        jsonResponse<{ ok: true }>(),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
     get: defineRoute({
       path: "/environments/:id",
       method: "get",

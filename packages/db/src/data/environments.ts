@@ -433,7 +433,10 @@ export function applyEnvironmentLifecycleEventInTransaction(
     eq(environments.id, args.environmentId),
     eq(environments.status, environment.status),
   ];
-  if (args.event.type === "destroy.started") {
+  if (
+    args.event.type === "destroy.started" ||
+    args.event.type === "destroy.recorded"
+  ) {
     conditions.push(
       sql`NOT EXISTS (
         SELECT 1 FROM threads

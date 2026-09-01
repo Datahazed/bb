@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { environmentSchema, type Environment } from "@bb/domain";
 import {
   commitActionResponseSchema,
@@ -131,6 +132,17 @@ export type EnvironmentPullRequestResult = EnvironmentPullRequestResponse;
 export type EnvironmentSquashMergeResult = SquashMergeActionResponse;
 export type EnvironmentStatusResult = EnvironmentStatusResponse;
 export type EnvironmentUpdateResult = Environment;
+export interface EnvironmentListArgs {
+  projectId?: string;
+  signal?: AbortSignal;
+}
+export type EnvironmentListResult = Environment[];
+export interface EnvironmentDeleteArgs {
+  environmentId: string;
+}
+export type EnvironmentDeleteResult = { ok: true };
+
+const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export interface EnvironmentsArea {
   archiveThreads(
@@ -147,6 +159,17 @@ export interface EnvironmentsArea {
     args: EnvironmentDiffPatchArgs,
   ): Promise<EnvironmentDiffPatchResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
+  /**
+   * Environments that are not `destroyed`, optionally scoped to a project —
+   * how a plugin that owns workspaces sweeps for rows to adopt or clean up.
+   */
+  list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
+  /**
+   * Record an environment as destroyed after its workspace is gone — the
+   * bookkeeping half of a plugin-owned teardown. Refused (409) while live
+   * threads reference it, and always for a personal workspace.
+   */
+  delete(args: EnvironmentDeleteArgs): Promise<EnvironmentDeleteResult>;
   pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
   markPullRequestDraft(
     args: EnvironmentActionArgs,
@@ -329,6 +352,27 @@ export function createEnvironmentsArea(
           ...signalRequestArgs(input.signal),
         ),
       );
+    },
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.environments.$get(
+          {
+            query:
+              input?.projectId === undefined
+                ? {}
+                : { projectId: input.projectId },
+          },
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async delete(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments[":id"].$delete({
+          param: { id: input.environmentId },
+        }),
+      );
+      return okResponseSchema.parse(body);
     },
     async get(input) {
       const body = await transport.readJson(

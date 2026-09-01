@@ -7,6 +7,7 @@ export type EnvironmentLifecycleEvent =
   | { type: "provision.cancelled" }
   | { type: "retire.requested" }
   | { type: "retire.cancelled" }
+  | { type: "destroy.recorded" }
   | { type: "destroy.started"; destroyAttemptId: string }
   | { type: "destroy.completed"; destroyAttemptId: string | null }
   | { type: "destroy.failed"; destroyAttemptId: string }
@@ -29,6 +30,7 @@ export const ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES: Record<
   "provision.cancelled": {},
   "retire.requested": { managed: true },
   "retire.cancelled": {},
+  "destroy.recorded": {},
   "destroy.started": { managed: true },
   "destroy.completed": { matchingDestroyAttempt: true },
   "destroy.failed": { matchingDestroyAttempt: true },
@@ -59,13 +61,16 @@ export const ENVIRONMENT_LIFECYCLE: Record<
   ready: {
     "provision.requested": "provisioning",
     "retire.requested": "retiring",
+    "destroy.recorded": "destroyed",
   },
   retiring: {
     "retire.cancelled": "ready",
+    "destroy.recorded": "destroyed",
     "destroy.started": "destroying",
   },
   error: {
     "provision.requested": "provisioning",
+    "destroy.recorded": "destroyed",
     "destroy.started": "destroying",
     "destroy.completed": "destroyed",
   },
