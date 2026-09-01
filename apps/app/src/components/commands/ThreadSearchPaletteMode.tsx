@@ -13,8 +13,9 @@ import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { isPromptDraftEmpty } from "@bb/client-core";
 import type { ThreadSearchHighlightRange } from "@bb/server-contract";
-import { useNewThreadDraftSlots } from "@/hooks/useNewThreadDraftSlots";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   hasThreadSearchableQuery,
@@ -23,7 +24,8 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
-import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
+import { useRootComposeProjectId } from "@/lib/root-compose-selection";
+import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import {
   buildPaletteThreadSearchRows,
@@ -51,7 +53,34 @@ export function ThreadSearchPaletteMode({
   const [scope, setScope] = useState<PaletteThreadSearchScope>("all");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [now] = useState(() => Date.now());
-  const drafts = useNewThreadDraftSlots();
+  const rootComposeDraft = usePromptDraftStorage({ kind: "new-thread" });
+  const [rootComposeProjectId] = useRootComposeProjectId();
+  const drafts = useMemo(() => {
+    const draft = {
+      text: rootComposeDraft.text,
+      mentions: rootComposeDraft.mentions,
+      attachments: rootComposeDraft.attachments,
+    };
+    if (isPromptDraftEmpty(draft)) return [];
+    const title = draft.text.replace(/\s+/gu, " ").trim();
+    return [
+      {
+        id: "root-compose",
+        draft,
+        title: title.length > 0 ? title : "New thread",
+        lastEditedAt: null,
+        destination: {
+          projectId: rootComposeProjectId,
+          sectionId: null,
+        },
+      },
+    ];
+  }, [
+    rootComposeDraft.attachments,
+    rootComposeDraft.mentions,
+    rootComposeDraft.text,
+    rootComposeProjectId,
+  ]);
   const navigation = useSidebarNavigation();
   const archivedThreads = useArchivedThreads({});
   const threadSearch = useThreadSearch({ active: true, query });
@@ -154,12 +183,17 @@ export function ThreadSearchPaletteMode({
           return;
         }
         if (row.draftSlotId !== null) {
-          navigate(getRootComposeRoutePath(), {
-            state: withRootComposeDraftSlotId(
-              { focusPrompt: true },
-              row.draftSlotId,
-            ),
-          });
+          if (split) {
+            openPaneContentInSplit({
+              store,
+              navigate,
+              content: { kind: "new-thread" },
+              route: getRootComposeRoutePath(),
+              enabled: !isCompact,
+            });
+            return;
+          }
+          navigate(getRootComposeRoutePath(), { state: { focusPrompt: true } });
         }
       });
     },

@@ -30,7 +30,7 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
-import type { NewThreadDraftRow } from "@/hooks/useNewThreadDraftSlots";
+import type { PaletteNewThreadDraft } from "@/lib/command-palette/palette-thread-search";
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -101,7 +101,7 @@ const testState = vi.hoisted(() => ({
 const modeState = vi.hoisted(() => ({
   activeRecents: [] as ThreadListEntry[],
   archivedRecents: [] as ThreadListEntry[],
-  drafts: [] as NewThreadDraftRow[],
+  drafts: [] as PaletteNewThreadDraft[],
   searchResponse: undefined as ThreadSearchResponse | undefined,
 }));
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
@@ -160,8 +160,19 @@ vi.mock("@/components/ui/app-route-anchor", () => ({
   useRouteNavigate: () => routeNavigateMock,
 }));
 
-vi.mock("@/hooks/useNewThreadDraftSlots", () => ({
-  useNewThreadDraftSlots: () => modeState.drafts,
+vi.mock("@/hooks/usePromptDraftStorage", () => ({
+  usePromptDraftStorage: () => {
+    const draft = modeState.drafts[0]?.draft ?? emptyPromptDraftState();
+    return {
+      text: draft.text,
+      mentions: draft.mentions,
+      attachments: draft.attachments,
+    };
+  },
+}));
+
+vi.mock("@/lib/root-compose-selection", () => ({
+  useRootComposeProjectId: () => ["project-1", vi.fn()],
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
@@ -253,6 +264,7 @@ function makeThread(
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    queuedWork: "none",
     ...overrides,
   };
 }
@@ -667,6 +679,66 @@ describe("CommandPalette", () => {
       expect.objectContaining({
         projectId: "project-1",
         threadId: "matching-split",
+      }),
+    );
+  });
+
+  it("opens the current new-thread draft in a split", async () => {
+    modeState.drafts = [
+      {
+        id: "draft-slot-exact",
+        title: "split this draft",
+        draft: { ...emptyPromptDraftState(), text: "split this draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    await screen.findByRole("option", { name: /split this draft/i });
+
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+
+    await waitFor(() =>
+      expect(openPaneContentInSplitMock).toHaveBeenCalledTimes(1),
+    );
+    expect(openPaneContentInSplitMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: { kind: "new-thread" },
+        enabled: true,
+      }),
+    );
+    expect(routeNavigateMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary Enter on the current new-thread draft as normal navigation", async () => {
+    modeState.drafts = [
+      {
+        id: "draft-slot-normal",
+        title: "open this draft",
+        draft: { ...emptyPromptDraftState(), text: "open this draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    await screen.findByRole("option", { name: /open this draft/i });
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(routeNavigateMock).toHaveBeenCalledTimes(1));
+    expect(openPaneContentInSplitMock).not.toHaveBeenCalled();
+    expect(routeNavigateMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        state: expect.objectContaining({ focusPrompt: true }),
       }),
     );
   });
