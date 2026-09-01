@@ -189,12 +189,12 @@ function buildPersistedProjectionKey(args: PersistedProjectionKeyArgs): string {
 }
 
 /**
- * Builds below this size are cheap enough to redo on every cold start. The
- * count is timeline-relevant rows after type exclusion, so it runs well
- * below raw event counts; on the 2026-08-31 production copy 190 of 1,132
- * threads clear it, all of the ones whose cold build exceeded 100 ms.
+ * Threads with fewer stored events are cheap enough to rebuild on demand;
+ * at or above it the projection is persisted and warmed ahead of requests.
+ * Measured in total stored events (the tip's count) so warmup selection and
+ * persistence agree exactly.
  */
-const PERSISTED_PROJECTION_MIN_EVENT_ROWS = 1_000;
+export const LARGE_THREAD_MIN_EVENT_COUNT = 1_000;
 
 type ThreadTimelineBuildProfileStage =
   | "event-query"
@@ -1070,7 +1070,7 @@ function rememberTimelineProjection(
   // are written - an active tip changes every poll.
   if (
     keys.persistedKey !== null &&
-    entry.eventRowCount >= PERSISTED_PROJECTION_MIN_EVENT_ROWS &&
+    keys.tip.eventCount >= LARGE_THREAD_MIN_EVENT_COUNT &&
     (thread.status === "idle" || thread.status === "error")
   ) {
     upsertThreadTimelineCheckpointRecord(db, {

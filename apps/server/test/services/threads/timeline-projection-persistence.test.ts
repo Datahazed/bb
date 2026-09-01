@@ -52,7 +52,7 @@ function setup(): { db: DbConnection; thread: Thread } {
   return { db, thread };
 }
 
-/** Seeds enough events to cross PERSISTED_PROJECTION_MIN_EVENT_ROWS. */
+/** Seeds enough events to cross LARGE_THREAD_MIN_EVENT_COUNT. */
 function seedLargeThread(db: DbConnection, thread: Thread): void {
   const events: Parameters<typeof insertEvents>[2] = [];
   let sequence = 0;

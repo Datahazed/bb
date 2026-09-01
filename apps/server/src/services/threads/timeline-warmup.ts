@@ -4,6 +4,7 @@ import { runEventLoopWork } from "../system/event-loop-work.js";
 import {
   buildThreadTimelineCooperatively,
   hasFreshPersistedTimelineProjection,
+  LARGE_THREAD_MIN_EVENT_COUNT,
 } from "./timeline.js";
 import { resolveSummaryTimelineBuildOptions } from "./timeline-build-options.js";
 
@@ -11,9 +12,6 @@ type WarmupDeps = Pick<
   AppDeps,
   "config" | "db" | "logger" | "providerRegistry"
 >;
-
-/** Threads at or above this sequence are worth projecting ahead of a request. */
-const WARMUP_MIN_LATEST_SEQUENCE = 1_000;
 
 /**
  * Builds (and, for settled threads, persists) the default summary projection
@@ -38,13 +36,34 @@ export async function warmThreadTimeline(
 }
 
 /**
+ * Re-projects the given threads one after another, off the request path.
+ * Used after sweeps that rewrite stored events in place, which invalidate
+ * the threads' cached and persisted projections.
+ */
+export async function warmThreadTimelines(
+  deps: WarmupDeps,
+  threadIds: readonly string[],
+): Promise<void> {
+  for (const threadId of threadIds) {
+    try {
+      await warmThreadTimeline(deps, threadId);
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, threadId },
+        "Timeline refresh after event rewrite failed",
+      );
+    }
+  }
+}
+
+/**
  * Projects every large thread once after startup, largest first, so the
  * first open of a big thread after a restart or upgrade is served from the
  * persisted projection. Each build yields to the event loop between slices.
  */
 export async function warmLargeThreadTimelines(deps: WarmupDeps): Promise<void> {
   const extents = listStoredThreadEventExtents(deps.db, {
-    minLatestSequence: WARMUP_MIN_LATEST_SEQUENCE,
+    minEventCount: LARGE_THREAD_MIN_EVENT_COUNT,
   });
   let warmed = 0;
   const startedAt = Date.now();

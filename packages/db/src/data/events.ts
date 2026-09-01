@@ -1949,28 +1949,29 @@ export function listStoredTurnCompletedRowsByTurnIds(
 }
 
 export interface StoredThreadEventExtent {
-  latestSequence: number;
+  eventCount: number;
   threadId: string;
 }
 
 /**
- * Every thread's newest event sequence, from the (thread_id, sequence) index
- * alone. The startup timeline warmup uses it to find large threads without
- * counting rows.
+ * Every thread's stored event count, largest first, from the
+ * (thread_id, sequence) index alone. The timeline warmup uses the same
+ * threshold as projection persistence, so the set it builds is the set that
+ * stays persisted.
  */
 export function listStoredThreadEventExtents(
   db: DbConnection,
-  args: { minLatestSequence: number },
+  args: { minEventCount: number },
 ): StoredThreadEventExtent[] {
   return db
     .select({
-      latestSequence: max(events.sequence).mapWith(Number),
+      eventCount: count().mapWith(Number),
       threadId: events.threadId,
     })
     .from(events)
     .groupBy(events.threadId)
-    .having(sql`max(${events.sequence}) >= ${args.minLatestSequence}`)
-    .orderBy(desc(max(events.sequence)))
+    .having(sql`count(*) >= ${args.minEventCount}`)
+    .orderBy(desc(count()))
     .all();
 }
 
