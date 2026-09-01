@@ -61,6 +61,32 @@ windows beat the memoized build, that is a gate failure and the PR does not
 land; the durable-projection follow-up (below) slots in behind the same seam
 without changing the pagination model.
 
+## Outcome (measured 2026-08-31, 1,132-thread production copy)
+
+Correctness: recombination gate 1,132/1,132 across segment limits
+{1, 2, 3, 8, 20} (main: 21 failing, 54 unreferenceable). Row diff vs main:
+995 threads byte-identical, every change on the other 137 classified into
+named fix classes; full corpus gate green (2,319 tests).
+
+Performance (live servers, same machine/DB copy, Connect stripped):
+
+| path | main | branch, first build ever | branch, after restart (persisted) |
+|---|---:|---:|---:|
+| cold p50 / p95 / p99 / max | 15.4 / 47.1 / 100.7 / 349 ms | 10.3 / 49.2 / 147 / 1,126 ms | 7.4 / 18.1 / 36.9 / 317 ms |
+| warm p50 / p95 / p99 / max | 2.7 / 8.0 / 33.4 / 718 ms | 2.3 / 3.7 / 9.0 / 31 ms | 2.2 / 3.7 / 9.5 / 84 ms |
+| full walk p50 / p95 / p99 / max | 15.9 / 104 / 349 / 4,605 ms | 10.3 / 49 / 153 / 1,181 ms | 7.6 / 19 / 44 / 317 ms |
+| 64k-event stress thread, cold | 41 ms | 1,082 ms | 11 ms |
+
+Every steady-state and post-restart path beats main; the only cost above
+main is each large thread's first-ever build (paid once, then persisted).
+Mechanisms: canonical-projection cache (tip id + event count), persisted
+projections for settled threads ≥1,000 relevant rows (app-version keyed,
+per-thread sweep invalidation), and a cost-proportional refresh throttle for
+streaming rebuilds. The in-memory fold checkpoint from the original plan was
+not built: the projection is non-causal (request→acceptance lookahead), so
+true incrementality is the durable-reducer follow-up, and the throttle bounds
+the event loop until then.
+
 ## Design principle
 
 **Never cut the event stream. Project the semantic unit in full, then
