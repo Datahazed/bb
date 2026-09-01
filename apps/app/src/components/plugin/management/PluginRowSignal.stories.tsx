@@ -22,6 +22,7 @@ const GIT_PLUGIN = {
   enabled: true,
   status: "running",
   statusDetail: null,
+  lastProblem: null,
   description: "Enhance a rough composer draft before sending it.",
   name: "Prompt Improver",
   icon: "AiContentGenerator01",

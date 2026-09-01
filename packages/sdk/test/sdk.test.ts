@@ -1496,6 +1496,7 @@ describe("@bb/sdk", () => {
       iconUrl: null,
       status: "running" as const,
       statusDetail: null,
+      lastProblem: null,
       handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
       services: [],
       schedules: [],

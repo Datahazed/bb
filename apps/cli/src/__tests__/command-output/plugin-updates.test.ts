@@ -29,6 +29,7 @@ const pluginList = (id: string, source: string) => ({
       iconUrl: null,
       status: "running",
       statusDetail: null,
+      lastProblem: null,
       handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
       services: [],
       schedules: [],
@@ -53,6 +54,36 @@ describe("bb plugin update commands", () => {
 
   const register: CommandRegistrar = (program) =>
     registerPluginCommands(program, () => "http://server");
+
+  it("prints the stored error count and last problem", async () => {
+    const result = pluginList("notify", "npm:notify@^1");
+    const installed = result.plugins[0];
+    if (installed === undefined) throw new Error("missing plugin fixture");
+    installed.handlerStats = {
+      count: 0,
+      totalMs: 0,
+      maxMs: 0,
+      errorCount: 2,
+    };
+    Object.assign(installed, {
+      lastProblem: {
+        class: "error",
+        message: "notification handler failed",
+        at: Date.UTC(2026, 7, 25, 12, 0, 0),
+      },
+    });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(result));
+
+    await runCommand(["plugin", "list"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain(
+      "handlers: 0 calls / 0ms total / 0ms max, 2 errors",
+    );
+    expect(output).toContain(
+      "last problem: error at 2026-08-25T12:00:00.000Z — notification handler failed",
+    );
+  });
 
   it("outdated renders every outcome, reasons, and the dev-build annotation", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(

@@ -106,6 +106,13 @@ export const pluginHandlerStatsSchema = z.object({
 });
 export type PluginHandlerStats = z.infer<typeof pluginHandlerStatsSchema>;
 
+export const pluginLastProblemSchema = z.object({
+  class: pluginRuntimeStatusSchema,
+  message: z.string(),
+  at: z.number().int().nonnegative(),
+});
+export type PluginLastProblem = z.infer<typeof pluginLastProblemSchema>;
+
 export const pluginServiceEntrySchema = z.object({
   name: z.string(),
   state: z.enum(["running", "backoff", "stopped"]),
@@ -166,6 +173,7 @@ export const installedPluginSchema = z.object({
   iconUrl: z.string().nullable(),
   status: pluginRuntimeStatusSchema,
   statusDetail: z.string().nullable(),
+  lastProblem: pluginLastProblemSchema.nullable(),
   handlerStats: pluginHandlerStatsSchema,
   services: z.array(pluginServiceEntrySchema),
   schedules: z.array(pluginScheduleEntrySchema),

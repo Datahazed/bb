@@ -247,6 +247,20 @@ export const installedPlugins = sqliteTable("plugins", {
   lastFailureVersion: text("last_failure_version"),
   lastFailureAt: integer("last_failure_at"),
   lastFailureDetail: text("last_failure_detail"),
+  handlerErrorCount: integer("handler_error_count").notNull().default(0),
+  lastProblemClass: text("last_problem_class", {
+    enum: [
+      "running",
+      "error",
+      "incompatible",
+      "missing",
+      "disabled",
+      "degraded",
+      "needs-configuration",
+    ],
+  }),
+  lastProblemMessage: text("last_problem_message"),
+  lastProblemAt: integer("last_problem_at"),
   activeArtifactId: text("active_artifact_id").references(
     (): AnySQLiteColumn => pluginArtifacts.id,
   ),

@@ -66,6 +66,8 @@ bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
 ```
 
+`bb plugin list` shows stored handler error totals and the last plugin problem.
+
 ## Completion
 
 Confirm the command result and any affected thread, environment, plugin, or

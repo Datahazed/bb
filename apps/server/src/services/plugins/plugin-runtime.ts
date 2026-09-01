@@ -16,6 +16,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
+import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
@@ -41,6 +42,8 @@ import {
   getInstalledPlugin,
   listInstalledPlugins,
   prunePluginSchedules,
+  recordInstalledPluginHandlerError,
+  setInstalledPluginLastProblem,
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
@@ -302,6 +305,24 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps, nextCronRunAt, settledWithin } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
   const logger = deps.logger;
+  const now = deps.now ?? Date.now;
+  const persistedProblemPrivatePathPatterns = [deps.dataDir, homedir()]
+    .map((path) => path.replace(/[\\/]+$/u, ""))
+    .filter(
+      (path, index, paths) => path.length > 0 && paths.indexOf(path) === index,
+    )
+    .sort((left, right) =>
+      right.length === left.length
+        ? left.localeCompare(right)
+        : right.length - left.length,
+    )
+    .map(
+      (path) =>
+        new RegExp(
+          `${path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?=$|[\\\\/])`,
+          "gu",
+        ),
+    );
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
   const serviceStopTimeoutMs =
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
@@ -373,6 +394,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     detail: string | null = null,
   ): void {
     baseStatuses.set(id, { status, detail });
+    if (
+      detail !== null &&
+      status !== "disabled" &&
+      (status !== "running" || detail.startsWith("reload failed:"))
+    ) {
+      recordProblem(
+        id,
+        status === "running" ? "error" : status,
+        detail.replace(/^reload failed:\s*/u, ""),
+      );
+    }
     const buildProblems = devBuildProblems.get(id);
     publishStatus(
       id,
@@ -404,10 +436,38 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   function statsFor(id: string): PluginHandlerStats {
     let stats = handlerStats.get(id);
     if (!stats) {
-      stats = { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 };
+      stats = {
+        count: 0,
+        totalMs: 0,
+        maxMs: 0,
+        errorCount: getInstalledPlugin(deps.db, id)?.handlerErrorCount ?? 0,
+      };
       handlerStats.set(id, stats);
     }
     return stats;
+  }
+
+  function firstProblemLine(message: string): string {
+    return message.split(/\r?\n/u, 1)[0]?.trim() || "Unknown plugin error";
+  }
+
+  function sanitizePersistedProblemMessage(message: string): string {
+    return persistedProblemPrivatePathPatterns.reduce(
+      (sanitized, pattern) => sanitized.replace(pattern, "~"),
+      message,
+    );
+  }
+
+  function recordProblem(
+    id: string,
+    problemClass: PluginRuntimeStatus,
+    message: string,
+  ): void {
+    setInstalledPluginLastProblem(deps.db, id, {
+      class: problemClass,
+      message: sanitizePersistedProblemMessage(firstProblemLine(message)),
+      at: now(),
+    });
   }
 
   function reportNeedsConfiguration(id: string, message: string): void {
@@ -660,6 +720,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       stats.errorCount += 1;
+      recordInstalledPluginHandlerError(deps.db, id, {
+        class: "error",
+        message: sanitizePersistedProblemMessage(firstProblemLine(message)),
+        at: now(),
+      });
       logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
       if (statuses.get(id)?.status === "running") {
         setStatus(id, "running", `${label} failed: ${message}`);
@@ -1231,6 +1296,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       status: PluginRuntimeStatus,
       detail: string,
     ): string {
+      detail = firstProblemLine(detail);
       if (previous !== undefined) {
         setStatus(row.id, "running", `reload failed: ${detail}`);
         logger.warn(
@@ -1482,7 +1548,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         } catch {}
       }
       handle.invalidate();
-      let message = error instanceof Error ? error.message : String(error);
+      let message = firstProblemLine(
+        error instanceof Error ? error.message : String(error),
+      );
       if (/ERR_DLOPEN_FAILED|\.node/.test(message)) {
         message += " (native dependencies are not supported in BB plugins)";
       }

@@ -118,6 +118,7 @@ const PLUGIN: PluginListItem = {
   enabled: true,
   status: "running",
   statusDetail: null,
+  lastProblem: null,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",

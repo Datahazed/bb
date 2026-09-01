@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "@bb/shared-ui/empty-state";
+import { Pill } from "@bb/shared-ui/pill";
 import { Switch } from "@bb/shared-ui/switch";
 import {
   ResourceListPanel,
@@ -16,8 +17,9 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn, formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import { formatRelativeTime } from "@/lib/relative-time";
 import {
   pluginRowSignal,
   pluginRuntimeStatusPresentation,
@@ -25,6 +27,118 @@ import {
 import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo } from "./plugin-ui";
+
+interface InstalledPluginProblemLine {
+  text: string;
+  tone: "error" | "warning";
+  attentionCount: string | null;
+}
+
+function oneLine(value: string): string {
+  return value.split(/\r?\n/u, 1)[0]?.trim() ?? "";
+}
+
+function withProblemTime(
+  text: string,
+  plugin: PluginListItem,
+  now: number,
+): string {
+  return plugin.lastProblem === null
+    ? text
+    : `${text} · ${formatRelativeTime({ timestamp: plugin.lastProblem.at, now })}`;
+}
+
+function installedPluginProblemLine(
+  plugin: PluginListItem,
+  now = Date.now(),
+): InstalledPluginProblemLine | null {
+  if (!plugin.enabled || plugin.status === "disabled") return null;
+  const message = oneLine(
+    plugin.lastProblem?.message ?? plugin.statusDetail ?? "",
+  );
+  if (
+    plugin.status === "running" &&
+    plugin.statusDetail?.startsWith("reload failed:")
+  ) {
+    const detail = message || oneLine(plugin.statusDetail.slice(14));
+    return {
+      text: withProblemTime(
+        `Running the previous version — reload failed: ${detail}`,
+        plugin,
+        now,
+      ),
+      tone: "error",
+      attentionCount: null,
+    };
+  }
+  if (plugin.status === "running" && plugin.handlerStats.errorCount > 0) {
+    const count = plugin.handlerStats.errorCount;
+    const countText = `${count} ${count === 1 ? "error" : "errors"}`;
+    const last =
+      plugin.lastProblem === null
+        ? ""
+        : `, last ${formatRelativeTime({ timestamp: plugin.lastProblem.at, now })}`;
+    return {
+      text: message.length === 0 ? last : `${last} — ${message}`,
+      tone: "warning",
+      attentionCount: countText,
+    };
+  }
+  switch (plugin.status) {
+    case "running":
+      return null;
+    case "incompatible":
+      return {
+        text: withProblemTime(
+          `Not running — ${message || "incompatible with this version of bb"}`,
+          plugin,
+          now,
+        ),
+        tone: "error",
+        attentionCount: null,
+      };
+    case "error":
+      return {
+        text: withProblemTime(
+          `Not running — crashed on load: ${message || "unknown error"}`,
+          plugin,
+          now,
+        ),
+        tone: "error",
+        attentionCount: null,
+      };
+    case "missing":
+      return {
+        text: withProblemTime(
+          `Not running — source missing at ${formatHomePathForDisplay(plugin.rootDir)}`,
+          plugin,
+          now,
+        ),
+        tone: "error",
+        attentionCount: null,
+      };
+    case "degraded":
+      return {
+        text: withProblemTime(
+          `Partly running — ${message || "a background service did not stop"}`,
+          plugin,
+          now,
+        ),
+        tone: "warning",
+        attentionCount: null,
+      };
+    case "needs-configuration":
+      return {
+        text: withProblemTime(
+          "Not running — needs configuration in its settings",
+          plugin,
+          now,
+        ),
+        tone: "warning",
+        attentionCount: null,
+      };
+  }
+}
 
 export function InstalledPluginsTab({
   plugins,
@@ -96,6 +210,7 @@ export function InstalledPluginRow({
   const statusSignal = signal?.kind === "status" ? signal : null;
   const updateSignal = signal?.kind === "update" ? signal : null;
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
+  const problemLine = installedPluginProblemLine(plugin);
   const notRunning = pluginNeedsAttention({
     enabled: enabled === true,
     status: plugin.status,
@@ -112,6 +227,11 @@ export function InstalledPluginRow({
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <ResourceRow
+        className={
+          problemLine?.tone === "error"
+            ? "-mx-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 text-destructive-text"
+            : undefined
+        }
         leading={
           <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
             <PluginLogo plugin={plugin} className="size-6 shrink-0" />
@@ -124,7 +244,7 @@ export function InstalledPluginRow({
           )
         }
         status={
-          runtimeStatus === null ? undefined : (
+          problemLine !== null || runtimeStatus === null ? undefined : (
             <span
               data-testid={`plugin-runtime-status-${plugin.id}`}
               className={cn(
@@ -137,9 +257,35 @@ export function InstalledPluginRow({
           )
         }
         description={
-          runtimeStatus === null
-            ? plugin.description
-            : (plugin.statusDetail ?? runtimeStatus.condition)
+          problemLine === null ? (
+            runtimeStatus === null ? (
+              plugin.description
+            ) : (
+              (plugin.statusDetail ?? runtimeStatus.condition)
+            )
+          ) : (
+            <span
+              data-testid={`plugin-problem-line-${plugin.id}`}
+              className={cn(
+                "inline-flex min-w-0 items-center gap-1",
+                problemLine.tone === "error"
+                  ? "text-destructive-text"
+                  : "text-warning-text",
+              )}
+            >
+              {problemLine.attentionCount === null ? null : (
+                <Pill
+                  variant="outline"
+                  className="border-transparent bg-surface-attention text-warning-text"
+                >
+                  {problemLine.attentionCount}
+                </Pill>
+              )}
+              {problemLine.text === "" ? null : (
+                <span className="min-w-0 truncate">{problemLine.text}</span>
+              )}
+            </span>
+          )
         }
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
@@ -156,7 +302,7 @@ export function InstalledPluginRow({
         }
         persistentActions={
           <>
-            {notRunning ? (
+            {notRunning && problemLine === null ? (
               <span
                 data-testid={`plugin-not-running-${plugin.id}`}
                 className={cn(

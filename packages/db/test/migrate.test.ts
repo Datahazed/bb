@@ -624,6 +624,25 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
     .run(threadSearchRowidFtsMigrationWhen);
 }
 
+function dropPluginHealthColumns(db: DbConnection): void {
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
+      .all()
+      .map((column) => column.name),
+  );
+  for (const column of [
+    "handler_error_count",
+    "last_problem_class",
+    "last_problem_message",
+    "last_problem_at",
+  ]) {
+    if (columns.has(column)) {
+      db.$client.prepare(`ALTER TABLE plugins DROP COLUMN ${column}`).run();
+    }
+  }
+}
+
 function dropMarketplaceCatalogSchema(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplace_icons").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplaces").run();
@@ -643,6 +662,7 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
       db.$client.prepare(`ALTER TABLE plugins DROP COLUMN ${column}`).run();
     }
   }
+  dropPluginHealthColumns(db);
 }
 
 function dropEventToolNameColumn(db: DbConnection): void {
@@ -5235,6 +5255,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(eventParentToolCallMigrationWhen);
+      dropPluginHealthColumns(db);
       db.$client.exec(`
         INSERT INTO events (
           id, thread_id, scope_kind, turn_id, sequence, type, item_id, item_kind, data, created_at

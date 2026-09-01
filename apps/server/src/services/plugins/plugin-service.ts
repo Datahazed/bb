@@ -1233,9 +1233,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : row.enabled
               ? "not loaded"
               : null,
+          lastProblem:
+            row.lastProblemClass === null ||
+            row.lastProblemMessage === null ||
+            row.lastProblemAt === null
+              ? null
+              : {
+                  class: row.lastProblemClass,
+                  message: row.lastProblemMessage,
+                  at: row.lastProblemAt,
+                },
           handlerStats: stats
             ? { ...stats }
-            : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+            : {
+                count: 0,
+                totalMs: 0,
+                maxMs: 0,
+                errorCount: row.handlerErrorCount,
+              },
           services: (loadedPlugin?.services ?? []).map((service) => ({
             name: service.record.name,
             state: service.state,

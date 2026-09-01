@@ -41,6 +41,7 @@ function plugin(
     capabilities: [],
     app: { hasApp: false, bundle: null },
     ...overrides,
+    lastProblem: overrides.lastProblem ?? null,
   };
 }
 

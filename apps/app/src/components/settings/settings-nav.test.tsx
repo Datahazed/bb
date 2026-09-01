@@ -40,6 +40,7 @@ function disabledPlugin(): InstalledPlugin {
     enabled: false,
     status: "disabled",
     statusDetail: null,
+    lastProblem: null,
     description: "Linear integration",
     name: "Linear",
     icon: null,

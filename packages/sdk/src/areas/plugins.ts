@@ -51,6 +51,7 @@ import type { CreateSdkAreaArgs } from "./common.js";
  * default on the contract would leak into request bodies.
  */
 const installedPluginResponseSchema = installedPluginSchema.extend({
+  lastProblem: installedPluginSchema.shape.lastProblem.default(null),
   providerIds: z.array(z.string()).default([]),
   icons: z.record(z.string(), z.string()).default({}),
 });

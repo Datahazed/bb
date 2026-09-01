@@ -48,6 +48,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     capabilities: [],
     app: { hasApp: false, bundle: null },
     ...overrides,
+    lastProblem: overrides.lastProblem ?? null,
   };
 }
 

@@ -37,6 +37,7 @@ const ROW = {
   enabled: true,
   status: "running",
   statusDetail: null,
+  lastProblem: null,
   provenance: "direct",
   publisherLabel: null,
   isOrphanedBuiltin: false,
@@ -176,6 +177,11 @@ describe("fetchPluginList envelope", () => {
               maxMs: 5,
               errorCount: 1,
             },
+            lastProblem: {
+              class: "error",
+              message: "sync failed",
+              at: 1752300000000,
+            },
             services: [{ name: "sync", state: "backoff" }],
             schedules: [
               {
@@ -198,6 +204,11 @@ describe("fetchPluginList envelope", () => {
     expect(plugin?.source).toBe("path:/plugins/linear");
     expect(plugin?.rootDir).toBe("/plugins/linear");
     expect(plugin?.handlerStats.errorCount).toBe(1);
+    expect(plugin?.lastProblem).toEqual({
+      class: "error",
+      message: "sync failed",
+      at: 1752300000000,
+    });
     expect(plugin?.services).toEqual([{ name: "sync", state: "backoff" }]);
     expect(plugin?.schedules[0]?.lastError).toBe("rate limited");
     expect(plugin?.cliCommand?.name).toBe("linear");

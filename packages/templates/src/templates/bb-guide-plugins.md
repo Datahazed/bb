@@ -223,7 +223,8 @@ added/updated/unchanged counts.
                                  install (--yes skips; non-TTY refuses without
                                  --yes). Use outdated to preview; pinned
                                  installs stay put
-  bb plugin list                 Status, services, schedules, handler timings.
+  bb plugin list                 Status, services, schedules, handler timings,
+                                 stored handler errors, and the last problem.
                                  `bb status` also names enabled plugins that
                                  are incompatible, failed, or missing
   bb plugin source <id> [--json] Show requested/resolved source, subdirectory,

@@ -35,6 +35,7 @@ export interface PluginListItem {
   enabled: boolean;
   status: InstalledPlugin["status"];
   statusDetail: string | null;
+  lastProblem: InstalledPlugin["lastProblem"];
   description: string | null;
   name: string | null;
   icon: string | null;
@@ -91,6 +92,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     enabled: plugin.enabled,
     status: plugin.status,
     statusDetail: plugin.statusDetail,
+    lastProblem: plugin.lastProblem,
     description: plugin.description,
     name: plugin.name,
     icon: plugin.icon,

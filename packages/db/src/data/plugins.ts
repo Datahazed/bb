@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -80,6 +80,10 @@ export interface InstalledPluginRow {
   lastFailureVersion: string | null;
   lastFailureAt: number | null;
   lastFailureDetail: string | null;
+  handlerErrorCount: number;
+  lastProblemClass: PluginProblemClass | null;
+  lastProblemMessage: string | null;
+  lastProblemAt: number | null;
   activeArtifactId: string | null;
   normalizationVersion: number;
   rootDir: string;
@@ -88,6 +92,21 @@ export interface InstalledPluginRow {
   removedAt: number | null;
   installedAt: number;
   updatedAt: number;
+}
+
+export type PluginProblemClass =
+  | "running"
+  | "error"
+  | "incompatible"
+  | "missing"
+  | "disabled"
+  | "degraded"
+  | "needs-configuration";
+
+export interface PluginLastProblem {
+  class: PluginProblemClass;
+  message: string;
+  at: number;
 }
 
 export interface UpsertInstalledPluginInput {
@@ -426,6 +445,41 @@ export function setInstalledPluginLastFailure(
       lastFailureAt: failure.at,
       lastFailureDetail: failure.detail,
       updatedAt: failure.at,
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
+export function setInstalledPluginLastProblem(
+  db: DbConnection,
+  id: string,
+  problem: PluginLastProblem,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      lastProblemClass: problem.class,
+      lastProblemMessage: problem.message,
+      lastProblemAt: problem.at,
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
+export function recordInstalledPluginHandlerError(
+  db: DbConnection,
+  id: string,
+  problem: PluginLastProblem,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      handlerErrorCount: sql`${installedPlugins.handlerErrorCount} + 1`,
+      lastProblemClass: problem.class,
+      lastProblemMessage: problem.message,
+      lastProblemAt: problem.at,
     })
     .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .run();
