@@ -20,11 +20,14 @@ function renderSection(overrides?: {
       }
       onNavigateToThreadAfterCreateChange={vi.fn()}
       onOpenLinksInAppBrowserChange={vi.fn()}
+      onPushNotificationsChange={vi.fn()}
       onRewriteLocalhostLinksChange={vi.fn()}
       onRichTextEditingChange={vi.fn()}
       onSteerActiveThreadOnEnterChange={vi.fn()}
       onStreamerModeChange={vi.fn()}
       openLinksInAppBrowser={false}
+      pushNotifications={true}
+      pushNotificationsDisabled={false}
       rewriteLocalhostLinks={false}
       richTextEditing={false}
       steerActiveThreadOnEnter={false}
