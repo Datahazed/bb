@@ -830,7 +830,7 @@ export function createPluginApi(options: {
       for (const [name, methodContractValue] of contractEntries) {
         if (!RPC_METHOD_PATTERN.test(name)) {
           throw new Error(
-            `invalid rpc method name "${name}" — use letters, digits, "-" and "_"`,
+            `invalid rpc method name "${name}" — use dot-separated segments with letters, digits, "-" and "_"`,
           );
         }
         const methodContract = readRpcMethodContract(name, methodContractValue);

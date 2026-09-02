@@ -124,6 +124,12 @@ export const BUILTIN_PLUGINS = [
     category: "Agent interaction",
   },
   {
+    name: "push-notifications",
+    pluginId: "push-notifications",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
     name: "secrets",
     pluginId: "secrets",
     defaultEnabled: true,

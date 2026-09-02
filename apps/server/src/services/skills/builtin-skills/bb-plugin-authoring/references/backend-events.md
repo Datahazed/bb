@@ -179,6 +179,7 @@ handlers against that contract. Schemas use validator-neutral Standard Schema
 v1, which Zod 4 implements directly. The server RPC boundary validates input
 before it invokes the handler. It validates output before serialization.
 Handler parameters and return values are inferred from the schemas.
+Method names can use dot-separated segments with letters, digits, `-`, and `_`.
 
 ```ts
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
