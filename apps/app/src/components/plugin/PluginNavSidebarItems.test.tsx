@@ -282,22 +282,25 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
-  it("shows the overflow count when the fifth plugin is hidden", async () => {
-    const labels = ["One", "Two", "Three", "Four", "Five"];
+  it("uses a minimal exact-count disclosure after the third plugin", async () => {
+    const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
 
     renderSidebarItems();
 
-    expect(panelRowNames(labels)).toEqual(labels.slice(0, 4));
+    expect(panelRowNames(labels)).toEqual(labels.slice(0, 3));
     const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
-    expect(toggle.textContent).toBe("1 more plugin");
+    expect(toggle.textContent).toBe("Show 3 more");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.querySelector("svg")).toBeNull();
     expect(
       screen.getByTestId("plugin-nav-sidebar-overflow-count").className,
     ).toBe("tabular-nums");
 
     fireEvent.click(toggle);
     await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
-    expect(toggle.textContent).toBe("Show fewer");
+    expect(toggle.textContent).toBe("Show less");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("moves a visible row to overflow and back to top", async () => {
@@ -318,7 +321,6 @@ describe("PluginNavSidebarItems", () => {
         "Two",
         "Three",
         "Four",
-        "Five",
       ]),
     );
     fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));

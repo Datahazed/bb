@@ -95,7 +95,7 @@ describe("legacy hidden-panel migration", () => {
 });
 
 describe("reorderPluginNavPanels", () => {
-  it("moves a row across the five-row overflow boundary", () => {
+  it("moves a row across an overflow boundary", () => {
     const order = [
       "one/main",
       "two/main",

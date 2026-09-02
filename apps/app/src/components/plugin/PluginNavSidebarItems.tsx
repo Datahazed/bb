@@ -80,7 +80,7 @@ import {
   reorderPluginNavPanels,
 } from "./pluginNavSidebarOrder";
 
-export const PLUGIN_NAV_VISIBLE_LIMIT = 4;
+export const PLUGIN_NAV_VISIBLE_LIMIT = 3;
 
 type SidebarNavRow = {
   pluginId: string;
@@ -313,26 +313,20 @@ function PluginNavSidebarOverflowToggle({
       onClick={onToggle}
       data-testid="plugin-nav-sidebar-overflow-toggle"
     >
-      <Icon
-        name="ChevronRight"
-        className={cn(
-          "size-3 shrink-0 transition-transform duration-150",
-          isOpen && "rotate-90",
-        )}
-        aria-hidden="true"
-      />
+      <span className="w-4 shrink-0" aria-hidden="true" />
       <span className="min-w-0 truncate text-left">
         {isOpen ? (
-          "Show fewer"
+          "Show less"
         ) : (
           <>
+            Show{" "}
             <span
               className="tabular-nums"
               data-testid="plugin-nav-sidebar-overflow-count"
             >
               {overflowCount}
             </span>{" "}
-            more {overflowCount === 1 ? "plugin" : "plugins"}
+            more
           </>
         )}
       </span>
