@@ -43,7 +43,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@bb/shared-ui/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
@@ -135,16 +134,14 @@ export function PluginNavSidebarItems(props: {
   const rows = useMemo<SidebarNavRow[]>(
     () => [
       ...(props.builtInEntries ?? []),
-      ...getTraditionalPluginNavPanelEntries(entries).map(
-        ({ chrome, panel }) => ({
-          kind: "plugin" as const,
-          pluginId: chrome.pluginId,
-          id: chrome.id,
-          title: chrome.title,
-          chrome,
-          panel,
-        }),
-      ),
+      ...entries.map(({ chrome, panel }) => ({
+        kind: "plugin" as const,
+        pluginId: chrome.pluginId,
+        id: chrome.id,
+        title: chrome.title,
+        chrome,
+        panel,
+      })),
     ],
     [entries, props.builtInEntries],
   );
@@ -433,31 +430,21 @@ function SidebarNavigationCustomizeMenu({
   return (
     <Popover open={isOpen} onOpenChange={onOpenChange}>
       <span className="inline-flex shrink-0">
-        <Tooltip delayDuration={350} disableHoverableContent>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Customize sidebar navigation"
-                className={cn(
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                  "shrink-0 text-subtle-foreground opacity-60 ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:opacity-100 max-md:pointer-coarse:[&_svg]:size-5 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground data-[state=open]:opacity-100",
-                )}
-                data-testid="sidebar-navigation-customize-trigger"
-              >
-                <HugeiconsIcon
-                  icon={FilterHorizontalIcon}
-                  aria-hidden="true"
-                />
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="px-2 py-1">
-            Customize sidebar navigation
-          </TooltipContent>
-        </Tooltip>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Customize sidebar navigation"
+            className={cn(
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              "shrink-0 text-subtle-foreground opacity-60 ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:opacity-100 max-md:pointer-coarse:[&_svg]:size-5 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground data-[state=open]:opacity-100",
+            )}
+            data-testid="sidebar-navigation-customize-trigger"
+          >
+            <HugeiconsIcon icon={FilterHorizontalIcon} aria-hidden="true" />
+          </Button>
+        </PopoverTrigger>
       </span>
       <PopoverContent
         ref={contentRef}
