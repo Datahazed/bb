@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { createPerfPhaseLog } from "@/test/perf-phase";
 import {
   threadDetailBootstrapQueryKey,
   threadQueuedMessagesQueryKey,
@@ -215,6 +216,15 @@ describe("thread runtime mutations", () => {
   });
 
   it("starts thread bootstrap before the created thread view mounts", async () => {
+    const phase = createPerfPhaseLog();
+    vi.mocked(sdk.threads.get).mockImplementation(() => {
+      phase.mark("bootstrap-get");
+      return Promise.resolve({
+        ...makeThreadResponse(),
+        environment: null,
+        host: null,
+      });
+    });
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(() => useCreateThread(), { wrapper });
 
@@ -225,13 +235,16 @@ describe("thread runtime mutations", () => {
         input: [{ type: "text", text: "Hello", mentions: [] }],
       });
     });
+    phase.mark("create-returned");
 
     await waitFor(() => {
-      expect(sdk.threads.get).toHaveBeenCalledWith({
-        include: "environment,host",
-        signal: expect.any(AbortSignal),
-        threadId: "thread-1",
-      });
+      expect(phase.names()).toContain("bootstrap-get");
+    });
+    phase.expectBefore("bootstrap-get", "create-returned");
+    expect(sdk.threads.get).toHaveBeenCalledWith({
+      include: "environment,host",
+      signal: expect.any(AbortSignal),
+      threadId: "thread-1",
     });
     expect(
       queryClient.getQueryData(threadDetailBootstrapQueryKey("thread-1")),
