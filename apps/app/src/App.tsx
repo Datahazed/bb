@@ -59,13 +59,17 @@ import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provi
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 
+const settingsViewModule = import("./views/SettingsView");
+settingsViewModule.catch(() => {});
 const SettingsView = lazy(() =>
-  import("./views/SettingsView").then((m) => ({
+  settingsViewModule.then((m) => ({
     default: m.SettingsView,
   })),
 );
+const toolsViewModule = import("./views/ToolsView");
+toolsViewModule.catch(() => {});
 const ToolsView = lazy(() =>
-  import("./views/ToolsView").then((m) => ({
+  toolsViewModule.then((m) => ({
     default: m.ToolsView,
   })),
 );

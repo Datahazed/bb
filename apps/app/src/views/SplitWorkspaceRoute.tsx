@@ -17,8 +17,10 @@ import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
 
 const ROOT_COMPOSE_CONTENT = { kind: "new-thread" } as const;
 
+const toolsViewModule = import("./ToolsView");
+toolsViewModule.catch(() => {});
 const ToolsView = lazy(() =>
-  import("./ToolsView").then((m) => ({ default: m.ToolsView })),
+  toolsViewModule.then((m) => ({ default: m.ToolsView })),
 );
 
 export default function SplitWorkspaceRoute() {
