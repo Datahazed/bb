@@ -294,7 +294,7 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen
         .getByTestId("plugin-nav-sidebar-overflow-count")
-        .classList.contains("text-subtle-foreground/60"),
+        .classList.contains("text-subtle-foreground/50"),
     ).toBe(true);
 
     fireEvent.click(toggle);

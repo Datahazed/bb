@@ -327,7 +327,7 @@ function PluginNavSidebarOverflowToggle({
         ) : (
           <>
             <span
-              className="tabular-nums text-subtle-foreground/60"
+              className="tabular-nums text-subtle-foreground/50"
               data-testid="plugin-nav-sidebar-overflow-count"
             >
               {overflowCount}
