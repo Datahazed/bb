@@ -98,6 +98,12 @@ describe("plugin runtime health", () => {
     runtime.setStatus("demo", "disabled", "disabled detail");
     expect(getInstalledPlugin(db, "demo")?.lastProblemClass).toBe("missing");
     expect(changeCount).toBe(1);
+
+    runtime.setStatus("demo", "error", "x".repeat(600));
+    expect(getInstalledPlugin(db, "demo")?.lastProblemMessage).toBe(
+      `${"x".repeat(499)}…`,
+    );
+    expect(changeCount).toBe(2);
   });
 
   it("increments the stored handler error count and redacts its message", async () => {

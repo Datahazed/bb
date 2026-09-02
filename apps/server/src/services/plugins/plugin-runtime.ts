@@ -98,6 +98,7 @@ const pluginSdkRuntimePath = join(
 const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
 
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+const MAX_PERSISTED_PLUGIN_PROBLEM_MESSAGE_LENGTH = 500;
 
 async function hashFile(
   path: string,
@@ -452,10 +453,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function sanitizePersistedProblemMessage(message: string): string {
-    return persistedProblemPrivatePathPatterns.reduce(
+    const sanitized = persistedProblemPrivatePathPatterns.reduce(
       (sanitized, pattern) => sanitized.replace(pattern, "~"),
-      message,
+      firstProblemLine(message),
     );
+    return sanitized.length <= MAX_PERSISTED_PLUGIN_PROBLEM_MESSAGE_LENGTH
+      ? sanitized
+      : `${sanitized.slice(0, MAX_PERSISTED_PLUGIN_PROBLEM_MESSAGE_LENGTH - 1)}…`;
   }
 
   function recordProblem(
@@ -465,7 +469,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): void {
     const changed = setInstalledPluginLastProblem(deps.db, id, {
       class: problemClass,
-      message: sanitizePersistedProblemMessage(firstProblemLine(message)),
+      message: sanitizePersistedProblemMessage(message),
       at: now(),
     });
     if (changed) settingsChanged();
@@ -723,7 +727,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       stats.errorCount += 1;
       const changed = recordInstalledPluginHandlerError(deps.db, id, {
         class: "error",
-        message: sanitizePersistedProblemMessage(firstProblemLine(message)),
+        message: sanitizePersistedProblemMessage(message),
         at: now(),
       });
       if (changed) settingsChanged();
