@@ -71,6 +71,7 @@ export type LastSendOutcome = z.infer<typeof lastSendOutcomeSchema>;
 interface PushNotificationData {
   kind: PushNotificationKind;
   projectId: string;
+  serverUrl?: string;
   threadId: string;
 }
 
@@ -328,6 +329,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     if (rows.length === 0) return;
     const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
     const body = truncate(resolved.body, PUSH_BODY_MAX_LENGTH);
+    const serverUrl = bb.server.experimental_appUrl;
     const deliveries: Delivery[] = rows.map((subscription) => ({
       subscription,
       message: {
@@ -337,6 +339,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         data: {
           kind: resolved.kind,
           projectId: thread.projectId,
+          ...(serverUrl === null ? {} : { serverUrl }),
           threadId: thread.id,
         },
         sound: "default",

@@ -726,8 +726,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create threads, send messages to them, and manage projects",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
+          "Read the server's loopback URL, public app URL, and data directory when it needs server facts",
         ],
-        apiSymbols: ["BbPluginApi"],
+        apiSymbols: ["BbPluginApi", "PluginServerApi"],
         firstParty: [
           "Automations",
           "Docs",
@@ -735,6 +736,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Inline visualizations",
           "Keep Awake",
           "Provider retry",
+          "Push notifications",
           "Secrets",
           "Side chat",
           "Tasks",

@@ -1418,6 +1418,12 @@ export interface PluginEvents {
 
 export interface PluginServerApi {
   /**
+   * The operator-configured public app URL from `BB_APP_URL`, or `null` when
+   * the operator has not configured one. This value is not bind-gated.
+   */
+  readonly experimental_appUrl: string | null;
+
+  /**
    * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
    * which serves the SPA + /api + /ws. For plugins that proxy or relay
    * traffic back to the server itself (e.g. a tunnel). Bind-gated like

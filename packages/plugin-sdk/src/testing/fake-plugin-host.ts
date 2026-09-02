@@ -417,6 +417,10 @@ export interface CreateFakePluginHostOptions {
   /** Defaults to "test-plugin". */
   pluginId?: string;
   /**
+   * Value served by `bb.server.experimental_appUrl`. Defaults to `null`.
+   */
+  appUrl?: string | null;
+  /**
    * Value served by `bb.server.loopbackBaseUrl` (always bound here, like
    * `bb.sdk`). Defaults to "http://127.0.0.1:38886".
    */
@@ -1616,9 +1620,14 @@ function createFakePluginHostInternal(
   };
 
   // --- server ---
+  const appUrl = options.appUrl ?? null;
   const loopbackBaseUrl = options.loopbackBaseUrl ?? "http://127.0.0.1:38886";
   const dataDir = options.dataDir ?? "/tmp/bb-fake-data-dir";
   const server: PluginServerApi = {
+    get experimental_appUrl(): string | null {
+      assertLive();
+      return appUrl;
+    },
     get loopbackBaseUrl(): string {
       assertLive();
       return loopbackBaseUrl;
