@@ -679,7 +679,11 @@ function PluginNavRowMenuItem({
   const content = (
     <>
       {icon === "Unavailable" ? (
-        <HugeiconsIcon icon={UnavailableIcon} aria-hidden="true" />
+        <HugeiconsIcon
+          icon={UnavailableIcon}
+          aria-hidden="true"
+          data-icon="Unavailable"
+        />
       ) : (
         <Icon name={icon} aria-hidden="true" />
       )}
