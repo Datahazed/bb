@@ -833,13 +833,9 @@ describe("PluginPanelRightPanelHost", () => {
   it("selects a restored panel tab while retaining an open plugin detail tab", async () => {
     renderHost("board", "", createStore(), true);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open workspace file" }),
-    );
-    expect(
-      await screen.findByText("workspace:env-explicit:src/example.ts"),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Close example.ts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
+    expect(await screen.findByTestId("host-scoped-file-preview")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close example.log" }));
     fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
     expect(await screen.findByText("Details for secrets")).toBeTruthy();
 
@@ -847,9 +843,7 @@ describe("PluginPanelRightPanelHost", () => {
       expect(appCommandHandlers.get("panel.reopenClosedTab")?.()).toBe(true);
     });
 
-    expect(
-      await screen.findByText("workspace:env-explicit:src/example.ts"),
-    ).toBeTruthy();
+    expect(await screen.findByTestId("host-scoped-file-preview")).toBeTruthy();
     expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
     expect(screen.getByRole("button", { name: "Close Secrets" })).toBeTruthy();
   });
