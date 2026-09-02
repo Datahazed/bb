@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
@@ -66,9 +67,9 @@ import {
   type ChildThreadPendingAttentionSource,
 } from "../../hooks/queries/child-thread-pending-interactions";
 import {
-  didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
   isPendingInteractionStateUnknown,
+  resolveThreadDetailQueryMount,
   useChildThreads,
   useProjectThreadSubset,
   useThread,
@@ -514,6 +515,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId);
@@ -524,14 +526,14 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     isFetching,
     isLoadingError,
     error,
-  } = useThread(threadId, {
-    enabled: hasThreadDetailBootstrapSettled,
-    refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(
-      threadDetailBootstrapQuery,
-    )
-      ? false
-      : "always",
-  });
+  } = useThread(
+    threadId,
+    resolveThreadDetailQueryMount({
+      bootstrap: threadDetailBootstrapQuery,
+      queryClient,
+      threadId,
+    }),
+  );
   const environmentQuery = useEnvironment(thread?.environmentId, {
     enabled: hasThreadDetailBootstrapSettled,
     staleTime: 5_000,

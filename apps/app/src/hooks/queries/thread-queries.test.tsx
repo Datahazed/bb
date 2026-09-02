@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
@@ -27,6 +28,7 @@ import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
   isPendingInteractionStateUnknown,
+  resolveThreadDetailQueryMount,
   useArchivedThreads,
   useChildThreads,
   useThread,
@@ -319,18 +321,9 @@ describe("useThreadDetailBootstrap", () => {
       updatedAt,
     });
 
-    const result = renderHook(
-      () => {
-        const bootstrap = useThreadDetailBootstrap("thread-1");
-        return useThread("thread-1", {
-          enabled: bootstrap.isSuccess,
-          refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(bootstrap)
-            ? false
-            : "always",
-        });
-      },
-      { wrapper },
-    );
+    const result = renderHook(() => useMountedThreadQuery("thread-1"), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.result.current.isSuccess).toBe(true);
@@ -349,18 +342,7 @@ describe("useThreadDetailBootstrap", () => {
       updatedAt: 1,
     });
 
-    renderHook(
-      () => {
-        const bootstrap = useThreadDetailBootstrap("thread-1");
-        return useThread("thread-1", {
-          enabled: bootstrap.isSuccess,
-          refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(bootstrap)
-            ? false
-            : "always",
-        });
-      },
-      { wrapper },
-    );
+    renderHook(() => useMountedThreadQuery("thread-1"), { wrapper });
 
     await waitFor(() => {
       expect(sdk.threads.get).toHaveBeenCalledTimes(1);
@@ -370,7 +352,71 @@ describe("useThreadDetailBootstrap", () => {
       threadId: "thread-1",
     });
   });
+
+  it("reads a cached thread while bootstrap is still in flight", async () => {
+    let resolveThread:
+      | ((thread: ThreadWithIncludesResponse) => void)
+      | undefined;
+    vi.mocked(sdk.threads.get).mockReturnValue(
+      new Promise<ThreadWithIncludesResponse>((resolve) => {
+        resolveThread = resolve;
+      }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(threadQueryKey("thread-1"), THREAD_WITH_INCLUDES);
+
+    const result = renderHook(() => useMountedThreadQuery("thread-1"), {
+      wrapper,
+    });
+
+    expect(result.result.current.data).toEqual(THREAD_WITH_INCLUDES);
+    expect(result.result.current.isSuccess).toBe(true);
+    await waitFor(() => {
+      expect(sdk.threads.get).toHaveBeenCalledTimes(1);
+    });
+    expect(sdk.threads.get).toHaveBeenCalledWith({
+      include: "environment,host",
+      signal: expect.any(AbortSignal),
+      threadId: "thread-1",
+    });
+    resolveThread?.(THREAD_WITH_INCLUDES);
+  });
+
+  it("does not start a thread read until bootstrap when the thread cache is empty", async () => {
+    vi.mocked(sdk.threads.get).mockReturnValue(
+      new Promise<ThreadWithIncludesResponse>(() => {}),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const result = renderHook(() => useMountedThreadQuery("thread-1"), {
+      wrapper,
+    });
+
+    expect(result.result.current.data).toBeUndefined();
+    expect(result.result.current.fetchStatus).toBe("idle");
+    await waitFor(() => {
+      expect(sdk.threads.get).toHaveBeenCalledTimes(1);
+    });
+    expect(sdk.threads.get).toHaveBeenCalledWith({
+      include: "environment,host",
+      signal: expect.any(AbortSignal),
+      threadId: "thread-1",
+    });
+  });
 });
+
+function useMountedThreadQuery(threadId: string) {
+  const queryClient = useQueryClient();
+  const bootstrap = useThreadDetailBootstrap(threadId);
+  return useThread(
+    threadId,
+    resolveThreadDetailQueryMount({
+      bootstrap,
+      queryClient,
+      threadId,
+    }),
+  );
+}
 
 describe("useArchivedThreads", () => {
   it("loads archived threads across all projects when no scope is selected", async () => {
