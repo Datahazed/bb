@@ -29,6 +29,8 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIsAppCommandModifierHeld: () => false,
 }));
 vi.mock("@/components/plugin/PluginNavSidebarItems", () => ({
+  AutomationsNavSidebarItem: () => <div>Automations</div>,
+  ExtensionsNavSidebarItem: () => <div>Extensions</div>,
   PluginNavSidebarItems: () => <div>BB plugin destinations</div>,
   getTraditionalPluginNavPanelEntries: (entries: readonly object[]) => entries,
 }));
