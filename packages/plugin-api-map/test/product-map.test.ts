@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { annotationNeighbors, panCarets, SURFACE_GROUPS } from "../src/index";
+import {
+  annotationNeighbors,
+  panCarets,
+  parseProductMapRoute,
+  productMapSelection,
+  productMapSubPathForSurface,
+  SURFACE_GROUPS,
+} from "../src/index";
 
 const LAST = SURFACE_GROUPS.length - 1;
 
@@ -51,5 +58,41 @@ describe("annotationNeighbors", () => {
       previous: surfaces.at(-2),
       next: null,
     });
+  });
+});
+
+describe("product map routes", () => {
+  it("restores a page and annotation from the panel sub-path", () => {
+    expect(parseProductMapRoute("composer/composer-plus-menu")).toEqual({
+      slideId: "composer",
+      surfaceId: "composer-plus-menu",
+    });
+    expect(productMapSelection("composer", "composer-plus-menu")).toEqual({
+      index: SURFACE_GROUPS.findIndex((group) => group.id === "composer"),
+      surfaceId: "composer-plus-menu",
+    });
+  });
+
+  it("restores copied legacy annotation hashes", () => {
+    expect(
+      parseProductMapRoute("composer", "#surface-composer-plus-menu"),
+    ).toEqual({
+      slideId: "composer",
+      surfaceId: "composer-plus-menu",
+    });
+  });
+
+  it("uses the annotation's owning page when route segments disagree", () => {
+    expect(parseProductMapRoute("settings/composer-plus-menu")).toEqual({
+      slideId: "composer",
+      surfaceId: "composer-plus-menu",
+    });
+  });
+
+  it("builds canonical annotation sub-paths", () => {
+    expect(productMapSubPathForSurface("composer-plus-menu")).toBe(
+      "composer/composer-plus-menu",
+    );
+    expect(productMapSubPathForSurface("missing-surface")).toBeNull();
   });
 });

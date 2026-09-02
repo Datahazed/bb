@@ -23,7 +23,10 @@ export { SurfaceCard, useSurfaceCard } from "./surface-card";
 export {
   annotationNeighbors,
   panCarets,
+  parseProductMapRoute,
   ProductMap,
+  productMapSelection,
+  productMapSubPathForSurface,
   SURFACE_NUMBERS,
 } from "./product-map";
 export {
