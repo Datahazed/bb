@@ -6,7 +6,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
@@ -69,7 +68,6 @@ import {
 import {
   getLatestPendingInteraction,
   isPendingInteractionStateUnknown,
-  resolveThreadDetailQueryMount,
   useChildThreads,
   useProjectThreadSubset,
   useThread,
@@ -515,7 +513,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId);
@@ -526,14 +523,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     isFetching,
     isLoadingError,
     error,
-  } = useThread(
-    threadId,
-    resolveThreadDetailQueryMount({
-      bootstrap: threadDetailBootstrapQuery,
-      queryClient,
-      threadId,
-    }),
-  );
+  } = useThread(threadId, {
+    bootstrap: threadDetailBootstrapQuery,
+  });
   const environmentQuery = useEnvironment(thread?.environmentId, {
     enabled: hasThreadDetailBootstrapSettled,
     staleTime: 5_000,

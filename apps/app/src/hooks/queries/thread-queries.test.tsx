@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
@@ -29,7 +28,6 @@ import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
   isPendingInteractionStateUnknown,
-  resolveThreadDetailQueryMount,
   useArchivedThreads,
   useChildThreads,
   useThread,
@@ -417,16 +415,8 @@ describe("useThreadDetailBootstrap", () => {
 });
 
 function useMountedThreadQuery(threadId: string) {
-  const queryClient = useQueryClient();
   const bootstrap = useThreadDetailBootstrap(threadId);
-  return useThread(
-    threadId,
-    resolveThreadDetailQueryMount({
-      bootstrap,
-      queryClient,
-      threadId,
-    }),
-  );
+  return useThread(threadId, { bootstrap });
 }
 
 describe("useArchivedThreads", () => {
