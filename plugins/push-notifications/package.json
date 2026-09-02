@@ -11,7 +11,7 @@
     "name": "Push notifications",
     "description": "Send mobile push notifications for threads that need attention",
     "branding": {
-      "icon": "Smartphone"
+      "icon": "BellDot"
     },
     "server": "./server.ts"
   },
