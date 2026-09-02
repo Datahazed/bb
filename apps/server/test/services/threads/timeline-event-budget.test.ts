@@ -418,7 +418,7 @@ describe("timeline event budget", () => {
       page,
     };
     expect(
-      buildThreadTimeline(db, thread, { ...options, eventBudget: 1_500 }),
+      buildThreadTimeline(db, thread, { ...options, eventBudget: 400 }),
     ).toEqual(
       buildThreadTimeline(db, thread, {
         ...options,

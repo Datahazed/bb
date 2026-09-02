@@ -694,7 +694,7 @@ is synchronous, so it blocked the server's event loop — which also delayed
 dynamic tool call and before registering every interactive request. One slow
 thread therefore slowed agent work on _every_ thread on the host.
 
-A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default 1500) and returns however many whole turns fit. Older turns load automatically
+A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default 400) and returns however many whole turns fit. Older turns load automatically
 as you scroll toward the top of the loaded window; a manual "Load older
 messages" button remains on surfaces that render no scroll body, and after a
 failed page so a broken fetch is retried on request rather than in a loop.
