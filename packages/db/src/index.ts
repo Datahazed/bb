@@ -2,6 +2,7 @@ export { createConnection } from "./connection.js";
 export {
   listThreadsWithPendingInteractionStateForProjectsOffThread,
   listThreadsWithPendingInteractionStateOffThread,
+  searchThreadsWithPendingInteractionStateOffThread,
   startSqliteReadWorker,
   stopSqliteReadWorker,
 } from "./sqlite-read-queue.js";

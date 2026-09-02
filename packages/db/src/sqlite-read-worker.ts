@@ -3,8 +3,10 @@ import { createConnection } from "./connection.js";
 import {
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
+  searchThreadsWithPendingInteractionState,
   type ListThreadsForProjectsOptions,
   type ListThreadsOptions,
+  type SearchThreadsWithPendingInteractionStateArgs,
 } from "./data/threads.js";
 
 export type SqliteReadRequest =
@@ -17,6 +19,11 @@ export type SqliteReadRequest =
       id: number;
       name: "listThreadsWithPendingInteractionStateForProjects";
       args: ListThreadsForProjectsOptions;
+    }
+  | {
+      id: number;
+      name: "searchThreadsWithPendingInteractionState";
+      args: SearchThreadsWithPendingInteractionStateArgs;
     };
 
 export type SqliteReadResponse =
@@ -36,7 +43,9 @@ port.on("message", (request: SqliteReadRequest) => {
     const result =
       request.name === "listThreadsWithPendingInteractionState"
         ? listThreadsWithPendingInteractionState(db, request.args)
-        : listThreadsWithPendingInteractionStateForProjects(db, request.args);
+        : request.name === "listThreadsWithPendingInteractionStateForProjects"
+          ? listThreadsWithPendingInteractionStateForProjects(db, request.args)
+          : searchThreadsWithPendingInteractionState(db, request.args);
     const response: SqliteReadResponse = { id: request.id, ok: true, result };
     port.postMessage(response);
   } catch (error) {

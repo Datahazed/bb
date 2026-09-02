@@ -11,6 +11,8 @@ import {
   createThread,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
+  searchThreadsWithPendingInteractionState,
+  updateThread,
 } from "../src/data/threads.js";
 import { migrate } from "../src/migrate.js";
 import { noopNotifier } from "../src/notifier.js";
@@ -18,6 +20,7 @@ import {
   isSqliteReadWorkerActive,
   listThreadsWithPendingInteractionStateForProjectsOffThread,
   listThreadsWithPendingInteractionStateOffThread,
+  searchThreadsWithPendingInteractionStateOffThread,
   startSqliteReadWorker,
   stopSqliteReadWorker,
 } from "../src/sqlite-read-queue.js";
@@ -100,5 +103,19 @@ describe("sqlite read queue", () => {
     expect(fromWorker.map((row) => row.id)).toEqual([thread.id]);
     expect(fromWorker).toEqual(fromServing);
     expect(fromProjectsWorker).toEqual(fromProjectsServing);
+  });
+
+  it("returns the same thread search from a file-backed worker as the serving connection", async () => {
+    const { db, source, thread } = createFileDatabase();
+    updateThread(db, noopNotifier, thread.id, {
+      title: "alpha search target",
+    });
+    startSqliteReadWorker({ source });
+    expect(isSqliteReadWorkerActive()).toBe(true);
+
+    const args = { query: "alpha", limitPerGroup: 10 };
+    await expect(
+      searchThreadsWithPendingInteractionStateOffThread(db, args),
+    ).resolves.toEqual(searchThreadsWithPendingInteractionState(db, args));
   });
 });
