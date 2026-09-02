@@ -50,7 +50,7 @@ describe("plugin runtime health", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  function createRuntime() {
+  function createRuntime(settingsChanged: () => void = () => {}) {
     return createPluginRuntime({
       deps: {
         db,
@@ -70,13 +70,17 @@ describe("plugin runtime health", () => {
         appVersion: "0.9.0",
         now: () => 1234,
       },
+      settingsChanged,
       nextCronRunAt: () => Number.MAX_SAFE_INTEGER,
       settledWithin: async () => true,
     });
   }
 
   it("stores compact status problems and excludes disabled details", () => {
-    const runtime = createRuntime();
+    let changeCount = 0;
+    const runtime = createRuntime(() => {
+      changeCount += 1;
+    });
     const rootDir = join(dataDir, "plugins", "demo");
     runtime.setStatus(
       "demo",
@@ -89,13 +93,18 @@ describe("plugin runtime health", () => {
       lastProblemMessage: "missing at ~/plugins/demo and ~/private.txt",
       lastProblemAt: 1234,
     });
+    expect(changeCount).toBe(1);
 
     runtime.setStatus("demo", "disabled", "disabled detail");
     expect(getInstalledPlugin(db, "demo")?.lastProblemClass).toBe("missing");
+    expect(changeCount).toBe(1);
   });
 
   it("increments the stored handler error count and redacts its message", async () => {
-    const runtime = createRuntime();
+    let changeCount = 0;
+    const runtime = createRuntime(() => {
+      changeCount += 1;
+    });
     await runtime.invokeWrapped("demo", "event handler", () => {
       throw new Error(`failed at ${join(homedir(), "private.txt")}\nstack`);
     });
@@ -107,5 +116,6 @@ describe("plugin runtime health", () => {
       lastProblemAt: 1234,
     });
     expect(runtime.handlerStats.get("demo")?.errorCount).toBe(1);
+    expect(changeCount).toBe(1);
   });
 });

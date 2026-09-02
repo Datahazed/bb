@@ -463,11 +463,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     problemClass: PluginRuntimeStatus,
     message: string,
   ): void {
-    setInstalledPluginLastProblem(deps.db, id, {
+    const changed = setInstalledPluginLastProblem(deps.db, id, {
       class: problemClass,
       message: sanitizePersistedProblemMessage(firstProblemLine(message)),
       at: now(),
     });
+    if (changed) settingsChanged();
   }
 
   function reportNeedsConfiguration(id: string, message: string): void {
@@ -720,11 +721,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       stats.errorCount += 1;
-      recordInstalledPluginHandlerError(deps.db, id, {
+      const changed = recordInstalledPluginHandlerError(deps.db, id, {
         class: "error",
         message: sanitizePersistedProblemMessage(firstProblemLine(message)),
         at: now(),
       });
+      if (changed) settingsChanged();
       logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
       if (statuses.get(id)?.status === "running") {
         setStatus(id, "running", `${label} failed: ${message}`);
