@@ -259,6 +259,7 @@ describe("plugin environment targets at the dispatch checkpoint", () => {
         harness.db,
         harness.deps.hub,
         row.id,
+        { kind: "explicit-send" },
       );
       expect(claimed).not.toBeNull();
       const pending = getThread(harness.db, created.id);
@@ -266,7 +267,12 @@ describe("plugin environment targets at the dispatch checkpoint", () => {
       const outcome = await attemptDispatch(harness.deps, {
         thread: pending,
         payload: { input: textInput("Do the thing"), mode: "start" },
-        source: { kind: "drain", claimed: claimed!, sendNow: false },
+        source: {
+          kind: "drain",
+          claimed: claimed!,
+          respectManualStopPause: false,
+          sendNow: false,
+        },
         queuePayload: { kind: "inline" },
         origin: null,
         originPluginId: null,
