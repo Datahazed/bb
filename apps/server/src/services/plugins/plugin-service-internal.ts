@@ -106,6 +106,7 @@ export interface PluginServiceDeps {
     | "interruptPluginInteractions"
     | "setPluginDirectory"
   >;
+  getAppUrl?: () => string | null;
   dataDir: string;
   appVersion: string;
   bundledPlugins?: readonly BundledPluginRegistration[];

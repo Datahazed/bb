@@ -382,6 +382,7 @@ export function createPluginApi(options: {
   db: DbConnection;
   dataDir: string;
   getSdk: () => BbSdk | undefined;
+  getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
   publishSignal: (channel: string, payload: unknown) => void;
   settingsChanged: () => void;
@@ -450,6 +451,7 @@ export function createPluginApi(options: {
     db,
     dataDir,
     getSdk,
+    getAppUrl,
     getLoopbackBaseUrl,
     publishSignal,
     settingsChanged,
@@ -1227,6 +1229,10 @@ export function createPluginApi(options: {
   };
 
   const server: PluginServerApi = {
+    get experimental_appUrl(): string | null {
+      assertLive();
+      return getAppUrl();
+    },
     get loopbackBaseUrl(): string {
       assertLive();
       const baseUrl = getLoopbackBaseUrl();

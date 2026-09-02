@@ -14,6 +14,20 @@ import {
 } from "../../internal/host-policy.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
+describe("server", () => {
+  it("serves the configured public app URL and defaults to null", () => {
+    const configured = createFakePluginHost({
+      appUrl: "https://bb.example.test",
+    });
+    const unset = createFakePluginHost();
+
+    expect(configured.bb.server.experimental_appUrl).toBe(
+      "https://bb.example.test",
+    );
+    expect(unset.bb.server.experimental_appUrl).toBeNull();
+  });
+});
+
 describe("ui.requestInput", () => {
   it("settles a blocking request through the harness", async () => {
     const { bb, harness } = createFakePluginHost();

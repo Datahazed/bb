@@ -660,6 +660,16 @@ should get named, read-only accessors for the bb-managed files it may read —
 a path invites writes into bb's directory, which `bb.storage` exists to
 prevent.
 
+## `bb.server.experimental_appUrl`
+
+**What it does.** This value gives plugins the operator-configured public app
+URL from `BB_APP_URL`. It is `null` when the operator did not configure that
+value. Plugins can read it before the server starts to listen.
+
+**Audit before stabilizing.** Decide whether `BB_EXTERNAL_URL` or the bb
+connect URL should supply this value when `BB_APP_URL` is empty. Confirm that
+one public URL has clear behavior when a server has several access paths.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** the recording entry shape is now consumed by the public testing kit, so it is a de-facto fixture format that must be frozen together with `experimental_readBridgeRecording` / `replayRecording`; the `{ threadId | null }` scope is untested against a multiplexing bridge.

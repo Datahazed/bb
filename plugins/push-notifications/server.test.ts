@@ -90,6 +90,7 @@ function pendingQuestion(
 }
 
 interface SetupOptions {
+  appUrl?: string | null;
   expo?: FakeExpo;
   fetch?: PushSenderFetch;
   now?: () => number;
@@ -102,6 +103,7 @@ async function setup(options: SetupOptions = {}) {
   let nextId = 1;
   const fake = createFakePluginHost({
     pluginId: "push-notifications",
+    ...(options.appUrl === undefined ? {} : { appUrl: options.appUrl }),
     settings: { expoPushUrl: EXPO_URL },
     sdk: {
       threads: {
@@ -309,6 +311,29 @@ describe("push sender", () => {
           status: "sent",
           sentCount: 2,
         });
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("includes the configured public server URL", async () => {
+    const host = await setup({ appUrl: "https://bb.example.test" });
+    try {
+      await host.addSubscription();
+      const thread = host.setThread();
+
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "Done",
+      });
+
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+      expect(host.expo.requests[0]?.[0]?.data).toEqual({
+        kind: "turn-finished",
+        projectId: "project-1",
+        serverUrl: "https://bb.example.test",
+        threadId: thread.id,
       });
     } finally {
       await host.cleanup();
