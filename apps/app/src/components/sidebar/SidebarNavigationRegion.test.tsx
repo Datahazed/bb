@@ -30,6 +30,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 }));
 vi.mock("@/components/plugin/PluginNavSidebarItems", () => ({
   PluginNavSidebarItems: () => <div>BB plugin destinations</div>,
+  getTraditionalPluginNavPanelEntries: (entries: readonly object[]) => entries,
 }));
 vi.mock("./usePaneContentSplitDrag", () => ({
   usePaneContentSplitActions: () => ({

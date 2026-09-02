@@ -138,13 +138,15 @@ export function BuiltInSidebarNavigation({
       data-testid="built-in-sidebar-navigation"
       data-sidebar-navigation-unified="true"
     >
-      <PluginNavSidebarItems
-        builtInEntries={builtInEntries}
-        entries={traditionalPluginNavPanels}
-        leadingOrderKeys={DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER}
-        onNavigate={onNavigate}
-        splitEnabled={splitEnabled}
-      />
+      <div className="contents" data-testid="app-sidebar-primary-actions">
+        <PluginNavSidebarItems
+          builtInEntries={builtInEntries}
+          entries={traditionalPluginNavPanels}
+          leadingOrderKeys={DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER}
+          onNavigate={onNavigate}
+          splitEnabled={splitEnabled}
+        />
+      </div>
     </div>
   );
 }
