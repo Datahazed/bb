@@ -282,7 +282,7 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
-  it("puts the fifth plugin behind a count-free disclosure", async () => {
+  it("shows the overflow count when the fifth plugin is hidden", async () => {
     const labels = ["One", "Two", "Three", "Four", "Five"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
 
@@ -290,8 +290,12 @@ describe("PluginNavSidebarItems", () => {
 
     expect(panelRowNames(labels)).toEqual(labels.slice(0, 4));
     const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
-    expect(toggle.textContent).toBe("More plugins");
-    expect(toggle.textContent).not.toMatch(/\d/);
+    expect(toggle.textContent).toBe("1 more plugin");
+    expect(
+      screen
+        .getByTestId("plugin-nav-sidebar-overflow-count")
+        .classList.contains("text-subtle-foreground/60"),
+    ).toBe(true);
 
     fireEvent.click(toggle);
     await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));

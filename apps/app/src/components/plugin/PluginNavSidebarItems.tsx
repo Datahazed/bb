@@ -269,6 +269,7 @@ function PluginNavSidebarItemList({
               <>
                 <PluginNavSidebarOverflowToggle
                   isOpen={isOverflowOpen}
+                  overflowCount={overflow.length}
                   onToggle={() => setIsOverflowOpen((open) => !open)}
                 />
                 {isOverflowOpen
@@ -292,9 +293,11 @@ function PluginNavSidebarItemList({
 
 function PluginNavSidebarOverflowToggle({
   isOpen,
+  overflowCount,
   onToggle,
 }: {
   isOpen: boolean;
+  overflowCount: number;
   onToggle: () => void;
 }) {
   return (
@@ -319,7 +322,19 @@ function PluginNavSidebarOverflowToggle({
         aria-hidden="true"
       />
       <span className="min-w-0 truncate text-left">
-        {isOpen ? "Show fewer" : "More plugins"}
+        {isOpen ? (
+          "Show fewer"
+        ) : (
+          <>
+            <span
+              className="tabular-nums text-subtle-foreground/60"
+              data-testid="plugin-nav-sidebar-overflow-count"
+            >
+              {overflowCount}
+            </span>{" "}
+            more {overflowCount === 1 ? "plugin" : "plugins"}
+          </>
+        )}
       </span>
     </Button>
   );
