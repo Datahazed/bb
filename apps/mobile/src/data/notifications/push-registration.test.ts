@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   decidePushSync,
+  describePushStatus,
   enablePushForProfile,
+  isPushRegistrationAllowed,
   shouldReregister,
   syncPushRegistration,
   unregisterPushRegistration,
@@ -65,7 +67,11 @@ function fakeApi() {
   return api;
 }
 
-const profile = { id: "p1", serverUrl: "https://sawyer.getbb.app" };
+const profile = {
+  id: "p1",
+  serverUrl: "https://sawyer.getbb.app",
+  mode: "direct",
+} as const;
 
 function setup(moduleOptions?: FakeModuleOptions) {
   const store = createPushStore(createMemoryPushStorage());
@@ -95,6 +101,7 @@ describe("decidePushSync", () => {
   const existing = {
     subscriptionId: "sub_0",
     expoPushToken: "t",
+    tokenSuffix: "t",
     platform: "ios" as const,
     serverUrl: profile.serverUrl,
     registeredAt: 0,
@@ -183,6 +190,7 @@ describe("shouldReregister", () => {
   const existing = {
     subscriptionId: "sub_0",
     expoPushToken: "t1",
+    tokenSuffix: "t1",
     platform: "ios" as const,
     serverUrl: "https://a",
     registeredAt: 8_000,
@@ -205,6 +213,73 @@ describe("shouldReregister", () => {
 });
 
 describe("syncPushRegistration", () => {
+  it("refuses plain HTTP outside loopback without asking for a token", async () => {
+    const { store, deps, notifications, api } = setup();
+    const insecure = {
+      id: "p1",
+      serverUrl: "http://192.168.1.20:3000",
+      mode: "direct",
+    } as const;
+    store.setEnabled(insecure.id, true);
+    expect(await syncPushRegistration(deps, insecure)).toEqual({
+      action: "skipped",
+      reason: "insecure-http",
+    });
+    expect(notifications.getExpoPushToken).not.toHaveBeenCalled();
+    expect(api.register).not.toHaveBeenCalled();
+    expect(
+      describePushStatus({
+        profile: insecure,
+        projectId: "eas-project",
+        enabled: true,
+        permission: "granted",
+        registration: null,
+        lastOutcome: null,
+      }),
+    ).toBe("Push needs HTTPS or bb connect");
+  });
+
+  it("removes an existing registration after a profile changes to plain HTTP", async () => {
+    const { store, deps, api } = setup();
+    store.setEnabled(profile.id, true);
+    await syncPushRegistration(deps, profile);
+    expect(
+      await syncPushRegistration(deps, {
+        ...profile,
+        serverUrl: "http://192.168.1.20:3000",
+      }),
+    ).toEqual({ action: "unregistered" });
+    expect(api.unregister).toHaveBeenCalledTimes(1);
+    expect(store.getRegistration(profile.id)).toBeNull();
+  });
+
+  it("allows HTTPS, exact loopback HTTP hosts, and bb connect", () => {
+    expect(isPushRegistrationAllowed(profile)).toBe(true);
+    for (const serverUrl of [
+      "http://127.0.0.1:3000",
+      "http://localhost:3000",
+      "http://[::1]:3000",
+    ]) {
+      expect(
+        isPushRegistrationAllowed({ id: "p", serverUrl, mode: "direct" }),
+      ).toBe(true);
+    }
+    expect(
+      isPushRegistrationAllowed({
+        id: "p",
+        serverUrl: "http://192.168.1.20:3000",
+        mode: "connect",
+      }),
+    ).toBe(true);
+    expect(
+      isPushRegistrationAllowed({
+        id: "p",
+        serverUrl: "http://127.0.0.2:3000",
+        mode: "direct",
+      }),
+    ).toBe(false);
+  });
+
   it("registers once enabled and granted, then reports up-to-date until the token changes", async () => {
     const { store, deps, api, notifications } = setup();
     store.setEnabled(profile.id, true);
@@ -231,7 +306,6 @@ describe("syncPushRegistration", () => {
     });
     expect(api.register).toHaveBeenCalledTimes(1);
 
-    // The OS rolled the token: the old one is removed, the new one registered.
     vi.mocked(notifications.getExpoPushToken).mockResolvedValueOnce(
       "ExponentPushToken[new]",
     );
@@ -258,7 +332,6 @@ describe("syncPushRegistration", () => {
       action: "registered",
     });
     expect(api.register).toHaveBeenCalledTimes(2);
-    // Same token: nothing to unregister.
     expect(api.unregister).not.toHaveBeenCalled();
   });
 
@@ -275,7 +348,6 @@ describe("syncPushRegistration", () => {
       expect.objectContaining({ subscriptionId: "sub_1" }),
     );
     expect(store.getRegistration(profile.id)).toBeNull();
-    // And stays quiet afterwards.
     expect(await syncPushRegistration(deps, profile)).toEqual({
       action: "skipped",
       reason: "disabled",
@@ -323,7 +395,6 @@ describe("syncPushRegistration", () => {
     const { store, deps, api } = setup();
     store.setEnabled(profile.id, true);
     await syncPushRegistration(deps, profile);
-    // The profile is gone from the app; only the id and the record remain.
     expect(await unregisterPushRegistration(deps, profile.id)).toEqual({
       action: "unregistered",
     });
@@ -357,7 +428,6 @@ describe("enablePushForProfile", () => {
     expect(notifications.requestPermissionMock).toHaveBeenCalledTimes(1);
     expect(store.isEnabled(profile.id)).toBe(true);
     expect(store.hasPrompted()).toBe(true);
-    // Already granted: no second prompt.
     await enablePushForProfile(deps, "p2");
     expect(notifications.requestPermissionMock).toHaveBeenCalledTimes(1);
   });

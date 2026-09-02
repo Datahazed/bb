@@ -8,7 +8,6 @@ import { getPushStore, getPushSubscriptionsApi } from "./push-storage";
 
 let instance: PushRegistrationController | null = null;
 
-/** App-wide registration controller over expo-notifications + MMKV + fetch. */
 export function getPushRegistrationController(): PushRegistrationController {
   instance ??= createPushRegistrationController({
     notifications: getPushNotificationsModule(),

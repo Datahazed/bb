@@ -5,22 +5,11 @@ import type {
   PushSubscriptionRef,
 } from "./push-contract";
 
-/**
- * `sdk.notifications.pushSubscriptions` keyed by server URL instead of by
- * profile: a profile the user removed still needs its row deleted, and the
- * per-profile client may already be disposed by then. Connect profiles
- * authenticate through the native cookie jar; nothing is added here.
- */
 export interface PushSubscriptionsApi {
-  /** Upsert by token; resolves with the server row id. */
   register(
     serverUrl: string,
     input: PushSubscriptionInput,
   ): Promise<{ subscriptionId: string }>;
-  /**
-   * Delete the row (by id when known, else by looking the token up). A row
-   * that is already gone counts as success.
-   */
   unregister(serverUrl: string, ref: PushSubscriptionRef): Promise<void>;
   list(
     serverUrl: string,
@@ -62,8 +51,10 @@ export function createPushSubscriptionsApi(
         return;
       }
       const rows = await sdkFor(serverUrl).list();
-      const row = rows.find((r) => r.expoPushToken === ref.expoPushToken);
-      if (row) await remove(serverUrl, row.id);
+      const matches = rows.filter((row) => row.tokenSuffix === ref.tokenSuffix);
+      if (matches.length === 1 && matches[0]) {
+        await remove(serverUrl, matches[0].id);
+      }
     },
     list(serverUrl, signal) {
       return sdkFor(serverUrl).list(signal ? { signal } : undefined);

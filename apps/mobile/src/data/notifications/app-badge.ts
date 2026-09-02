@@ -1,12 +1,6 @@
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { isUnreadDoneThread } from "@bb/client-core";
 
-/**
- * App-icon badge = threads that want the user's attention on the active
- * server: root threads that finished (idle / error) since they were last
- * read, plus threads blocked on a pending interaction. Derived client-side
- * from the sidebar bootstrap (`GET /system/attention` is only a boolean).
- */
 export function badgeCountFromSidebar(
   bootstrap: Pick<SidebarBootstrapResponse, "projects" | "personalProject">,
 ): number {

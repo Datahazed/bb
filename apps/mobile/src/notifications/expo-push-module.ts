@@ -7,12 +7,6 @@ import type {
   PushPlatform,
 } from "@/data/notifications";
 
-/**
- * EAS project id from the app config (`extra.eas.projectId`, written by
- * `eas init` / EAS Build). Without it `getExpoPushTokenAsync` cannot mint a
- * token, so a dev-client built with plain `expo run:ios` reports push as
- * unavailable instead of throwing.
- */
 export function getEasProjectId(): string | null {
   const extra: unknown = Constants.expoConfig?.extra;
   if (typeof extra === "object" && extra !== null && "eas" in extra) {
@@ -39,8 +33,6 @@ function toPermissionState(
   ) {
     return "granted";
   }
-  // `canAskAgain` is false once the user answered the system prompt (iOS
-  // never re-prompts); `undetermined` means the prompt has not been shown.
   return status.status === "undetermined" || status.canAskAgain
     ? "undetermined"
     : "denied";
@@ -52,7 +44,6 @@ function currentPlatform(): PushPlatform {
 
 export const ANDROID_DEFAULT_CHANNEL_ID = "threads";
 
-/** expo-notifications behind the injectable contract the data layer uses. */
 export function createExpoPushModule(): PushNotificationsModule {
   return {
     projectId: getEasProjectId(),

@@ -21,6 +21,5 @@ export async function resetLocalState(): Promise<void> {
     preferences: getPreferencesStorage(),
     disposeClients: () => getAppProfileClientRegistry().disposeAll(),
   });
-  // The push store caches its MMKV slice in memory; drop the stale copy.
   getPushStore().reload();
 }

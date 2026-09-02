@@ -5,15 +5,11 @@ import {
   type PushStore,
   type PushSubscriptionsApi,
 } from "@/data/notifications";
-import { createMobileFetch } from "@/lib/sdk";
+import { createMobileFetch } from "@/lib/sdk/mobile-fetch";
 
 let store: PushStore | null = null;
 let api: PushSubscriptionsApi | null = null;
 
-/**
- * App-wide push store on the shared `bb.preferences` MMKV instance (wiped by
- * the e2e reset together with the other client-local preferences).
- */
 export function getPushStore(): PushStore {
   if (!store) {
     const mmkv = createMMKV({ id: "bb.preferences" });
@@ -28,7 +24,6 @@ export function getPushStore(): PushStore {
   return store;
 }
 
-/** The push-subscription routes over the global fetch + mobile surface header. */
 export function getPushSubscriptionsApi(): PushSubscriptionsApi {
   api ??= createPushSubscriptionsApi(
     createMobileFetch((input, init) => fetch(input, init)),

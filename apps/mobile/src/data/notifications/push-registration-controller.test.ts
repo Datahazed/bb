@@ -43,7 +43,7 @@ function setup() {
   return { store, notifications, api, controller, tokenGate };
 }
 
-const profile = { id: "p1", serverUrl: "https://a" };
+const profile = { id: "p1", serverUrl: "https://a", mode: "direct" } as const;
 
 describe("createPushRegistrationController", () => {
   it("coalesces concurrent syncs for one profile into one in-flight run plus a trailing run", async () => {
@@ -53,7 +53,6 @@ describe("createPushRegistrationController", () => {
     const second = controller.sync(profile);
     expect(controller.getSnapshot().byProfileId.p1?.syncing).toBe(true);
     tokenGate.resolve("tok");
-    // Both callers observe the settled state after the trailing run.
     expect(await first).toEqual({ action: "skipped", reason: "up-to-date" });
     expect(await second).toEqual({ action: "skipped", reason: "up-to-date" });
     expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(2);
@@ -70,7 +69,11 @@ describe("createPushRegistrationController", () => {
     store.setEnabled("p1", true);
     await controller.sync(profile);
     store.setEnabled("p2", true);
-    await controller.sync({ id: "p2", serverUrl: "https://b" });
+    await controller.sync({
+      id: "p2",
+      serverUrl: "https://b",
+      mode: "direct",
+    });
     await controller.reconcileRemovedProfiles(["p2"]);
     expect(api.unregister).toHaveBeenCalledWith(
       "https://a",

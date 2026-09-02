@@ -8,11 +8,6 @@ import {
   type PushSyncProfile,
 } from "./push-registration";
 
-/**
- * Per-profile sync state the Settings UI renders. `syncing` coalesces
- * concurrent triggers (profile activation, AppState active, a token roll,
- * the toggle) into one in-flight sync per profile with one trailing re-run.
- */
 export interface PushProfileSyncState {
   syncing: boolean;
   lastOutcome: PushSyncOutcome | null;
@@ -26,21 +21,13 @@ export interface PushRegistrationControllerSnapshot {
 export interface PushRegistrationController {
   getSnapshot(): PushRegistrationControllerSnapshot;
   subscribe(listener: () => void): () => void;
-  /** Reconcile one profile now (coalesced). Resolves with the outcome. */
   sync(profile: PushSyncProfile): Promise<PushSyncOutcome>;
-  /** Toggle: asks for permission when needed, then syncs. */
   setEnabled(
     profile: PushSyncProfile,
     enabled: boolean,
   ): Promise<PushSyncOutcome>;
-  /**
-   * Profiles that disappeared from the app but still have a registration:
-   * remove their server rows (by the stored server URL) and forget them.
-   */
   reconcileRemovedProfiles(currentProfileIds: readonly string[]): Promise<void>;
-  /** The OS rolled the device token: every registered profile re-syncs. */
   handleTokenRolled(profiles: readonly PushSyncProfile[]): Promise<void>;
-  /** Re-read the OS permission (AppState active: the user may have changed it). */
   refreshPermission(): Promise<PushPermissionState>;
 }
 
@@ -92,8 +79,6 @@ export function createPushRegistrationController(
   function sync(profile: PushSyncProfile): Promise<PushSyncOutcome> {
     const existing = inFlight.get(profile.id);
     if (existing) {
-      // Remember the latest profile record for one trailing run; every
-      // caller resolves with the outcome of the last run.
       existing.rerun = profile;
       return existing.promise;
     }

@@ -2,36 +2,21 @@ import type { PushPlatform } from "./push-contract";
 import type { PushRegistrationRecord, PushStore } from "./push-store";
 import type { PushSubscriptionsApi } from "./push-subscriptions-api";
 
-/**
- * Per-profile Expo push registration policy. Pure apart from the injected
- * notifications module (expo-notifications in the app, a fake in tests) and
- * the subscriptions API.
- *
- * A phone registers its Expo push token with every server profile whose
- * "Push notifications" toggle is on, once the OS permission is granted and
- * the app knows its EAS project id (the token cannot be minted without one;
- * a dev-client built outside EAS reports "push unavailable"). The stored
- * registration record lets the sync re-register on a token change, refresh
- * `lastSeenAt` on the server periodically, and unregister a profile the user
- * removed from the app.
- */
 export type PushPermissionState = "granted" | "denied" | "undetermined";
 
 export interface PushNotificationsModule {
-  /** EAS project id from the app config; null before the app is built with EAS. */
   readonly projectId: string | null;
   readonly platform: PushPlatform;
   getPermission(): Promise<PushPermissionState>;
-  /** Shows the OS prompt (once); afterwards returns the settled state. */
   requestPermission(): Promise<PushPermissionState>;
   getExpoPushToken(projectId: string): Promise<string>;
-  /** Fires when the OS rolls the device token; the Expo token must be re-read. */
   addTokenListener(listener: () => void): () => void;
   setBadgeCount(count: number): Promise<void>;
 }
 
 export type PushSkipReason =
   | "disabled"
+  | "insecure-http"
   | "no-project-id"
   | "permission-undetermined"
   | "permission-denied"
@@ -53,17 +38,28 @@ export interface PushSyncDeps {
   store: PushStore;
   deviceLabel: string;
   now?: () => number;
-  /** Re-POST an unchanged registration after this long (keeps `lastSeenAt` fresh). */
   refreshAfterMs?: number;
 }
 
 export interface PushSyncProfile {
   id: string;
   serverUrl: string;
+  mode: "direct" | "connect";
 }
 
-/** One day: a live phone re-asserts its subscription daily. */
 export const PUSH_REGISTRATION_REFRESH_MS = 24 * 60 * 60 * 1000;
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+export function isPushRegistrationAllowed(profile: PushSyncProfile): boolean {
+  if (profile.mode === "connect") return true;
+  try {
+    const url = new URL(profile.serverUrl);
+    return url.protocol !== "http:" || LOOPBACK_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -74,11 +70,6 @@ export type PushSyncDecision =
   | { action: "unregister" }
   | { action: "fetch-token" };
 
-/**
- * What to do before a token is known. Unregistering only happens when the
- * phone previously registered this profile: the server's state should track
- * the toggle and the OS permission.
- */
 export function decidePushSync(input: {
   enabled: boolean;
   projectId: string | null;
@@ -104,7 +95,6 @@ export function decidePushSync(input: {
   return { action: "fetch-token" };
 }
 
-/** Whether a fresh token/platform/server or a stale record needs a new POST. */
 export function shouldReregister(input: {
   existing: PushRegistrationRecord | null;
   expoPushToken: string;
@@ -121,11 +111,6 @@ export function shouldReregister(input: {
   return input.now - existing.registeredAt >= input.refreshAfterMs;
 }
 
-/**
- * Bring the server's subscription for `profile` in line with the local
- * toggle, the OS permission, and the current token. Never throws: failures
- * are reported so the caller can show them in Settings and retry later.
- */
 export async function syncPushRegistration(
   deps: PushSyncDeps,
   profile: PushSyncProfile,
@@ -134,6 +119,10 @@ export async function syncPushRegistration(
   const refreshAfterMs = deps.refreshAfterMs ?? PUSH_REGISTRATION_REFRESH_MS;
   const { notifications, api, store } = deps;
   const existing = store.getRegistration(profile.id);
+  if (!isPushRegistrationAllowed(profile)) {
+    if (existing) return unregisterPushRegistration(deps, profile.id);
+    return { action: "skipped", reason: "insecure-http" };
+  }
   const decision = decidePushSync({
     enabled: store.isEnabled(profile.id),
     projectId: notifications.projectId,
@@ -149,7 +138,6 @@ export async function syncPushRegistration(
 
   let expoPushToken: string;
   try {
-    // `decidePushSync` only reaches here with a project id.
     expoPushToken = await notifications.getExpoPushToken(
       notifications.projectId ?? "",
     );
@@ -169,9 +157,6 @@ export async function syncPushRegistration(
   ) {
     return { action: "skipped", reason: "up-to-date" };
   }
-  // A token or server change leaves a stale row behind on the old server /
-  // for the old token; remove it first (best effort) so the server does not
-  // push to a dead token.
   if (
     existing &&
     (existing.expoPushToken !== expoPushToken ||
@@ -179,10 +164,7 @@ export async function syncPushRegistration(
   ) {
     try {
       await api.unregister(existing.serverUrl, existing);
-    } catch {
-      // The new registration below is what matters; the server also prunes
-      // tokens Expo reports as DeviceNotRegistered.
-    }
+    } catch {}
   }
   let subscriptionId: string;
   try {
@@ -197,6 +179,7 @@ export async function syncPushRegistration(
   store.setRegistration(profile.id, {
     subscriptionId,
     expoPushToken,
+    tokenSuffix: expoPushToken.slice(-6),
     platform,
     serverUrl: profile.serverUrl,
     registeredAt: now(),
@@ -204,11 +187,6 @@ export async function syncPushRegistration(
   return { action: "registered", expoPushToken };
 }
 
-/**
- * Remove the phone's subscription for a profile (toggle off, permission
- * revoked, or the profile was removed from the app — which is why this takes
- * the id, not the profile: the record remembers the server URL).
- */
 export async function unregisterPushRegistration(
   deps: Pick<PushSyncDeps, "api" | "store">,
   profileId: string,
@@ -224,11 +202,6 @@ export async function unregisterPushRegistration(
   return { action: "unregistered" };
 }
 
-/**
- * Turn the toggle on for a profile, asking for the OS permission first when
- * it was never requested. Returns the permission the app ended up with so
- * the UI can explain a denial (and deep-link to the system settings).
- */
 export async function enablePushForProfile(
   deps: Pick<PushSyncDeps, "notifications" | "store">,
   profileId: string,
@@ -242,14 +215,17 @@ export async function enablePushForProfile(
   return permission;
 }
 
-/** User-facing summary for the Settings row subtitle. */
 export function describePushStatus(input: {
+  profile: PushSyncProfile;
   projectId: string | null;
   enabled: boolean;
   permission: PushPermissionState | null;
   registration: PushRegistrationRecord | null;
   lastOutcome: PushSyncOutcome | null;
 }): string {
+  if (!isPushRegistrationAllowed(input.profile)) {
+    return "Push needs HTTPS or bb connect";
+  }
   if (input.projectId === null) {
     return "Push unavailable until the app is built with EAS";
   }

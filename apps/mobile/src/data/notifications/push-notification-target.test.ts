@@ -23,6 +23,16 @@ describe("parsePushNotificationData", () => {
       projectId: null,
       serverUrl: "https://sawyer.getbb.app",
     });
+    expect(
+      parsePushNotificationData({
+        threadId: "thr_1",
+        serverUrl: "https://home.example.com/bb/",
+      }),
+    ).toEqual({
+      threadId: "thr_1",
+      projectId: null,
+      serverUrl: "https://home.example.com/bb",
+    });
   });
 
   it("rejects payloads without a thread id", () => {
@@ -46,8 +56,23 @@ describe("resolvePushTargetProfile", () => {
     expect(hasThread).not.toHaveBeenCalled();
   });
 
-  it("returns the only profile without probing", async () => {
+  it("matches a server hint with a saved path prefix", async () => {
+    const prefixed = {
+      id: "p3",
+      serverUrl: "https://home.example.com/bb",
+    };
     const hasThread = vi.fn(async () => false);
+    expect(
+      await resolvePushTargetProfile(
+        { ...target, serverUrl: "https://home.example.com/bb" },
+        { profiles: [sawyer, prefixed], activeProfileId: "p1", hasThread },
+      ),
+    ).toBe(prefixed);
+    expect(hasThread).not.toHaveBeenCalled();
+  });
+
+  it("probes the only profile when no server hint matches", async () => {
+    const hasThread = vi.fn(async () => true);
     expect(
       await resolvePushTargetProfile(target, {
         profiles: [sawyer],
@@ -55,7 +80,20 @@ describe("resolvePushTargetProfile", () => {
         hasThread,
       }),
     ).toBe(sawyer);
-    expect(hasThread).not.toHaveBeenCalled();
+    expect(hasThread).toHaveBeenCalledWith(sawyer.serverUrl, "thr_1");
+  });
+
+  it("probes profiles when a server hint does not match", async () => {
+    const hasThread = vi.fn(
+      async (serverUrl: string) => serverUrl === lan.serverUrl,
+    );
+    expect(
+      await resolvePushTargetProfile(
+        { ...target, serverUrl: "https://unknown.example" },
+        { profiles: [sawyer, lan], activeProfileId: "p1", hasThread },
+      ),
+    ).toBe(lan);
+    expect(hasThread).toHaveBeenCalledTimes(2);
   });
 
   it("probes the active profile first, then the others, tolerating failures", async () => {

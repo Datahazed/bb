@@ -1,21 +1,18 @@
 import * as Notifications from "expo-notifications";
-import { usePathname } from "expo-router";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
-import {
-  pathnameIsThread,
-  useOpenThreadInProfile,
-  useProfiles,
-  useRealtimeConnectionState,
-} from "@/app-shell";
+import { useProfiles, useRealtimeConnectionState } from "@/app-shell";
 import {
   parsePushNotificationData,
   resolvePushTargetProfile,
+  isPushRegistrationAllowed,
   type PushNotificationTarget,
   type PushSyncProfile,
 } from "@/data/notifications";
 import type { ServerProfile } from "@/lib/profiles";
 import { ActionSheet, toast, useSheet } from "@/ui";
+import { webViewShellHref } from "@/screens/shell/hrefs";
 import { AppBadgeSync } from "./AppBadgeSync";
 import { getPushNotificationsModule } from "./expo-push-module";
 import { getPushRegistrationController } from "./push-controller";
@@ -23,20 +20,6 @@ import { getPushStore } from "./push-storage";
 import { hasThreadOnServer } from "./thread-probe";
 import { usePushStoreSnapshot } from "./use-push-store";
 
-/**
- * Everything push-related that must run while the app is up, mounted once
- * inside the ProfilesProvider + SheetProvider:
- *
- * - keeps the active profile's registration in sync (on connect, on
- *   AppState active, on a token roll, when the toggle changes) and removes
- *   registrations of profiles the user deleted;
- * - routes notification taps (cold start, background, foreground) to the
- *   thread on the right profile; foreground arrivals become a toast with
- *   "Open" instead of a system banner;
- * - mirrors the unread / pending count onto the app icon badge;
- * - asks for the OS permission once, after the first successful connection
- *   (never on launch), when the app can actually mint a token.
- */
 export function PushNotificationsHost() {
   const { status, profiles, activeProfile, connection } = useProfiles();
   const realtimeState = useRealtimeConnectionState();
@@ -44,23 +27,22 @@ export function PushNotificationsHost() {
   const controller = getPushRegistrationController();
   const notifications = getPushNotificationsModule();
   const storeSnapshot = usePushStoreSnapshot();
-  const openThreadInProfile = useOpenThreadInProfile();
-  const pathname = usePathname();
-
-  // Latest values for listeners that are registered once.
+  const router = useRouter();
   const profilesRef = useRef(profiles);
   const activeProfileIdRef = useRef(activeProfile?.id ?? null);
-  const pathnameRef = useRef(pathname);
   useEffect(() => {
     profilesRef.current = profiles;
     activeProfileIdRef.current = activeProfile?.id ?? null;
-    pathnameRef.current = pathname;
-  }, [profiles, activeProfile, pathname]);
+  }, [profiles, activeProfile]);
 
   const syncProfile = useMemo<PushSyncProfile | null>(
     () =>
       activeProfile
-        ? { id: activeProfile.id, serverUrl: activeProfile.serverUrl }
+        ? {
+            id: activeProfile.id,
+            serverUrl: activeProfile.serverUrl,
+            mode: activeProfile.mode,
+          }
         : null,
     [activeProfile],
   );
@@ -68,7 +50,6 @@ export function PushNotificationsHost() {
     syncProfile !== null &&
     storeSnapshot.enabledProfileIds.includes(syncProfile.id);
 
-  // Foreground arrivals: no system banner; the toast below carries "Open".
   useEffect(() => {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
@@ -94,12 +75,16 @@ export function PushNotificationsHost() {
         });
         return;
       }
-      await openThreadInProfile(profile.id, target.threadId);
+      router.push(
+        webViewShellHref({
+          profileId: profile.id,
+          path: `/threads/${target.threadId}`,
+        }),
+      );
     },
-    [openThreadInProfile],
+    [router],
   );
 
-  // Taps: while running (background or foreground) and the cold-start one.
   useEffect(() => {
     const handle = (response: Notifications.NotificationResponse) => {
       const target = parsePushNotificationData(
@@ -117,14 +102,12 @@ export function PushNotificationsHost() {
     return () => subscription.remove();
   }, [openTarget]);
 
-  // Foreground arrivals → toast with Open (unless that thread is on screen).
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener(
       (notification) => {
         const content = notification.request.content;
         const target = parsePushNotificationData(content.data);
         if (!target) return;
-        if (pathnameIsThread(pathnameRef.current, target.threadId)) return;
         toast.message(content.title ?? "bb", {
           description: content.body ?? undefined,
           duration: 8_000,
@@ -135,13 +118,11 @@ export function PushNotificationsHost() {
     return () => subscription.remove();
   }, [openTarget]);
 
-  // Registration sync for the active profile.
   useEffect(() => {
     if (!syncProfile || !connected) return;
     void controller.sync(syncProfile);
   }, [controller, syncProfile, connected, activeEnabled]);
 
-  // AppState active: the user may have changed the permission in Settings.
   useEffect(() => {
     const onChange = (state: AppStateStatus) => {
       if (state !== "active") return;
@@ -153,7 +134,6 @@ export function PushNotificationsHost() {
     return () => subscription.remove();
   }, [controller, syncProfile]);
 
-  // Token roll: every registered profile re-registers.
   useEffect(
     () =>
       notifications.addTokenListener(() => {
@@ -161,13 +141,13 @@ export function PushNotificationsHost() {
           profilesRef.current.map((profile) => ({
             id: profile.id,
             serverUrl: profile.serverUrl,
+            mode: profile.mode,
           })),
         );
       }),
     [controller, notifications],
   );
 
-  // Profiles removed from the app: forget their server rows.
   useEffect(() => {
     if (status !== "ready") return;
     void controller.reconcileRemovedProfiles(profiles.map((p) => p.id));
@@ -175,23 +155,20 @@ export function PushNotificationsHost() {
 
   return (
     <>
-      {connection ? <AppBadgeSync pathname={pathname} /> : null}
+      {connection ? <AppBadgeSync /> : null}
       <FirstRunPrompt
         profile={activeProfile}
         connected={connected}
-        available={notifications.projectId !== null}
+        available={
+          notifications.projectId !== null &&
+          (syncProfile === null || isPushRegistrationAllowed(syncProfile))
+        }
         prompted={storeSnapshot.prompted}
       />
     </>
   );
 }
 
-/**
- * One-time "turn on notifications?" after the first successful connection.
- * Only when the app can mint a token (EAS project id) and the OS prompt was
- * never shown; declining or dismissing records the choice (Settings keeps
- * the toggle).
- */
 function FirstRunPrompt({
   profile,
   connected,
@@ -229,7 +206,14 @@ function FirstRunPrompt({
   }, [shouldAsk, profile, notifications, sheet]);
 
   const target = useMemo(
-    () => (profile ? { id: profile.id, serverUrl: profile.serverUrl } : null),
+    () =>
+      profile
+        ? {
+            id: profile.id,
+            serverUrl: profile.serverUrl,
+            mode: profile.mode,
+          }
+        : null,
     [profile],
   );
 
@@ -260,7 +244,6 @@ function FirstRunPrompt({
           onPress: () => store.markPrompted(),
         },
       ]}
-      cancelLabel={undefined}
       onDismiss={() => {
         if (!store.hasPrompted()) store.markPrompted();
       }}

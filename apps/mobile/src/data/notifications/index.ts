@@ -1,11 +1,9 @@
-// Push notifications: the server contract wrapper, the local push store, the
-// registration policy, notification → thread resolution, and the badge count.
-// RN glue (expo-notifications, MMKV, navigation) lives in src/notifications.
 export { badgeCountFromSidebar } from "./app-badge";
 export type {
   PushPlatform,
   PushSubscriptionInput,
   PushSubscriptionRecord,
+  RegisteredPushSubscription,
   PushSubscriptionRef,
 } from "./push-contract";
 export {
@@ -19,6 +17,7 @@ export {
   decidePushSync,
   describePushStatus,
   enablePushForProfile,
+  isPushRegistrationAllowed,
   shouldReregister,
   syncPushRegistration,
   unregisterPushRegistration,

@@ -1,14 +1,6 @@
 import { pushSubscriptionPlatformSchema } from "@bb/server-contract";
 import { z } from "zod";
 
-/**
- * Client-local push state, one MMKV store (`bb.preferences`, wiped by the
- * e2e reset): the per-profile "Push notifications" toggle, the registration
- * the phone last made for each profile (so a token change re-registers and a
- * removed profile can still be unregistered by its server URL), and whether
- * the first-run prompt was shown. Storage is injected (MMKV in the app, a Map
- * in tests); the store is the single writer and notifies in-process readers.
- */
 export interface PushStorage {
   getString(key: string): string | undefined;
   set(key: string, value: string): void;
@@ -16,9 +8,9 @@ export interface PushStorage {
 }
 
 export const pushRegistrationRecordSchema = z.object({
-  /** The server row id (`POST` response); null for rows registered before ids were stored. */
   subscriptionId: z.string().min(1).nullable(),
   expoPushToken: z.string().min(1),
+  tokenSuffix: z.string().min(1).max(6),
   platform: pushSubscriptionPlatformSchema,
   serverUrl: z.string().min(1),
   registeredAt: z.number().int().nonnegative(),
@@ -43,13 +35,10 @@ export interface PushStore {
     profileId: string,
     record: PushRegistrationRecord | null,
   ): void;
-  /** Profiles with a stored registration (including ones removed from the app). */
   registeredProfileIds(): readonly string[];
   hasPrompted(): boolean;
   markPrompted(): void;
-  /** Forget every per-profile flag/record for `profileId`. */
   forgetProfile(profileId: string): void;
-  /** Re-read storage (after an external wipe such as the e2e reset). */
   reload(): void;
 }
 
@@ -179,7 +168,6 @@ export function createPushStore(storage: PushStorage): PushStore {
   };
 }
 
-/** In-memory storage for tests. */
 export function createMemoryPushStorage(): PushStorage & {
   dump(): Record<string, string>;
 } {

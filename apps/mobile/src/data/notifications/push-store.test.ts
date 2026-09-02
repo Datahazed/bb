@@ -9,6 +9,7 @@ describe("createPushStore", () => {
     store.setRegistration("p1", {
       subscriptionId: "s1",
       expoPushToken: "t",
+      tokenSuffix: "t",
       platform: "ios",
       serverUrl: "https://a",
       registeredAt: 5,
@@ -16,6 +17,7 @@ describe("createPushStore", () => {
     store.setRegistration("p2", {
       subscriptionId: null,
       expoPushToken: "t",
+      tokenSuffix: "t",
       platform: "ios",
       serverUrl: "https://b",
       registeredAt: 6,
@@ -26,6 +28,7 @@ describe("createPushStore", () => {
     expect(reloaded.isEnabled("p1")).toBe(true);
     expect(reloaded.isEnabled("p2")).toBe(false);
     expect(reloaded.getRegistration("p1")?.serverUrl).toBe("https://a");
+    expect(reloaded.getRegistration("p1")?.tokenSuffix).toBe("t");
     expect([...reloaded.registeredProfileIds()].sort()).toEqual(["p1", "p2"]);
     expect(reloaded.hasPrompted()).toBe(true);
   });
@@ -37,6 +40,7 @@ describe("createPushStore", () => {
     store.setRegistration("p1", {
       subscriptionId: "s1",
       expoPushToken: "t",
+      tokenSuffix: "t",
       platform: "ios",
       serverUrl: "https://a",
       registeredAt: 5,

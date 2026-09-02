@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
   describePushStatus,
+  isPushRegistrationAllowed,
   type PushPermissionState,
   type PushProfileSyncState,
   type PushSyncOutcome,
@@ -10,13 +11,11 @@ import { getPushRegistrationController } from "./push-controller";
 import { getPushStore } from "./push-storage";
 
 export interface PushRegistration {
-  /** False until the app is built with EAS (no project id → no token). */
   available: boolean;
   enabled: boolean;
   permission: PushPermissionState | null;
   syncing: boolean;
   lastOutcome: PushSyncOutcome | null;
-  /** One-line status for the Settings row. */
   statusText: string;
   setEnabled(enabled: boolean): Promise<PushSyncOutcome>;
 }
@@ -27,16 +26,10 @@ const IDLE_STATE: PushProfileSyncState = {
   permission: null,
 };
 
-/**
- * Push registration for one server profile: the "Push notifications" toggle
- * (asks for the OS permission the first time it is turned on), the sync
- * state, and a one-line status. The PushNotificationsHost performs the
- * actual register / re-register / unregister work; this hook drives and
- * observes it.
- */
 export function usePushRegistration(profile: {
   id: string;
   serverUrl: string;
+  mode: "direct" | "connect";
 }): PushRegistration {
   const store = getPushStore();
   const controller = getPushRegistrationController();
@@ -63,12 +56,14 @@ export function usePushRegistration(profile: {
     [controller, profile],
   );
   return {
-    available: notifications.projectId !== null,
+    available:
+      notifications.projectId !== null && isPushRegistrationAllowed(profile),
     enabled,
     permission: state.permission,
     syncing: state.syncing,
     lastOutcome: state.lastOutcome,
     statusText: describePushStatus({
+      profile,
       projectId: notifications.projectId,
       enabled,
       permission: state.permission,

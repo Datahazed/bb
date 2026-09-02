@@ -157,9 +157,10 @@ Conventions:
   and reconciles removed profiles / token rolls. `push-store.ts` is the
   injected-storage store (MMKV `bb.preferences` in the app, a Map in tests).
   `push-subscriptions-api.ts` wraps `sdk.notifications.pushSubscriptions`
-  keyed by server URL (not by profile client, which may be disposed).
+  keyed by server URL (not by profile client, which may be disposed). Its
+  list reads `PushSubscriptionSummary` records with `tokenSuffix`.
   `push-notification-target.ts` parses a payload's `data` and picks the
-  profile (server hint → single profile → probe active first).
+  profile (matching server hint → probe active first).
   `app-badge.ts` counts unread finished root threads + pending interactions
   from the sidebar bootstrap.
 - `hosts/` (Phase 7 additions) backs Settings → Machines and → Updates on

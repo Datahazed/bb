@@ -274,15 +274,8 @@ src/
                          bottom-anchored composer screens; OverlayBounds — the
                          region under the header the composer's floating
                          typeahead may cover)
-e2e/flows/               Maestro flows (smoke, phase1-shell, phase3-threads, phase3-compose,
-                         phase4a-timeline, phase4a-diff-showcase,
-                         phase4a-conversation-rows, phase4a-work-rows,
-                         phase4b-send, phase4b-ask-user, phase4b-approve,
-                         phase4b-queue, phase4b-actions, phase4b-composer,
-                         phase4b-interactions, phase4b-approval,
-                         phase4b-thread-actions, phase5-links, phase6-panel,
-                         phase6-diff, phase6-files, phase6-terminal,
-                         phase6-terminal-resume)
+e2e/flows/               Maestro flows for launch, deep links, sending,
+                         connect, and unreachable servers
 e2e/manual/              flows that need a server the harness cannot provide
                          (phase7-plugins-devserver: the checkout's dev server;
                          demo-server: the apps/demo-server worker) and so are
@@ -388,12 +381,9 @@ queue": `delay:30000 first` → Stop + queue affordances → queue "second" →
 Send now → steered into the turn), `phase4b-actions.yaml` ("P4b actions":
 environment line, "…" → Rename, long-press → Copy text, Add to chat quotes
 into the composer). `phase4b-composer.yaml` drives the composer showcase's
-typeahead, pills, "+" menu and attachment chip. `phase5-links.yaml` takes
-`-e THREAD_ID=<threads.completed> -e PROJECT_ID=<projectId>` from the
-backend's startup JSON and drives the deep links while the app is warm:
-`bb://threads/<id>` and the web alias `bb://projects/<p>/threads/<t>` open the
-seeded "Completed thread", `bb://settings/servers` shows the added server, and
-`bb://settings` shows the per-server push row.
+typeahead, pills, "+" menu and attachment chip. The shell rewrite deleted
+`phase5-links.yaml`. `shell-deep-link.yaml` now checks the applicable native
+route at `bb://settings/notifications`. It does not restore the deleted flow.
 `phase6-panel.yaml` opens a thread named "P6 panel thread" (create it first:
 a managed-worktree thread through the API with a file written into its
 worktree), presents the workspace panel from the header button, checks the
@@ -686,32 +676,35 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
 ## Push notifications and deep links (Phase 5)
 
 - Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)
-  registers the phone's Expo push token with every server whose Settings →
-  Notifications toggle is on, through the SDK area
+  registers the phone's Expo push token with each enabled server through
+  Settings → This device → Notifications and the SDK area
   `sdk.notifications.pushSubscriptions` (`POST/GET/DELETE
-/api/v1/notifications/push-subscriptions`). It syncs on connect, on
+  /api/v1/notifications/push-subscriptions`). It syncs on connect, on
   AppState active, when the OS rolls the token (re-register), and when the
   toggle flips; profiles removed from the app get their server row deleted
-  by the stored server URL. The token needs an EAS project id
-  (`expo.extra.eas.projectId`, written by `eas init`); a dev client built
-  with plain `expo run:ios` has none, so Settings shows "Push unavailable
-  until the app is built with EAS" and nothing is registered. The OS
-  permission is requested from the toggle or from the one-time prompt after
-  the first successful connection — never on launch. Pure policy + tests:
-  `src/data/notifications`.
+  by the stored server URL. A direct profile must use HTTPS, unless it uses
+  `127.0.0.1`, `localhost`, or `::1`. Tailscale Serve and bb connect profiles
+  work normally. Other HTTP profiles show "Push needs HTTPS or bb connect"
+  and do not register. The server also needs outbound access to `exp.host`.
+  The server setting `pushNotifications` controls sends without a restart.
+  The one-time "Get notified…" sheet appears only after the first successful
+  connection. The sheet never appears on launch. The OS prompt starts only
+  after the user selects "Turn on notifications".
+- Privacy: the registration request contains the full Expo token. The list
+  route and `bb notifications push-subscriptions list` return only the last
+  six token characters in `tokenSuffix`. A token can receive pushes but
+  cannot read server data.
 - Handling: a foreground arrival becomes a toast with "Open" (no system
   banner); a tap on a background / cold-start notification opens
-  `/threads/<threadId>` on the profile that owns it (the payload `data`
-  carries `{kind, threadId, projectId}` only — the phone probes its saved
-  servers for the thread when it has more than one). The app-icon badge is
-  the count of unread finished root threads + threads blocked on an
-  interaction on the active server (client-derived from the sidebar
-  bootstrap), written on background and cleared while the thread list is on
-  screen.
+  `/threads/<threadId>` on the profile that owns it. The phone first matches
+  the optional `serverUrl` hint. It probes saved profiles for the thread only
+  when no hint matches. The web page sends the app-icon badge count through
+  the mobile bridge, and `AppBadgeSync` keeps that count on background.
 - Simulator check without APNs: `xcrun simctl push <udid> app.getbb.mobile
 payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
-"threadId":"…","projectId":"…"}}` (expo-notifications reads remote `data`
-  from the `body` key) after granting the permission from the toggle.
+"threadId":"…","projectId":"…","serverUrl":"https://…"}}`
+  (expo-notifications reads remote `data` from the `body` key) after the user
+  grants permission.
 - Deep links: `bb://<mobile path>` (`bb://threads/<id>`, `bb://settings/servers`,
   `bb://projects/<p>/threads/<t>`, …) and universal / app links
   `https://<handle>.getbb.app/{threads,projects,settings}/*` (iOS
@@ -807,6 +800,10 @@ push key); nobody needs a local Xcode signing setup to ship.
   acceptance), `preview` (internal ad-hoc), `production` (App Store /
   TestFlight; `autoIncrement` + `appVersionSource: remote` keep the build
   number on EAS, `version` in `app.json` is the marketing version).
+- **Push release check**: confirm the APNs key with `pnpm exec eas credentials
+  -p ios`. Use `development-device` for a physical iPhone. Keep the server
+  `pushNotifications` setting on, and use an HTTPS or bb connect profile.
+  Confirm that the subscription list shows a token suffix, not a full token.
 - **TestFlight by hand**: `pnpm exec eas build -p ios --profile production`,
   then `pnpm exec eas submit -p ios --latest`. The submit profile reads the
   App Store Connect API key from the gitignored `apps/mobile/asc-api-key.p8`
