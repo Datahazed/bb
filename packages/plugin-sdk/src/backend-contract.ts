@@ -5,6 +5,7 @@ import type {
   Environment,
   Host,
   PermissionMode,
+  PendingInteraction,
   Project,
   PromptInput,
   ProviderErrorInfo,
@@ -261,6 +262,11 @@ export interface PluginThreadEventPayloads {
   "thread.archived": { thread: ThreadResponse };
   /** Fired after a thread is soft-deleted. */
   "thread.deleted": { thread: ThreadResponse };
+  /** Fired after a pending interaction row is committed. */
+  "interaction.pending": {
+    thread: ThreadResponse;
+    interaction: PendingInteraction;
+  };
   /**
    * Fired after a dispatch attempt is queued as a row — by a `message.dispatch`
    * hook's `wait` decision, by a `sendAt` in the future, or by a core wait (the

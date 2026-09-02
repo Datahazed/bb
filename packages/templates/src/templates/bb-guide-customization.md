@@ -164,30 +164,23 @@ same resolved bindings. The complete default table is in docs/configuration.md.
   bb settings keyboard set <command> <shortcut|disabled>
   bb settings keyboard reset [command]
 
-Mobile push notifications
+Push notifications
 
-The server pushes thread updates to registered bb mobile devices through the
-Expo Push API: a new pending interaction (approval or question), a root thread
-whose turn finished and is waiting for you, and a run that failed. Each push
-carries the thread title plus a short preview (the question, the first line of
-the reply, or the error) and opens the thread when tapped. Pushes for one
-thread coalesce over a two-second window and are skipped when a client read
-the thread or answered the interaction in the meantime. The bb mobile app
-registers its Expo push token automatically after it connects; the commands
-below inspect and repair that registry.
+The built-in Push notifications plugin sends thread updates through Expo.
+These commands inspect and repair its device registry.
 
-  bb notifications push-subscriptions list
-  bb notifications push-subscriptions add --token <expo-push-token>
+  bb push-notifications list
+  bb push-notifications add --token <expo-push-token>
       --platform <ios|android> --label <device-name>
-  bb notifications push-subscriptions remove <id>
+  bb push-notifications remove <id>
+  bb push-notifications status
 
 `add` is an upsert by token: a known token refreshes its label and last-seen
 time and keeps its id. Expo tokens that are no longer registered are removed
-automatically after a failed delivery. Use `bb settings general
-pushNotifications <true|false>` to control delivery without a restart.
-`BB_EXPO_PUSH_URL` changes the endpoint at server start. Add `--json` to any
-device command for machine-readable output. The list returns token suffixes,
-not full tokens.
+automatically after a failed delivery. Use `bb plugin disable
+push-notifications` to stop delivery. Change the relay URL with `bb plugin
+config push-notifications set expoPushUrl <url>`. Add `--json` to `list` or
+`status` for machine-readable output. The list returns token suffixes only.
 
 Host files and voice transcription
 

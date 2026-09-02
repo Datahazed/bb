@@ -153,14 +153,11 @@ interface GeneralSettingsSectionProps {
   onManagedBranchPrefixChange: (prefix: string) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
-  onPushNotificationsChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   onStreamerModeChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
-  pushNotifications: boolean;
-  pushNotificationsDisabled: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
   steerActiveThreadOnEnter: boolean;
@@ -788,14 +785,11 @@ export function GeneralSettingsSection({
   onManagedBranchPrefixChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
-  onPushNotificationsChange,
   onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
   onSteerActiveThreadOnEnterChange,
   onStreamerModeChange,
   openLinksInAppBrowser,
-  pushNotifications,
-  pushNotificationsDisabled,
   rewriteLocalhostLinks,
   richTextEditing,
   steerActiveThreadOnEnter,
@@ -875,18 +869,6 @@ export function GeneralSettingsSection({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label="Push notifications"
-          description="Send thread updates to registered mobile devices."
-        >
-          <Switch
-            checked={pushNotifications}
-            disabled={pushNotificationsDisabled}
-            onCheckedChange={onPushNotificationsChange}
-            aria-label="Push notifications"
-          />
         </SettingsWithControl>
 
         {desktopBrowserAvailable ? (
@@ -1206,11 +1188,6 @@ export function SettingsView() {
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
-          pushNotifications={generalSettings.pushNotifications}
-          pushNotificationsDisabled={
-            systemConfigQuery.data === undefined ||
-            updateGeneralSettingsMutation.isPending
-          }
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
           steerActiveThreadOnEnterDisabled={
             systemConfigQuery.data === undefined ||
@@ -1220,12 +1197,6 @@ export function SettingsView() {
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
-          onPushNotificationsChange={(enabled) =>
-            updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
-              pushNotifications: enabled,
-            })
-          }
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,

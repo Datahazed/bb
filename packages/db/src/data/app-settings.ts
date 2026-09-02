@@ -58,19 +58,6 @@ export function getAppSettings(db: DbConnection): AppSettings {
   return appSettingsSchema.parse(values);
 }
 
-export function getPushNotificationsEnabled(db: DbQueryConnection): boolean {
-  const row = db
-    .select({ value: appSettingsValues.value })
-    .from(appSettingsValues)
-    .where(eq(appSettingsValues.key, "pushNotifications"))
-    .get();
-  if (row === undefined) return defaultAppSettings.pushNotifications;
-  const value = appSettingsSchema.shape.pushNotifications.safeParse(
-    parseStoredValue(row.value),
-  );
-  return value.success ? value.data : defaultAppSettings.pushNotifications;
-}
-
 export function setAppSettings(db: DbConnection, settings: AppSettings): void {
   const updatedAt = Date.now();
   db.transaction((transaction) => {

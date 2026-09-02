@@ -246,3 +246,41 @@ Facts on `main` today:
 Not scheduled. See Option B above. Triggers to start: token abuse, demand
 for the same-account guarantee, or wanting a dashboard revoke to stop
 pushes.
+
+## Plugin conversion (decided 2026-09-02)
+
+The owner asked for the server side to be a built-in plugin, and for web and
+desktop notifications to follow. The plugin SDK already offers thread events
+(`thread.idle` with the last assistant text, `thread.failed` with the error,
+archived, deleted), RPC and HTTP routes, CLI commands, declarative settings,
+key-value storage, background services, and the full SDK. One gap: no plugin
+event for a new pending interaction. bb connect is precedent for a built-in
+plugin that holds credentials and makes outbound calls.
+
+Design:
+
+- New plugin event `interaction.pending` with payload
+  `{ thread: ThreadResponse; interaction: PendingInteraction }`, emitted from
+  `PendingInteractionLifecycle.registerPendingInteraction` next to the
+  `interactions-changed` hub notification. Entry in `docs/api_to_audit.md`,
+  bullet on the `thread-events` Guide card, inventory refresh.
+- New built-in plugin `plugins/push-notifications` (server only, enabled by
+  default). Triggers: `interaction.pending`, `thread.idle` (root threads
+  only), `thread.failed`. Same coalescing and cancellation as before, with
+  the thread re-read through `bb.sdk.threads.get` and the interaction
+  re-checked through `bb.sdk.threads.interactions.list` at flush time.
+- Subscriptions in plugin key-value storage. RPC methods
+  `pushSubscriptions.list|add|remove` (the phone calls them through
+  `sdk.plugins.rpc`; agents through the same SDK call). CLI
+  `bb push-notifications list|add|remove|status`.
+- Settings: declarative `expoPushUrl` string with the exp.host default. The
+  plugin's own enable switch is the on/off control. The core
+  `pushNotifications` general setting and `BB_EXPO_PUSH_URL` are removed.
+- Core removals: `push_subscriptions` table and migration 0113, the domain
+  and server-contract push schemas, the notifications route and services,
+  the SDK area, and the CLI command. The Expo transport is the first of
+  several; web push (VAPID, per server) and in-app desktop/web OS
+  notifications come later inside the same plugin.
+- Mobile: registration switches to the plugin RPC. Nothing else changes.
+
+Trade-off accepted: agents use `sdk.plugins.rpc` instead of a typed SDK area.

@@ -258,6 +258,17 @@ now, or when the orphan sweep clears a wait whose plugin is no longer running.
 - **The single server-wide lock.** One slow handler delays every dispatch in the
   server, up to its box.
 
+## `interaction.pending` (`bb.events.on`)
+
+**What it does.** This announcement fires after core commits a pending
+interaction row. It carries the public thread and pending interaction DTOs.
+Plugins can react without delaying or changing the interaction.
+
+**Audit before stabilizing.** Confirm that all plugins should receive provider
+and plugin interaction details. Confirm that the full interaction DTO remains
+the correct payload instead of an id that requires a fresh SDK read. Decide
+whether this event needs matching resolved, cancelled, or interrupted events.
+
 ## `message.queued` / `message.dispatched` / `turn.failed` (`bb.events.on`)
 
 **What it does.** Three announcements on the observe-only `bb.events.on`

@@ -225,13 +225,6 @@ export const BB_MARKETPLACE_URL_ENV = defineEnvVar<string>({
   parse: parseOptionalUrlEnvValue,
 });
 
-export const BB_EXPO_PUSH_URL_ENV = defineEnvVar<string>({
-  description:
-    "Expo Push API endpoint the server posts push messages to. Point it at a local stub to test without exp.host.",
-  name: "BB_EXPO_PUSH_URL",
-  parse: parseRequiredUrlEnvValue,
-});
-
 export const BB_INFERENCE_ENV = defineEnvVar<string>({
   description: "Inference model used for server-side completions",
   name: "BB_INFERENCE",
@@ -381,7 +374,6 @@ export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_MARKETPLACE_URL =
   "https://getbb.app/marketplace/v1/marketplace.json";
-export const DEFAULT_BB_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_INFERENCE_FALLBACK = DEFAULTS.inferenceFallbackModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;

@@ -1367,6 +1367,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
+      emitInteractionPending(thread, interaction) {
+        emitThreadEvent("interaction.pending", () => ({
+          thread: buildThreadDto(thread),
+          interaction,
+        }));
+      },
       emitMessageQueued: buildQueuedMessageEventEmitter("message.queued"),
       emitMessageDispatched:
         buildQueuedMessageEventEmitter("message.dispatched"),

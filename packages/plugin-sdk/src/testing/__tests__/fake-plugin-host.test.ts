@@ -505,6 +505,12 @@ describe("rpc", () => {
     expect(() => bb.rpc.register(listContract, { list: () => [] })).toThrow(
       'rpc method "list" is already registered',
     );
+    const dottedContract = defineRpcContract({
+      "items.list": { input: z.null(), output: z.array(z.string()) },
+    });
+    expect(() =>
+      bb.rpc.register(dottedContract, { "items.list": () => [] }),
+    ).not.toThrow();
     const badContract = defineRpcContract({
       "bad name": { input: z.null(), output: z.array(z.string()) },
     });
