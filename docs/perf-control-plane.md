@@ -34,6 +34,7 @@ bb’s `AppLayout` (sidebar, command palette, chrome) already persists across ro
 | [#7](https://github.com/Datahazed/bb/pull/7) bootstrap on create | none yet; related #1303 | yes; pairs with #6 | yes |
 | [#8](https://github.com/Datahazed/bb/pull/8) pointerdown prefetch | none yet; related #1303 | stacked on #7 | submit after #7 |
 | [#10](https://github.com/Datahazed/bb/pull/10) layout title from cache | none yet; related #1303 | stacked on #6 | submit after #6 |
+| [#11](https://github.com/Datahazed/bb/pull/11) environment chrome from cache | none yet; related #1303 | stacked on #10 | submit after #10 |
 
 ## 1. Hex-encoded Claude Keychain
 
@@ -139,6 +140,18 @@ bb’s `AppLayout` (sidebar, command palette, chrome) already persists across ro
 
 **Test.** Same `thread-chrome-ready` before `bootstrap-settled`, now through `useThread({ bootstrap })`.
 
+## 11. Environment and host chrome from cache
+
+**Why.** After #6/#10 the thread pane and window title paint from `threadQueryKey`. Git-diff tab and host label still waited on this thread’s include GET, even when the environment (shared across threads in a project) was already in React Query from a previous ingest.
+
+**How.** `resolveEnvironmentQueryMount` / `resolveHostsQueryMount` enable from cache while bootstrap is pending and set `refetchOnMount: false` so we do not add `GET /environments/:id` or `GET /hosts` next to the include fetch. Cold open with an empty cache still waits. Ingest still fills the cache.
+
+**Benefit to bb.** Web and desktop. Switching threads in the same workspace shows git-diff eligibility and host label immediately.
+
+**Decision.** Not enabling whenever `environmentId` is set (duplicate GET). Not starting git work-status or PR reads early.
+
+**Test.** Cached env + pending bootstrap → enabled, no refetch, git-diff `eligible`. Empty cache waits.
+
 ## Out of this harvest
 
 - Merging compose and thread into one ChatView, or hiding both mounted.
@@ -153,4 +166,4 @@ bb’s `AppLayout` (sidebar, command palette, chrome) already persists across ro
 
 Already open: #2931, #2934, #2935, #2936.
 
-Next independent: Datahazed #5 (budget), #6 (cache paint). Then #10 (layout title, stacked on #6). Then #7 (create prefetch), then #8 (pointerdown, stacked on #7). Copy the Datahazed PR body; it is written to stand alone.
+Next independent: Datahazed #5 (budget), #6 (cache paint). Then #10 (layout title, stacked on #6), then #11 (environment chrome, stacked on #10). Then #7 (create prefetch), then #8 (pointerdown, stacked on #7). Copy the Datahazed PR body; it is written to stand alone.
