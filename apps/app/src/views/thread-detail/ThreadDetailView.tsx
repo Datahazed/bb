@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
@@ -58,6 +59,7 @@ import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutation
 import {
   useEnvironment,
   getEnvironmentPullRequestFromResponse,
+  resolveEnvironmentQueryMount,
   useEnvironmentPullRequest,
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
@@ -97,7 +99,7 @@ import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { useHosts } from "@/hooks/queries/host-queries";
+import { resolveHostsQueryMount, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import {
@@ -513,6 +515,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId);
@@ -526,8 +529,14 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   } = useThread(threadId, {
     bootstrap: threadDetailBootstrapQuery,
   });
+  const environmentQueryMount = resolveEnvironmentQueryMount({
+    bootstrapSettled: hasThreadDetailBootstrapSettled,
+    environmentId: thread?.environmentId,
+    queryClient,
+  });
   const environmentQuery = useEnvironment(thread?.environmentId, {
-    enabled: hasThreadDetailBootstrapSettled,
+    enabled: environmentQueryMount.enabled,
+    refetchOnMount: environmentQueryMount.refetchOnMount,
     staleTime: 5_000,
   });
   const environment = environmentQuery.data;
@@ -903,11 +912,14 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     terminalsListQuery.data,
     updateFixedPanelTabsState,
   ]);
+  const hostsQueryMount = resolveHostsQueryMount({
+    bootstrapSettled: hasThreadDetailBootstrapSettled,
+    environmentId: thread?.environmentId,
+    queryClient,
+  });
   const hostsQuery = useHosts({
-    enabled:
-      hasThreadDetailBootstrapSettled &&
-      thread?.environmentId !== null &&
-      thread?.environmentId !== undefined,
+    enabled: hostsQueryMount.enabled,
+    refetchOnMount: hostsQueryMount.refetchOnMount,
   });
   const connectedHostIds = useMemo(
     () =>

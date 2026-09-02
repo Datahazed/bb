@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  skipToken,
+  useQuery,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type { HostDirectoryListing } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
@@ -12,7 +17,26 @@ import {
 } from "./query-keys";
 import type { QueryOptions } from "./query-helpers";
 
-export function useHosts(options?: QueryOptions) {
+interface HostListQueryOptions extends QueryOptions {
+  refetchOnMount?: boolean | "always";
+}
+
+export function resolveHostsQueryMount(args: {
+  bootstrapSettled: boolean;
+  environmentId: string | null | undefined;
+  queryClient: QueryClient;
+}): { enabled: boolean; refetchOnMount: boolean } {
+  const hasEnvironment =
+    args.environmentId !== null && args.environmentId !== undefined;
+  const hasCachedHosts =
+    args.queryClient.getQueryData(hostsQueryKey()) !== undefined;
+  return {
+    enabled: hasEnvironment && (hasCachedHosts || args.bootstrapSettled),
+    refetchOnMount: args.bootstrapSettled,
+  };
+}
+
+export function useHosts(options?: HostListQueryOptions) {
   const enabled = options?.enabled ?? true;
   useHostListRealtimeSubscription({ enabled });
 
@@ -20,6 +44,7 @@ export function useHosts(options?: QueryOptions) {
     queryKey: hostsQueryKey(),
     queryFn: ({ signal }) => sdk.hosts.list({ signal }),
     enabled,
+    refetchOnMount: options?.refetchOnMount,
     staleTime: 60_000,
   });
 }
