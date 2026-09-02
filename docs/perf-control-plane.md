@@ -33,6 +33,7 @@ bb’s `AppLayout` (sidebar, command palette, chrome) already persists across ro
 | [#6](https://github.com/Datahazed/bb/pull/6) paint from cache | none yet; related [#1303](https://github.com/get-bb/bb/issues/1303) | yes | yes |
 | [#7](https://github.com/Datahazed/bb/pull/7) bootstrap on create | none yet; related #1303 | yes; pairs with #6 | yes |
 | [#8](https://github.com/Datahazed/bb/pull/8) pointerdown prefetch | none yet; related #1303 | stacked on #7 | submit after #7 |
+| [#10](https://github.com/Datahazed/bb/pull/10) layout title from cache | none yet; related #1303 | stacked on #6 | submit after #6 |
 
 ## 1. Hex-encoded Claude Keychain
 
@@ -126,6 +127,18 @@ bb’s `AppLayout` (sidebar, command palette, chrome) already persists across ro
 
 **Test.** `bootstrap-prefetch` before `pointerdown-complete` before `click-complete`.
 
+## 10. AppLayout title from cache
+
+**Why.** #6 painted the thread pane from `threadQueryKey`. `AppLayout` still waited on bootstrap for `useThread`, so `document.title` and the favicon attention dot lagged the pane.
+
+**How.** `useThread({ bootstrap })` applies `resolveThreadDetailQueryMount` inside the hook (it already owns the QueryClient). AppLayout passes the snapshot on thread routes. No extra provider in layout tests.
+
+**Benefit to bb.** Web and desktop. Window title and favicon match the cached thread as soon as create/list have written it.
+
+**Decision.** Not `useQueryClient` in AppLayout (breaks tests with no provider). Not starting `useEnvironment` before bootstrap (duplicate include GET).
+
+**Test.** Same `thread-chrome-ready` before `bootstrap-settled`, now through `useThread({ bootstrap })`.
+
 ## Out of this harvest
 
 - Merging compose and thread into one ChatView, or hiding both mounted.
@@ -140,4 +153,4 @@ bb’s `AppLayout` (sidebar, command palette, chrome) already persists across ro
 
 Already open: #2931, #2934, #2935, #2936.
 
-Next independent: Datahazed #5 (budget), #6 (cache paint). Then #7 (create prefetch), then #8 (pointerdown, stacked on #7). Copy the Datahazed PR body; it is written to stand alone.
+Next independent: Datahazed #5 (budget), #6 (cache paint). Then #10 (layout title, stacked on #6). Then #7 (create prefetch), then #8 (pointerdown, stacked on #7). Copy the Datahazed PR body; it is written to stand alone.
