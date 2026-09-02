@@ -64,21 +64,30 @@ describe("createPushSubscriptionsApi", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("maps an unavailable plugin to the settings status", async () => {
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-      jsonResponse(404, {
-        ok: false,
-        error: 'unknown plugin "push-notifications"',
-      }),
-    );
-    const api = createPushSubscriptionsApi(fetchImpl);
+  it.each([
+    { status: 404, message: "unknown plugin" },
+    {
+      status: 503,
+      message: 'plugin "push-notifications" is not running (status: disabled)',
+    },
+  ])(
+    "maps the unavailable plugin response to the settings status",
+    async ({ status, message }) => {
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse(status, {
+          ok: false,
+          error: message,
+        }),
+      );
+      const api = createPushSubscriptionsApi(fetchImpl);
 
-    await expect(
-      api.register("https://bee.getbb.app", {
-        expoPushToken: "ExponentPushToken[abc]",
-        platform: "ios",
-        deviceLabel: "Sawyer's iPhone",
-      }),
-    ).rejects.toThrow(PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS);
-  });
+      await expect(
+        api.register("https://bee.getbb.app", {
+          expoPushToken: "ExponentPushToken[abc]",
+          platform: "ios",
+          deviceLabel: "Sawyer's iPhone",
+        }),
+      ).rejects.toThrow(PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS);
+    },
+  );
 });

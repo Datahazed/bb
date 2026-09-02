@@ -56,7 +56,8 @@ class PushRpcError extends Error {
 
 function isDisabledPluginMessage(message: string): boolean {
   return (
-    message.includes(`unknown plugin "${PLUGIN_ID}"`) ||
+    message === "unknown plugin" ||
+    message.startsWith(`unknown plugin "${PLUGIN_ID}"`) ||
     message.includes(`plugin "${PLUGIN_ID}" is not running`)
   );
 }
