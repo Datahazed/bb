@@ -362,6 +362,7 @@ function BrowseCard({
   const queryClient = useQueryClient();
   const [confirmingUninstall, setConfirmingUninstall] = useState(false);
   const uninstall = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: () => {
       if (installedPluginId === null) {
         throw new Error("Installed plugin id is unavailable");

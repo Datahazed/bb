@@ -246,6 +246,7 @@ function AddPluginDialogContent({
   const plan = planQuery.data;
 
   const install = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (body: NonNullable<typeof request>) =>
       body.kind === "catalog"
         ? installCatalogPlugin(fetch, {

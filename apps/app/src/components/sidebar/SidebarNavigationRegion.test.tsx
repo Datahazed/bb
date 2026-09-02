@@ -13,6 +13,10 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  getNotifications,
+  resetNotificationStore,
+} from "@/lib/notifications/notification-store";
 import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
 
 const mocks = vi.hoisted(() => ({
@@ -155,6 +159,7 @@ afterEach(() => {
   cleanup();
   resetAllCrashedPluginSlotsForTest();
   resetPluginSlotStoreForTest();
+  resetNotificationStore();
   window.localStorage.clear();
   vi.restoreAllMocks();
   mocks.dispatch.mockReset();
@@ -205,5 +210,12 @@ describe("SidebarNavigationRegion", () => {
     fireEvent.click(screen.getByRole("button", { name: "Crash replacement" }));
     expect(screen.getByTestId("built-in-sidebar-navigation")).toBeDefined();
     expect(ownerMount).toHaveBeenCalledTimes(2);
+    expect(getNotifications()).toEqual([
+      expect.objectContaining({
+        title: "Sidebar navigation plugin crashed",
+        description:
+          "Garden Navbar (garden) stopped working, so bb's own navigation is back.",
+      }),
+    ]);
   });
 });
