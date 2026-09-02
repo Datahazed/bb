@@ -282,13 +282,13 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
-  it("puts the sixth plugin behind a count-free disclosure", async () => {
-    const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
+  it("puts the fifth plugin behind a count-free disclosure", async () => {
+    const labels = ["One", "Two", "Three", "Four", "Five"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
 
     renderSidebarItems();
 
-    expect(panelRowNames(labels)).toEqual(labels.slice(0, 5));
+    expect(panelRowNames(labels)).toEqual(labels.slice(0, 4));
     const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
     expect(toggle.textContent).toBe("More plugins");
     expect(toggle.textContent).not.toMatch(/\d/);
@@ -317,7 +317,6 @@ describe("PluginNavSidebarItems", () => {
         "Three",
         "Four",
         "Five",
-        "Six",
       ]),
     );
     fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));

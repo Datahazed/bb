@@ -80,7 +80,7 @@ import {
   reorderPluginNavPanels,
 } from "./pluginNavSidebarOrder";
 
-export const PLUGIN_NAV_VISIBLE_LIMIT = 5;
+export const PLUGIN_NAV_VISIBLE_LIMIT = 4;
 
 type SidebarNavRow = {
   pluginId: string;
