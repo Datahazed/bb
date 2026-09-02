@@ -18,6 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ContextMenu,
@@ -250,6 +251,7 @@ function PluginNavSidebarItemList({
         data-testid="plugin-nav-sidebar-items"
         onClickCapture={onClickCapture}
       >
+        <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2")}>Plugins</div>
         <DndContext {...dndContextProps}>
           <SortableContext
             items={orderedKeys}

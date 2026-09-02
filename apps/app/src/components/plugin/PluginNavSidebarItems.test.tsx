@@ -124,6 +124,24 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
+  it("collapses the entire subsection with zero traditional plugins", () => {
+    renderSidebarItems();
+
+    expect(screen.queryByTestId("plugin-nav-sidebar-items")).toBeNull();
+    expect(screen.queryByText("Plugins")).toBeNull();
+  });
+
+  it("shows the subsection label without a disclosure for one plugin", () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems();
+
+    expect(screen.getByText("Plugins")).toBeDefined();
+    expect(panelRowNames(["Docs"])).toEqual(["Docs"]);
+    expect(
+      screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
+    ).toBeNull();
+  });
+
   it("keeps an accessory-less plugin row unchanged", () => {
     registerPanel("docs", "Docs");
 
