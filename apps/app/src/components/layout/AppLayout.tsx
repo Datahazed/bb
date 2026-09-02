@@ -37,7 +37,6 @@ import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
-  didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
   useThread,
   useThreadDetailBootstrap,
@@ -515,8 +514,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     enabled: isThreadView && Boolean(threadId),
     timelinePrefetch: isThreadView && Boolean(threadId),
   });
-  const hasThreadDetailBootstrapSettled =
-    threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
@@ -540,15 +537,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     : null;
   const projectName = projectId ? project?.name : undefined;
   const projectLabel = projectName ?? (projectId ? projectId : undefined);
-  const { data: thread } = useThread(threadId ?? "", {
-    enabled:
-      Boolean(threadId) && (!isThreadView || hasThreadDetailBootstrapSettled),
-    refetchOnMount:
-      isThreadView &&
-      didThreadDetailBootstrapRefreshAfterMount(threadDetailBootstrapQuery)
-        ? false
-        : "always",
-  });
+  const { data: thread } = useThread(
+    threadId ?? "",
+    isThreadView
+      ? { bootstrap: threadDetailBootstrapQuery }
+      : { enabled: Boolean(threadId), refetchOnMount: "always" },
+  );
   const threadDisplayTitle = thread
     ? getThreadDisplayTitle(thread)
     : threadId

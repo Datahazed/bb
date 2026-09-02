@@ -86,7 +86,15 @@ import {
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
 
+interface ThreadDetailBootstrapMountSnapshot {
+  dataUpdatedAt: number;
+  isError: boolean;
+  isFetchedAfterMount: boolean;
+  isSuccess: boolean;
+}
+
 interface QueryOptions {
+  bootstrap?: ThreadDetailBootstrapMountSnapshot;
   enabled?: boolean;
   refetchOnMount?: boolean | "always";
   staleTime?: number;
@@ -118,12 +126,7 @@ export function didThreadDetailBootstrapRefreshAfterMount(query: {
 }
 
 export function resolveThreadDetailQueryMount(args: {
-  bootstrap: {
-    dataUpdatedAt: number;
-    isError: boolean;
-    isFetchedAfterMount: boolean;
-    isSuccess: boolean;
-  };
+  bootstrap: ThreadDetailBootstrapMountSnapshot;
   queryClient: QueryClient;
   threadId: string;
 }): { enabled: boolean; refetchOnMount: boolean | "always" } {
@@ -637,7 +640,16 @@ export function useThreadSearch({
 
 export function useThread(id: string, options?: QueryOptions) {
   const queryClient = useQueryClient();
-  const enabled = (options?.enabled ?? true) && Boolean(id);
+  const bootstrapMount =
+    options?.bootstrap === undefined
+      ? null
+      : resolveThreadDetailQueryMount({
+          bootstrap: options.bootstrap,
+          queryClient,
+          threadId: id,
+        });
+  const enabled =
+    (bootstrapMount?.enabled ?? options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
 
   return useQuery<ThreadResponse>({
@@ -649,7 +661,8 @@ export function useThread(id: string, options?: QueryOptions) {
       }),
     enabled,
     staleTime: THREAD_DETAIL_STALE_TIME_MS,
-    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnMount:
+      bootstrapMount?.refetchOnMount ?? options?.refetchOnMount ?? true,
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
     placeholderData: (previousData, previousQuery) =>
