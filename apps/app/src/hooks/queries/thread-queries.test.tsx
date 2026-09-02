@@ -14,6 +14,7 @@ import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { createPerfPhaseLog } from "@/test/perf-phase";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
   sidebarNavigationQueryKey,
@@ -354,12 +355,16 @@ describe("useThreadDetailBootstrap", () => {
   });
 
   it("reads a cached thread while bootstrap is still in flight", async () => {
+    const phase = createPerfPhaseLog();
     let resolveThread:
       | ((thread: ThreadWithIncludesResponse) => void)
       | undefined;
     vi.mocked(sdk.threads.get).mockReturnValue(
       new Promise<ThreadWithIncludesResponse>((resolve) => {
-        resolveThread = resolve;
+        resolveThread = (thread) => {
+          phase.mark("bootstrap-settled");
+          resolve(thread);
+        };
       }),
     );
     const { queryClient, wrapper } = createQueryClientTestHarness();
@@ -371,6 +376,8 @@ describe("useThreadDetailBootstrap", () => {
 
     expect(result.result.current.data).toEqual(THREAD_WITH_INCLUDES);
     expect(result.result.current.isSuccess).toBe(true);
+    phase.mark("thread-chrome-ready");
+    expect(phase.names()).not.toContain("bootstrap-settled");
     await waitFor(() => {
       expect(sdk.threads.get).toHaveBeenCalledTimes(1);
     });
@@ -380,6 +387,10 @@ describe("useThreadDetailBootstrap", () => {
       threadId: "thread-1",
     });
     resolveThread?.(THREAD_WITH_INCLUDES);
+    await waitFor(() => {
+      expect(phase.names()).toContain("bootstrap-settled");
+    });
+    phase.expectBefore("thread-chrome-ready", "bootstrap-settled");
   });
 
   it("does not start a thread read until bootstrap when the thread cache is empty", async () => {
