@@ -9,6 +9,7 @@ import type {
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@bb/client-core";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { prefetchThreadDetailBootstrap } from "@/hooks/queries/thread-queries";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import type {
@@ -154,6 +155,7 @@ export function useCreateThread() {
         request: variables,
         thread,
       });
+      prefetchThreadDetailBootstrap(queryClient, thread.id);
     },
   });
 }
