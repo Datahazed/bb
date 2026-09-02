@@ -37,6 +37,7 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   Popover,
@@ -463,7 +464,7 @@ function SidebarNavigationCustomizeMenu({
             ?.focus();
         }}
       >
-        <div className="px-2 py-1 text-sm font-medium leading-5 text-popover-foreground">
+        <div className={cn("px-2 py-1", CHROME_SECTION_LABEL_CLASS)}>
           Sidebar navigation
         </div>
         <div role="list" aria-label="Sidebar navigation" className="space-y-0.5">

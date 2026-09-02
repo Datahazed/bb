@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("ProjectListSearchThreadsAction", () => {
-  it("reveals the trailing Search shortcut on hover or focus without changing activation", () => {
+  it("keeps the trailing Search shortcut visible without changing activation", () => {
     const onSearchThreads = vi.fn();
     render(
       <ProjectListSearchThreadsAction onSearchThreads={onSearchThreads} />,
@@ -43,11 +43,8 @@ describe("ProjectListSearchThreadsAction", () => {
     expect(shortcut.getAttribute("aria-hidden")).toBe("true");
     expect(label.classList.contains("flex-1")).toBe(true);
     expect(shortcut.parentElement?.lastElementChild).toBe(shortcut);
-    expect(button.classList.contains("[&_kbd]:opacity-0")).toBe(true);
-    expect(button.classList.contains("hover:[&_kbd]:opacity-60")).toBe(true);
-    expect(button.classList.contains("focus:[&_kbd]:opacity-60")).toBe(true);
+    expect(button.classList.contains("[&_kbd]:opacity-60")).toBe(true);
     expect(button.classList.contains("pr-1")).toBe(true);
-    expect(shortcut.classList.contains("transition-opacity")).toBe(true);
 
     fireEvent.click(button);
 

@@ -822,7 +822,7 @@ export function ProjectListSearchThreadsAction({
       variant="ghost"
       className={cn(
         PROJECT_LIST_ACTION_BUTTON_CLASS,
-        "w-full pr-1 [&_kbd]:opacity-0 hover:[&_kbd]:opacity-60 focus:[&_kbd]:opacity-60",
+        "w-full pr-1 [&_kbd]:opacity-60",
       )}
       onClick={(event) => {
         onSearchThreads?.();
@@ -841,10 +841,7 @@ export function ProjectListSearchThreadsAction({
           Search threads
         </span>
         {threadSearchShortcut ? (
-          <AppCommandShortcutPill
-            shortcut={threadSearchShortcut}
-            className="transition-opacity"
-          />
+          <AppCommandShortcutPill shortcut={threadSearchShortcut} />
         ) : null}
       </span>
     </Button>
