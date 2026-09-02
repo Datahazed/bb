@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   annotationNeighbors,
+  nextProductMapSurfaceId,
   panCarets,
   parseProductMapRoute,
   productMapSelection,
@@ -62,6 +63,14 @@ describe("annotationNeighbors", () => {
 });
 
 describe("product map routes", () => {
+  it("closes an annotation when its selected marker is clicked again", () => {
+    expect(nextProductMapSurfaceId(null, "nav-panel")).toBe("nav-panel");
+    expect(nextProductMapSurfaceId("nav-panel", "nav-panel")).toBeNull();
+    expect(nextProductMapSurfaceId("nav-panel", "sidebar-navigation")).toBe(
+      "sidebar-navigation",
+    );
+  });
+
   it("restores a page and annotation from the panel sub-path", () => {
     expect(parseProductMapRoute("composer/composer-plus-menu")).toEqual({
       slideId: "composer",

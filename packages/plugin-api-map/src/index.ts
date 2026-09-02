@@ -22,6 +22,7 @@ export { firstPartyPluginId, pluginIcon } from "./plugin-icons";
 export { SurfaceCard, useSurfaceCard } from "./surface-card";
 export {
   annotationNeighbors,
+  nextProductMapSurfaceId,
   panCarets,
   parseProductMapRoute,
   ProductMap,

@@ -97,6 +97,13 @@ export function productMapSubPathForSurface(surfaceId: string): string | null {
   return group ? `${group.id}/${surfaceId}` : null;
 }
 
+export function nextProductMapSurfaceId(
+  openSurfaceId: string | null,
+  selectedSurfaceId: string,
+): string | null {
+  return openSurfaceId === selectedSurfaceId ? null : selectedSurfaceId;
+}
+
 export function productMapSelection(
   initialSlideId?: string,
   initialSurfaceId?: string,
@@ -601,13 +608,18 @@ export function ProductMap({
   };
 
   const goToSurface = (id: string) => {
-    const group = GROUP_BY_SURFACE_ID.get(id);
+    const nextSurfaceId = nextProductMapSurfaceId(card.openId, id);
+    if (nextSurfaceId === null) {
+      if (onSurfaceChange) onSurfaceChange(null);
+      else card.close();
+      return;
+    }
+    const group = GROUP_BY_SURFACE_ID.get(nextSurfaceId);
     if (!group) return;
     const target = slides.findIndex((slide) => slide.id === group.id);
     if (target === -1) return;
-    if (target === index && card.openId === id) return;
     if (onSurfaceChange) {
-      onSurfaceChange(id);
+      onSurfaceChange(nextSurfaceId);
       return;
     }
     if (target !== index) {
@@ -615,7 +627,7 @@ export function ProductMap({
       setHoverId(null);
       setIndex(target);
     }
-    card.open(id);
+    card.open(nextSurfaceId);
   };
 
   const closeSurface = useCallback(() => {
