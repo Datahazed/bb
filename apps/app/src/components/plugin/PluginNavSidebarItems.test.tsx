@@ -292,10 +292,8 @@ describe("PluginNavSidebarItems", () => {
     const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
     expect(toggle.textContent).toBe("1 more plugin");
     expect(
-      screen
-        .getByTestId("plugin-nav-sidebar-overflow-count")
-        .classList.contains("text-subtle-foreground/50"),
-    ).toBe(true);
+      screen.getByTestId("plugin-nav-sidebar-overflow-count").className,
+    ).toBe("tabular-nums");
 
     fireEvent.click(toggle);
     await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
