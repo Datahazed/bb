@@ -41,6 +41,7 @@ import {
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
 import {
+  createAutomaticQueuedMessageGroupEligibility,
   runQueuedMessageAutoSendForThread,
   sendQueuedMessage,
 } from "../services/threads/queued-messages.js";
@@ -510,12 +511,18 @@ async function executeEventFollowUpBestEffort(
         });
         return;
       case "turn-starting-queued-messages":
+        const thread = getThread(deps.db, followUp.threadId);
+        if (!thread) return;
+        const isGroupEligible = createAutomaticQueuedMessageGroupEligibility(
+          deps,
+          { now: Date.now(), thread },
+        );
         for (const queuedMessageId of followUp.queuedMessageIds) {
           try {
             await sendQueuedMessage(deps, {
+              claimPolicy: { kind: "automatic", isGroupEligible },
               mode: "auto",
               queuedMessageId,
-              sendNow: false,
               threadId: followUp.threadId,
             });
           } catch (error) {

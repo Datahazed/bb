@@ -15,8 +15,14 @@ import {
   runDueScheduledQueueSweep,
   runRequestedQueueDrain,
 } from "../../src/services/threads/queue-drains.js";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { runQueuedMessageAutoSendForThread } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { textInput } from "../helpers/prompt-input.js";
+import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -91,6 +97,21 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
   );
 }
 
+async function stopThread(harness: TestAppHarness, threadId: string) {
+  const response = harness.app.request(`/api/v1/threads/${threadId}/stop`, {
+    method: "POST",
+  });
+  const stop = await waitForQueuedCommand(
+    harness,
+    ({ command }) =>
+      command.type === "thread.stop" && command.threadId === threadId,
+  );
+  await reportQueuedCommandSuccess(harness, stop, {
+    providerCheckpointId: null,
+  });
+  expect((await response).status).toBe(200);
+}
+
 describe("the requested queue drain", () => {
   it("does not dispatch a scheduled group tail while its lead is postponed", async () => {
     await withTestHarness(async (harness) => {
@@ -140,6 +161,149 @@ describe("the requested queue drain", () => {
     });
   });
 
+  it("drains a group after its mixed plugin and timer waits clear", async () => {
+    await withTestHarness(async (harness) => {
+      vi.useFakeTimers();
+      let released = false;
+      let attempts = 0;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: () => {
+              attempts += 1;
+              return released
+                ? ({ action: "proceed" } as const)
+                : ({ action: "wait", reason: "At capacity" } as const);
+            },
+          },
+        ],
+      });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-mixed-group",
+        status: "idle",
+      });
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("plugin-held lead"), mode: "auto" },
+        thread,
+      });
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("scheduled tail"),
+          mode: "auto",
+          sendAt: Date.now() + 1_000,
+        },
+        thread,
+      });
+      const queued = listQueuedThreadMessages(harness.db, thread.id);
+      setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        notifier: harness.deps.hub,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: queued.map((row) => row.id),
+        groupBoundaryQueuedMessageId: queued[1]!.id,
+      });
+      const turnsBefore = turnRequests(harness, thread.id).length;
+
+      released = true;
+      await runRequestedQueueDrain(harness.deps);
+
+      expect(attempts).toBe(1);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
+
+      vi.advanceTimersByTime(1_000);
+      await runDueScheduledQueueSweep(harness.deps, Date.now());
+
+      expect(attempts).toBe(2);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+    });
+  });
+
+  it.each(["plugin-first", "thread-first"] as const)(
+    "drains a plugin and thread-busy group when %s clears",
+    async (first) => {
+      await withTestHarness(async (harness) => {
+        vi.useFakeTimers();
+        let released = first === "plugin-first";
+        let attempts = 0;
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () => {
+                attempts += 1;
+                return released
+                  ? ({ action: "proceed" } as const)
+                  : ({ action: "wait", reason: "At capacity" } as const);
+              },
+            },
+          ],
+        });
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-plugin-thread-${first}`,
+          status: "active",
+        });
+        const pluginHeld = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("plugin-held lead"),
+          waitingOn: {
+            kind: "plugin",
+            pluginId: "limiter",
+            reason: "At capacity",
+          },
+        });
+        const threadBusy = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("thread-busy tail"),
+          waitingOn: { kind: "thread-busy" },
+        });
+        setQueuedThreadMessageGroupBoundary({
+          db: harness.db,
+          notifier: harness.deps.hub,
+          threadId: thread.id,
+          expectedGroupedPrefixQueuedMessageIds: [pluginHeld.id, threadBusy.id],
+          groupBoundaryQueuedMessageId: threadBusy.id,
+        });
+        const turnsBefore = turnRequests(harness, thread.id).length;
+
+        if (first === "plugin-first") {
+          await runRequestedQueueDrain(harness.deps);
+          expect(attempts).toBe(0);
+          expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(
+            2,
+          );
+        }
+
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.succeeded" },
+          threadId: thread.id,
+        });
+        await runQueuedMessageAutoSendForThread(harness.deps, {
+          threadId: thread.id,
+        });
+
+        if (first === "thread-first") {
+          expect(attempts).toBe(1);
+          expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(
+            2,
+          );
+          await runQueuedMessageAutoSendForThread(harness.deps, {
+            threadId: thread.id,
+          });
+          expect(attempts).toBe(1);
+          released = true;
+          vi.advanceTimersByTime(1_001);
+          await runRequestedQueueDrain(harness.deps);
+        }
+
+        expect(attempts).toBe(first === "plugin-first" ? 1 : 2);
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+      });
+    },
+  );
+
   it("re-attempts a plugin-queued row once the hook lets it through", async () => {
     // The release path that replaced a plugin releasing its own wait: core
     // re-attempts, the hook re-decides, and a row that is still blocked simply
@@ -178,6 +342,46 @@ describe("the requested queue drain", () => {
       expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
     });
   });
+
+  it.each(["scheduled", "plugin"] as const)(
+    "dispatches independently %s work after a manual stop",
+    async (kind) => {
+      await withTestHarness(async (harness) => {
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () => ({ action: "proceed" }) as const,
+            },
+          ],
+        });
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-stopped-${kind}`,
+          status: "active",
+        });
+        seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput(`${kind} work`),
+          waitingOn:
+            kind === "scheduled"
+              ? { kind: "time" }
+              : { kind: "plugin", pluginId: "limiter", reason: "held" },
+          sendAt: kind === "scheduled" ? Date.now() - 1_000 : null,
+        });
+        const turnsBefore = turnRequests(harness, thread.id).length;
+        await stopThread(harness, thread.id);
+
+        if (kind === "scheduled") {
+          await runDueScheduledQueueSweep(harness.deps, Date.now());
+        } else {
+          await runRequestedQueueDrain(harness.deps);
+        }
+
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+      });
+    },
+  );
 
   it.each(["scheduled", "plugin"] as const)(
     "does not dispatch a %s group containing a failed row",
