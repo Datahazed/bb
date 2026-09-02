@@ -1192,7 +1192,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           id: row.id,
           source: row.source,
           rootDir: row.rootDir,
-          version: row.version,
+          version: loadedPlugin?.manifest.version ?? row.version,
           provenance: row.provenance,
           ...(row.catalogEntryId === null
             ? {}
