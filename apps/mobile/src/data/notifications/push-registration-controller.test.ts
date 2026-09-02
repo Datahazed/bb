@@ -15,13 +15,19 @@ function deferred<T>() {
 function setup() {
   const store = createPushStore(createMemoryPushStorage());
   const tokenGate = deferred<string>();
+  let tokenListener: ((deviceToken: string) => void) | null = null;
   const notifications: PushNotificationsModule = {
     projectId: "eas",
     platform: "ios",
     getPermission: async () => "granted",
     requestPermission: async () => "granted",
     getExpoPushToken: vi.fn(() => tokenGate.promise),
-    addTokenListener: () => () => undefined,
+    addTokenListener(listener) {
+      tokenListener = listener;
+      return () => {
+        tokenListener = null;
+      };
+    },
     setBadgeCount: async () => undefined,
   };
   const api = {
@@ -40,7 +46,16 @@ function setup() {
     deviceLabel: "phone",
     now: () => 1,
   });
-  return { store, notifications, api, controller, tokenGate };
+  return {
+    store,
+    notifications,
+    api,
+    controller,
+    tokenGate,
+    emitDeviceToken(deviceToken: string) {
+      tokenListener?.(deviceToken);
+    },
+  };
 }
 
 const profile = { id: "p1", serverUrl: "https://a", mode: "direct" } as const;
@@ -99,5 +114,48 @@ describe("createPushRegistrationController", () => {
     });
     expect(api.unregister).toHaveBeenCalledTimes(1);
     expect(store.isEnabled(profile.id)).toBe(false);
+  });
+
+  it("ignores repeated device token events and events caused by an active sync", async () => {
+    const {
+      controller,
+      store,
+      notifications,
+      tokenGate,
+      emitDeviceToken,
+    } = setup();
+    store.setEnabled(profile.id, true);
+    tokenGate.resolve("expo-token");
+    await controller.sync(profile);
+    vi.mocked(notifications.getExpoPushToken).mockClear();
+
+    const tokenEvents: Promise<void>[] = [];
+    notifications.addTokenListener((deviceToken) => {
+      tokenEvents.push(controller.handleTokenRolled([profile], deviceToken));
+    });
+
+    emitDeviceToken("device-token-1");
+    emitDeviceToken("device-token-1");
+    emitDeviceToken("device-token-1");
+    await Promise.all(tokenEvents);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(1);
+
+    emitDeviceToken("device-token-2");
+    await tokenEvents.at(-1);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(2);
+
+    const activeTokenGate = deferred<string>();
+    vi.mocked(notifications.getExpoPushToken).mockImplementationOnce(
+      () => activeTokenGate.promise,
+    );
+    const activeSync = controller.sync(profile);
+    await vi.waitFor(() => {
+      expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(3);
+    });
+    emitDeviceToken("device-token-3");
+    await tokenEvents.at(-1);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(3);
+    activeTokenGate.resolve("expo-token");
+    await activeSync;
   });
 });

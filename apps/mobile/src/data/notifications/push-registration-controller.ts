@@ -27,7 +27,10 @@ export interface PushRegistrationController {
     enabled: boolean,
   ): Promise<PushSyncOutcome>;
   reconcileRemovedProfiles(currentProfileIds: readonly string[]): Promise<void>;
-  handleTokenRolled(profiles: readonly PushSyncProfile[]): Promise<void>;
+  handleTokenRolled(
+    profiles: readonly PushSyncProfile[],
+    deviceToken: string,
+  ): Promise<void>;
   refreshPermission(): Promise<PushPermissionState>;
 }
 
@@ -47,6 +50,7 @@ export function createPushRegistrationController(
     { promise: Promise<PushSyncOutcome>; rerun: PushSyncProfile | null }
   >();
   let permission: PushPermissionState | null = null;
+  let lastDeviceToken: string | null = null;
 
   function patch(profileId: string, next: Partial<PushProfileSyncState>): void {
     const current = snapshot.byProfileId[profileId] ?? IDLE;
@@ -129,9 +133,13 @@ export function createPushRegistrationController(
         if (outcome.action !== "failed") deps.store.forgetProfile(profileId);
       }
     },
-    async handleTokenRolled(profiles) {
+    async handleTokenRolled(profiles, deviceToken) {
+      if (deviceToken === lastDeviceToken) return;
+      lastDeviceToken = deviceToken;
       for (const profile of profiles) {
-        if (deps.store.getRegistration(profile.id)) await sync(profile);
+        if (!deps.store.getRegistration(profile.id)) continue;
+        if (inFlight.has(profile.id)) continue;
+        await sync(profile);
       }
     },
     async refreshPermission() {

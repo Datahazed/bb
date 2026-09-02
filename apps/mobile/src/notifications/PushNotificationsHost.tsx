@@ -136,13 +136,14 @@ export function PushNotificationsHost() {
 
   useEffect(
     () =>
-      notifications.addTokenListener(() => {
+      notifications.addTokenListener((deviceToken) => {
         void controller.handleTokenRolled(
           profilesRef.current.map((profile) => ({
             id: profile.id,
             serverUrl: profile.serverUrl,
             mode: profile.mode,
           })),
+          deviceToken,
         );
       }),
     [controller, notifications],

@@ -13,7 +13,7 @@ export interface PushNotificationsModule {
   getPermission(): Promise<PushPermissionState>;
   requestPermission(): Promise<PushPermissionState>;
   getExpoPushToken(projectId: string): Promise<string>;
-  addTokenListener(listener: () => void): () => void;
+  addTokenListener(listener: (deviceToken: string) => void): () => void;
   setBadgeCount(count: number): Promise<void>;
 }
 

@@ -72,7 +72,15 @@ export function createExpoPushModule(): PushNotificationsModule {
       return token.data;
     },
     addTokenListener(listener) {
-      const subscription = Notifications.addPushTokenListener(() => listener());
+      const subscription = Notifications.addPushTokenListener((event) => {
+        const token =
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "data" in event.data
+            ? event.data.data
+            : event.data;
+        listener(String(token));
+      });
       return () => subscription.remove();
     },
     setBadgeCount(count) {

@@ -24,7 +24,7 @@ interface FakeModuleOptions {
 
 function fakeModule(options: FakeModuleOptions = {}) {
   let permission: PushPermissionState = options.permission ?? "granted";
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(deviceToken: string) => void>();
   const requestPermissionMock = vi.fn(
     async (): Promise<PushPermissionState> => {
       permission = "granted";
@@ -33,7 +33,7 @@ function fakeModule(options: FakeModuleOptions = {}) {
   );
   const module: PushNotificationsModule & {
     requestPermissionMock: typeof requestPermissionMock;
-    rollToken(): void;
+    rollToken(deviceToken: string): void;
   } = {
     projectId:
       options.projectId === undefined ? "eas-project" : options.projectId,
@@ -50,8 +50,8 @@ function fakeModule(options: FakeModuleOptions = {}) {
       return () => listeners.delete(listener);
     },
     setBadgeCount: async () => undefined,
-    rollToken: () => {
-      for (const listener of listeners) listener();
+    rollToken: (deviceToken) => {
+      for (const listener of listeners) listener(deviceToken);
     },
   };
   return module;
