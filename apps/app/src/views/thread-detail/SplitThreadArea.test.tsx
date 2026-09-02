@@ -215,11 +215,13 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
     children,
     flushPageInsets,
     panelPath,
+    pluginDetailTabsEnabled,
     pluginId,
   }: {
     children: ReactNode;
     flushPageInsets?: boolean;
     panelPath: string;
+    pluginDetailTabsEnabled?: boolean;
     pluginId: string;
   }) => {
     const pane = useContext(PaneContext);
@@ -258,6 +260,9 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
         data-testid="plugin-browser-host"
         data-flush-page-insets={String(flushPageInsets === true)}
         data-panel-path={panelPath}
+        data-plugin-detail-tabs-enabled={String(
+          pluginDetailTabsEnabled === true,
+        )}
         data-plugin-id={pluginId}
       >
         {children}
@@ -426,6 +431,13 @@ const docsContent: PaneContent = {
   kind: "plugin-panel",
   pluginId: "docs",
   panelPath: "docs",
+  subPath: "",
+};
+
+const pluginGuideContent: PaneContent = {
+  kind: "plugin-panel",
+  pluginId: "plugin-api-docs",
+  panelPath: "plugin-api",
   subPath: "",
 };
 
@@ -627,6 +639,17 @@ describe("SplitThreadArea", () => {
     expect(host.dataset.pluginId).toBe("docs");
     expect(host.dataset.panelPath).toBe("docs");
     expect(host.dataset.flushPageInsets).toBe("true");
+    expect(host.dataset.pluginDetailTabsEnabled).toBe("false");
+  });
+
+  it("enables plugin-detail tabs only for the Plugin Guide", async () => {
+    renderSplitArea({
+      path: "/plugins/plugin-api-docs/plugin-api",
+      routeContent: pluginGuideContent,
+    });
+
+    const host = await screen.findByTestId("plugin-browser-host");
+    expect(host.dataset.pluginDetailTabsEnabled).toBe("true");
   });
 
   it("applies spotlight pane actions to the targeted open split and preference", async () => {

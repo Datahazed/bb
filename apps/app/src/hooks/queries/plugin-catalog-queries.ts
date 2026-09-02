@@ -10,7 +10,7 @@ import type {
   PluginSourceDetail as SdkPluginSourceDetail,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
 import {
@@ -277,15 +277,33 @@ export async function searchPluginCatalog(
 
 const PLUGIN_CATALOG_STALE_TIME_MS = 30 * 60_000;
 
+function pluginCatalogSearchQueryOptions(query: string) {
+  return {
+    queryKey: pluginCatalogSearchQueryKey(query),
+    queryFn: () => searchPluginCatalog(fetch, query),
+    refetchOnWindowFocus: false,
+    staleTime: PLUGIN_CATALOG_STALE_TIME_MS,
+  };
+}
+
 export function usePluginCatalogSearch(
   query: string,
   options: { enabled: boolean },
 ) {
   return useQuery({
-    queryKey: pluginCatalogSearchQueryKey(query),
-    queryFn: () => searchPluginCatalog(fetch, query),
+    ...pluginCatalogSearchQueryOptions(query),
     enabled: options.enabled,
-    refetchOnWindowFocus: false,
-    staleTime: PLUGIN_CATALOG_STALE_TIME_MS,
+  });
+}
+
+export function usePluginCatalogSearches(
+  queries: readonly string[],
+  options: { enabled: boolean },
+) {
+  return useQueries({
+    queries: queries.map((query) => ({
+      ...pluginCatalogSearchQueryOptions(query),
+      enabled: options.enabled,
+    })),
   });
 }

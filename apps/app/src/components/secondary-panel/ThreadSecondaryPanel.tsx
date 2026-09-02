@@ -174,10 +174,7 @@ export interface SecondaryPanelFixedTab {
 }
 
 export interface ThreadSecondaryPanelProps {
-  activeTab:
-    | SecondaryFixedPanelTab
-    | MarketplacePluginDetailPanelTab
-    | null;
+  activeTab: SecondaryFixedPanelTab | MarketplacePluginDetailPanelTab | null;
   canUseGitUi: boolean;
   gitDiffTabStatus?: GitDiffTabStatus;
   onRetryGitDiffEligibility?: () => void;
@@ -195,6 +192,7 @@ export interface ThreadSecondaryPanelProps {
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
   showNewTabButton?: boolean;
+  tabReorderingDisabled?: boolean;
   inlinePanelToggle?: "button" | "reserved" | "hidden";
   resizablePanelId?: string;
   onPanelFocus: () => void;
@@ -228,6 +226,7 @@ export function ThreadSecondaryPanel({
   isOpen,
   showConversationCollapseControl = true,
   showNewTabButton = true,
+  tabReorderingDisabled = false,
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
@@ -257,9 +256,7 @@ export function ThreadSecondaryPanel({
   );
   const activeRenderableTab =
     tabs.find((tab) => tab.tab.id === activeTab?.id) ??
-    (activeTab === null && fixedTabs.length === 0
-      ? visibleTabs[0]
-      : undefined);
+    (activeTab === null && fixedTabs.length === 0 ? visibleTabs[0] : undefined);
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
   const hidePanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const conversationCollapseControl =
@@ -472,6 +469,7 @@ export function ThreadSecondaryPanel({
     onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
     reserveNewTabButton: boolean;
     showNewTabButton: boolean;
+    tabReorderingDisabled: boolean;
   }
 
   const renderHidePanelButton = () => (
@@ -580,6 +578,7 @@ export function ThreadSecondaryPanel({
     onSurfaceTabReorder,
     reserveNewTabButton,
     showNewTabButton: showGroupNewTabButton,
+    tabReorderingDisabled: isTabReorderingDisabled,
   }: PanelTabGroupArgs) => {
     const activeSurfaceTab = surfaceTabs.find(
       (tab) => tab.tab.id === activeSurfaceTabId,
@@ -626,6 +625,7 @@ export function ThreadSecondaryPanel({
             tabs={visibleSurfaceTabs}
             onBeginTabDrag={onBeginTabDrag}
             onReorderTab={onSurfaceTabReorder}
+            reorderingDisabled={isTabReorderingDisabled}
             usesDesktopChrome={usesDesktopChrome}
             isPanelOpen={isOpen}
           />
@@ -746,6 +746,7 @@ export function ThreadSecondaryPanel({
                 onSurfaceTabReorder,
                 reserveNewTabButton: reserveNewTabControl,
                 showNewTabButton: showNewTabControl,
+                tabReorderingDisabled,
               })}
             </div>
             {showOuterControls ||

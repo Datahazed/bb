@@ -32,6 +32,7 @@ import {
   LazyBrowserTabDeck,
   LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
+  SecondaryPanelContentSkeleton,
   LazyThreadSecondaryPanel,
   LazyThreadStorageFilePreviewTabContent,
   LazyThreadTerminalPanel,
@@ -96,7 +97,7 @@ import {
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { PluginPanelTabContent } from "./PluginPanelActions";
 import { PluginDetailRouteNavigationProvider } from "@/components/ui/app-route-anchor";
-import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
+import { usePluginCatalogSearches } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 
 const TERMINAL_COLS = 100;
@@ -137,7 +138,7 @@ function marketplacePluginIdFromTabId(tabId: string): string | null {
 
 function PluginDetailPanelContent({ pluginId }: { pluginId: string }) {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
       <LazyPluginDetailPaneView pluginId={pluginId} />
     </Suspense>
   );
@@ -236,6 +237,7 @@ export function PluginPanelRightPanelHost({
   subPath,
   flushPageInsets = false,
   paneId,
+  pluginDetailTabsEnabled = false,
 }: {
   children: ReactNode;
   panelPath: string;
@@ -243,6 +245,7 @@ export function PluginPanelRightPanelHost({
   subPath: string;
   flushPageInsets?: boolean;
   paneId?: string;
+  pluginDetailTabsEnabled?: boolean;
 }) {
   const { navPanels } = usePluginSlots();
   const panel =
@@ -284,14 +287,13 @@ export function PluginPanelRightPanelHost({
   const [activePluginDetailId, setActivePluginDetailId] = useState<
     string | null
   >(null);
-  const [isPluginDetailPanelOpen, setIsPluginDetailPanelOpen] =
-    useState(false);
+  const [isPluginDetailPanelOpen, setIsPluginDetailPanelOpen] = useState(false);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
   const pluginListQuery = usePluginList({
     enabled: openedPluginIds.length > 0,
   });
-  const pluginCatalogQuery = usePluginCatalogSearch("", {
-    enabled: openedPluginIds.length > 0,
+  const pluginCatalogQueries = usePluginCatalogSearches(openedPluginIds, {
+    enabled: pluginDetailTabsEnabled && openedPluginIds.length > 0,
   });
   const [isCompactDrawerOpen, setCompactDrawerOpen] = useAtom(
     compactDrawerOpenAtomFamily(panelStateId),
@@ -410,18 +412,16 @@ export function PluginPanelRightPanelHost({
   }, []);
   const openPluginDetail = useCallback(
     (nextPluginId: string) => {
-      if (panel === null) return false;
+      if (!pluginDetailTabsEnabled || panel === null) return false;
       setOpenedPluginIds((current) =>
-        current.includes(nextPluginId)
-          ? current
-          : [...current, nextPluginId],
+        current.includes(nextPluginId) ? current : [...current, nextPluginId],
       );
       setActivePluginDetailId(nextPluginId);
       setIsPluginDetailPanelOpen(true);
       revealPanel();
       return true;
     },
-    [panel, revealPanel],
+    [panel, pluginDetailTabsEnabled, revealPanel],
   );
   const targetStore = useStore();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
@@ -577,6 +577,7 @@ export function PluginPanelRightPanelHost({
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
     if (!isFocused || panel === null || !reopenClosedTab()) return false;
+    selectPersistedPanelTab();
     revealPanel();
     return true;
   });
@@ -727,8 +728,8 @@ export function PluginPanelRightPanelHost({
 
   const pluginDetailTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(
     () =>
-      openedPluginIds.map((tabPluginId) => {
-        const catalogEntry = pluginCatalogQuery.data?.find(
+      openedPluginIds.map((tabPluginId, index) => {
+        const catalogEntry = pluginCatalogQueries[index]?.data?.find(
           (entry) => entry.pluginId === tabPluginId,
         );
         const installedPlugin = pluginListQuery.data?.plugins.find(
@@ -765,7 +766,7 @@ export function PluginPanelRightPanelHost({
     [
       closePluginDetailTab,
       openedPluginIds,
-      pluginCatalogQuery.data,
+      pluginCatalogQueries,
       pluginListQuery.data?.plugins,
       revealPanel,
     ],
@@ -1128,6 +1129,9 @@ export function PluginPanelRightPanelHost({
           fixedTabs={fixedTabs}
           showConversationCollapseControl={activePluginDetailId !== null}
           showNewTabButton={activePluginDetailId === null}
+          tabReorderingDisabled={
+            pluginDetailTabs.length > 0 && panelTabs.length > 0
+          }
           onPanelFocus={() => undefined}
           onCollapse={hidePanel}
           onClose={hidePanel}
@@ -1149,6 +1153,8 @@ export function PluginPanelRightPanelHost({
       isOpen,
       openNewTab,
       panelStateId,
+      panelTabs.length,
+      pluginDetailTabs.length,
       reorderPanelTabs,
       tabs,
       updateBrowserTab,
@@ -1196,40 +1202,50 @@ export function PluginPanelRightPanelHost({
     </div>
   );
 
+  const routedPage = (
+    <>
+      {panel !== null &&
+      togglePortalTarget !== null &&
+      !isOpen &&
+      !isHostedBySplitWorkspace
+        ? createPortal(
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={RIGHT_PANEL_TOGGLE_CLASS}
+                  aria-label={toggleLabel}
+                  aria-pressed={isOpen}
+                  onClick={togglePanel}
+                >
+                  <Icon name={toggleIconName} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{toggleLabel}</TooltipContent>
+            </Tooltip>,
+            togglePortalTarget,
+          )
+        : null}
+      {page}
+    </>
+  );
+
   return (
     <UrlOpenRoutingProvider
       openInAppBrowser={isDesktopBrowserAvailable() ? openBrowser : null}
     >
       <AppNavigationHostProvider capabilities={navigationCapabilities}>
-        <PluginDetailRouteNavigationProvider
-          onOpenPluginDetail={openPluginDetail}
-        >
-          {panel !== null &&
-          togglePortalTarget !== null &&
-          !isOpen &&
-          !isHostedBySplitWorkspace
-            ? createPortal(
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={RIGHT_PANEL_TOGGLE_CLASS}
-                      aria-label={toggleLabel}
-                      aria-pressed={isOpen}
-                      onClick={togglePanel}
-                    >
-                      <Icon name={toggleIconName} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{toggleLabel}</TooltipContent>
-                </Tooltip>,
-                togglePortalTarget,
-              )
-            : null}
-          {page}
-        </PluginDetailRouteNavigationProvider>
+        {pluginDetailTabsEnabled ? (
+          <PluginDetailRouteNavigationProvider
+            onOpenPluginDetail={openPluginDetail}
+          >
+            {routedPage}
+          </PluginDetailRouteNavigationProvider>
+        ) : (
+          routedPage
+        )}
       </AppNavigationHostProvider>
     </UrlOpenRoutingProvider>
   );
