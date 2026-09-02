@@ -187,12 +187,16 @@ beforeEach(() => {
 });
 
 describe("useThreadDetailBootstrap", () => {
-  it("starts the timeline request before the thread bootstrap settles", async () => {
+  it("starts timeline, queued, and pending-interaction reads before the thread bootstrap settles", async () => {
+    const phase = createPerfPhaseLog();
     let resolveThread:
       | ((thread: ThreadWithIncludesResponse) => void)
       | undefined;
     const threadPromise = new Promise<ThreadWithIncludesResponse>((resolve) => {
-      resolveThread = resolve;
+      resolveThread = (thread) => {
+        phase.mark("bootstrap-settled");
+        resolve(thread);
+      };
     });
     vi.mocked(sdk.threads.get).mockReturnValue(threadPromise);
     const { wrapper } = createQueryClientTestHarness();
@@ -208,13 +212,18 @@ describe("useThreadDetailBootstrap", () => {
     await waitFor(() => {
       expect(sdk.threads.get).toHaveBeenCalledTimes(1);
       expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
+      expect(sdk.threads.queuedMessages.list).toHaveBeenCalledTimes(1);
+      expect(sdk.threads.interactions.list).toHaveBeenCalledTimes(1);
     });
     expect(result.result.current.isPending).toBe(true);
+    phase.mark("sidecar-reads-started");
+    expect(phase.names()).not.toContain("bootstrap-settled");
 
     resolveThread?.(THREAD_WITH_INCLUDES);
     await waitFor(() => {
       expect(result.result.current.isSuccess).toBe(true);
     });
+    phase.expectBefore("sidecar-reads-started", "bootstrap-settled");
   });
 
   it("uses the cached timeline sequence and merges a prefetched delta", async () => {
@@ -264,13 +273,7 @@ describe("useThreadDetailBootstrap", () => {
       { updatedAt: 1 },
     );
 
-    renderHook(
-      () =>
-        useThreadDetailBootstrap("thread-1", {
-          timelinePrefetch: true,
-        }),
-      { wrapper },
-    );
+    renderHook(() => useThreadDetailBootstrap("thread-1"), { wrapper });
 
     await waitFor(() => {
       expect(sdk.threads.timeline).toHaveBeenCalledWith({
