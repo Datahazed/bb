@@ -6,15 +6,16 @@ import {
   getQueuedThreadMessage,
   getEnvironment,
   getThread,
+  isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   type DbQueryConnection,
+  type QueuedThreadMessageGroupClaimPolicy,
+  type QueuedThreadMessageGroupEligibility,
 } from "@bb/db";
-import {
-  queuedMessageSystemNoticeSchema,
-} from "@bb/domain";
+import { queuedMessageSystemNoticeSchema } from "@bb/domain";
 import type {
   PromptInput,
   QueuedMessageWaitingOn,
@@ -42,7 +43,10 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-import { toThreadQueuedMessage } from "./thread-queued-messages.js";
+import {
+  parseStoredQueuedThreadMessageWaitingOn,
+  toThreadQueuedMessage,
+} from "./thread-queued-messages.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
@@ -56,6 +60,7 @@ import {
 } from "./deferred-first-turn-context.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import {
+  getActiveTurnId,
   getLastProviderThreadId,
   isManualCompactionActive,
 } from "./thread-events.js";
@@ -86,14 +91,9 @@ import {
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 
 interface SendQueuedMessageArgs {
-  isGroupEligible?: Parameters<typeof claimQueuedThreadMessageGroup>[3];
+  claimPolicy: QueuedThreadMessageGroupClaimPolicy;
   mode: SendQueuedMessageMode;
   queuedMessageId: string;
-  /**
-   * True for the user's explicit "Send now", false for a timer that made the
-   * row eligible. Both address one row by id; only the first is an override.
-   */
-  sendNow: boolean;
   threadId: string;
 }
 
@@ -119,6 +119,38 @@ interface SendClaimedQueuedMessageForThreadArgs {
 
 interface QueuedMessageAutoSendArgs {
   threadId: string;
+}
+
+export function createAutomaticQueuedMessageGroupEligibility(
+  deps: Pick<AppDeps, "db">,
+  args: { now: number; thread: Thread },
+): QueuedThreadMessageGroupEligibility {
+  const activeTurnId = getActiveTurnId(deps, args.thread.id);
+  return (group) =>
+    group.every((member) => {
+      if (member.failureReason !== null) return false;
+      const waitingOn = parseStoredQueuedThreadMessageWaitingOn(member);
+      switch (waitingOn?.kind) {
+        case undefined:
+        case "plugin":
+          return true;
+        case "time":
+          return member.sendAt !== null && member.sendAt <= args.now;
+        case "thread-busy":
+          return (
+            args.thread.status === "idle" || args.thread.status === "pending"
+          );
+        case "turn-starting":
+          return (
+            args.thread.status === "idle" ||
+            (args.thread.status === "active" && activeTurnId !== null)
+          );
+        case "provisioning":
+        case "host-offline":
+        case "interaction":
+          return false;
+      }
+    });
 }
 
 async function requireReadyQueuedMessageEnvironment(
@@ -263,15 +295,13 @@ interface QueuedMessageAutoSendRequestArgs {
 }
 
 function isQueuedMessageAutoSendCandidate(
-  db: DbQueryConnection,
   thread: Thread | null,
 ): thread is Thread {
   return (
     thread !== null &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
-    thread.status !== "stopping" &&
-    !isThreadQueueAutoSendPaused(db, thread.id)
+    thread.status !== "stopping"
   );
 }
 
@@ -282,7 +312,18 @@ interface FormatQueuedMessageInputForSenderArgs {
 
 const STALE_QUEUED_MESSAGE_CLAIM_MS = 5 * 60 * 1000;
 const QUEUED_MESSAGE_CLAIM_LOST_CODE = "queued_message_claim_lost";
+const QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE = "queued_message_auto_send_paused";
 const activeQueuedMessageClaimTokens = new Set<string>();
+
+function respectsManualStopPause(
+  args: SendClaimedQueuedMessageForThreadArgs,
+): boolean {
+  return (
+    args.mode === "auto" &&
+    !args.sendNow &&
+    args.queuedMessages.some(isOrdinaryTurnEndQueuedMessage)
+  );
+}
 
 function sendQueuedMessagePayload(
   queuedMessage: ThreadQueuedMessage,
@@ -359,12 +400,12 @@ function claimQueuedThreadMessageForSend(
     deps.db,
     deps.hub,
     args.queuedMessageId,
-    args.isGroupEligible,
+    args.claimPolicy,
   );
   if (claimedQueuedMessages) {
     return claimedQueuedMessages;
   }
-  if (args.isGroupEligible) return [];
+  if (args.claimPolicy.kind === "automatic") return [];
 
   const latestQueuedMessage = getQueuedThreadMessage(
     deps.db,
@@ -392,6 +433,21 @@ function isQueuedMessageClaimLostError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     error.body.code === QUEUED_MESSAGE_CLAIM_LOST_CODE
+  );
+}
+
+function createQueuedMessageAutoSendPausedError(): ApiError {
+  return new ApiError(
+    409,
+    QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
+    "Queued message auto-send was paused by a manual stop",
+  );
+}
+
+function isQueuedMessageAutoSendPausedError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.body.code === QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE
   );
 }
 
@@ -506,6 +562,12 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
 
   const { activeThread, command } = deps.db.transaction(
     (tx) => {
+      if (
+        respectsManualStopPause(args) &&
+        isThreadQueueAutoSendPaused(tx, thread.id)
+      ) {
+        throw createQueuedMessageAutoSendPausedError();
+      }
       if (deferredFirstTurnContext) {
         requireDeferredFirstTurnContextCurrent(tx, {
           requestSequence: deferredFirstTurnContext.requestSequence,
@@ -668,6 +730,7 @@ async function sendClaimedQueuedMessageForThread(
     source: {
       kind: "drain",
       claimed: args.queuedMessages,
+      respectManualStopPause: respectsManualStopPause(args),
       sendNow: args.sendNow,
     },
     queuePayload: queuedMessage.payload,
@@ -722,6 +785,7 @@ export async function sendQueuedMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
+  const sendNow = args.claimPolicy.kind === "explicit-send";
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
   if (queuedMessages.length === 0) {
     const existing = getQueuedThreadMessage(deps.db, args.queuedMessageId);
@@ -734,7 +798,8 @@ export async function sendQueuedMessage(
     thread &&
     (isManualCompactionActive(deps, thread) ||
       (args.mode === "auto" &&
-        !args.sendNow &&
+        !sendNow &&
+        queuedMessages.some(isOrdinaryTurnEndQueuedMessage) &&
         isThreadQueueAutoSendPaused(deps.db, thread.id)))
   ) {
     releaseQueuedMessageClaims(deps, queuedMessages);
@@ -745,12 +810,15 @@ export async function sendQueuedMessage(
       sendClaimedQueuedMessage(deps, {
         mode: args.mode,
         queuedMessages,
-        sendNow: args.sendNow,
+        sendNow,
         threadId: args.threadId,
       }),
     );
   } catch (error) {
     releaseQueuedMessageClaims(deps, queuedMessages);
+    if (isQueuedMessageAutoSendPausedError(error)) {
+      return toThreadQueuedMessage(queuedMessages[0]!);
+    }
     throw error;
   }
 }
@@ -759,12 +827,8 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  if (
-    !isQueuedMessageAutoSendCandidate(
-      deps.db,
-      getThread(deps.db, args.threadId),
-    )
-  ) {
+  const initialThread = getThread(deps.db, args.threadId);
+  if (!isQueuedMessageAutoSendCandidate(initialThread)) {
     return false;
   }
 
@@ -772,6 +836,10 @@ export async function sendNextQueuedMessageIfPresent(
     deps.db,
     deps.hub,
     args.threadId,
+    createAutomaticQueuedMessageGroupEligibility(deps, {
+      now: Date.now(),
+      thread: initialThread,
+    }),
   );
   if (!nextQueuedMessages) {
     return false;
@@ -779,7 +847,7 @@ export async function sendNextQueuedMessageIfPresent(
 
   const thread = getThread(deps.db, args.threadId);
   if (
-    !isQueuedMessageAutoSendCandidate(deps.db, thread) ||
+    !isQueuedMessageAutoSendCandidate(thread) ||
     isManualCompactionActive(deps, thread)
   ) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
@@ -797,7 +865,10 @@ export async function sendNextQueuedMessageIfPresent(
     );
   } catch (error) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
-    if (isQueuedMessageClaimLostError(error)) {
+    if (
+      isQueuedMessageClaimLostError(error) ||
+      isQueuedMessageAutoSendPausedError(error)
+    ) {
       return false;
     }
     // Nobody is listening to this attempt, so the row itself has to carry what
