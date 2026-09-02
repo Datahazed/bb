@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   createEmptyFixedPanelTabsState,
@@ -27,6 +28,10 @@ import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
 } from "@/lib/app-fixed-tab-navigation";
+import {
+  RouteNavigationProvider,
+  useRouteAnchorDelegate,
+} from "@/components/ui/app-route-anchor";
 
 interface TestFixedTabRegistration {
   panelId: string;
@@ -118,13 +123,31 @@ const hostState = vi.hoisted(() => ({
   primaryHostId: "host-1",
 }));
 const secondaryPanelState = vi.hoisted(() => ({
+  collapseEnabled: false,
   fixedTabs: [] as Array<{
     contentFillsRegion: boolean;
     hasRenderer: boolean;
     title: string;
   }>,
   splitPanelStateId: undefined as string | undefined,
+  showsCollapseControl: false,
   tabKinds: [] as string[],
+}));
+
+vi.mock("@/hooks/queries/plugin-catalog-queries", () => ({
+  usePluginCatalogSearch: () => ({
+    data: [{ pluginId: "secrets", displayName: "Secrets", icon: "Key" }],
+  }),
+}));
+
+vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
+  usePluginList: () => ({ data: { plugins: [] } }),
+}));
+
+vi.mock("@/views/ToolsView", () => ({
+  PluginDetailPaneView: ({ pluginId }: { pluginId: string }) => (
+    <div data-testid="marketplace-plugin-detail">Details for {pluginId}</div>
+  ),
 }));
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
@@ -248,10 +271,12 @@ vi.mock("react-resizable-panels", async (importOriginal) => ({
 
 vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
   SecondaryPanelLayout: ({
+    collapse,
     main,
     open,
     renderPanel,
   }: {
+    collapse?: { active: boolean; onToggle: () => void };
     main: ReactNode;
     open: boolean;
     renderPanel: (options: {
@@ -260,19 +285,22 @@ vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
       isMainCollapsed: boolean;
       onToggleMainCollapse: () => void;
     }) => ReactNode;
-  }) => (
-    <div data-testid="shared-secondary-panel-layout">
-      {main}
-      <div data-testid="shared-secondary-panel-region" hidden={!open}>
-        {renderPanel({
-          presentation: "inline",
-          canShowNativeBrowserView: true,
-          isMainCollapsed: false,
-          onToggleMainCollapse: () => undefined,
-        })}
+  }) => {
+    secondaryPanelState.collapseEnabled = collapse !== undefined;
+    return (
+      <div data-testid="shared-secondary-panel-layout">
+        {main}
+        <div data-testid="shared-secondary-panel-region" hidden={!open}>
+          {renderPanel({
+            presentation: "inline",
+            canShowNativeBrowserView: true,
+            isMainCollapsed: collapse?.active ?? false,
+            onToggleMainCollapse: collapse?.onToggle ?? (() => undefined),
+          })}
+        </div>
       </div>
-    </div>
-  ),
+    );
+  },
 }));
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
@@ -284,6 +312,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     onClose,
     onOpenNewTab,
     renderBrowserDeck,
+    showConversationCollapseControl,
     splitPanelStateId,
   }: {
     activeTab: { id: string } | null;
@@ -315,6 +344,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       activeBrowserTabId: string | null,
       pane: { isFocused: boolean; onFocusPane: () => void },
     ) => ReactNode;
+    showConversationCollapseControl?: boolean;
     splitPanelStateId?: string;
   }) => {
     const pane = { isFocused: true, onFocusPane: () => undefined };
@@ -330,6 +360,8 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       title: tab.title,
     }));
     secondaryPanelState.splitPanelStateId = splitPanelStateId;
+    secondaryPanelState.showsCollapseControl =
+      showConversationCollapseControl === true;
     secondaryPanelState.tabKinds = tabs.map((tab) => tab.tab.kind);
     return (
       <aside
@@ -568,6 +600,19 @@ function FileIntentButtons() {
   );
 }
 
+function PluginDetailNavigationLink() {
+  const onRouteAnchorClick = useRouteAnchorDelegate();
+  return (
+    <div onClick={onRouteAnchorClick}>
+      <a href="/extensions/plugins/secrets">Open Secrets plugin</a>
+    </div>
+  );
+}
+
+function CurrentPath() {
+  return <output data-testid="current-path">{useLocation().pathname}</output>;
+}
+
 function renderHost(panelPath = "board", subPath = "", store = createStore()) {
   const panelStateId = getPluginPagePanelStateId({
     panelPath,
@@ -580,15 +625,21 @@ function renderHost(panelPath = "board", subPath = "", store = createStore()) {
     <QueryClientProvider client={queryClient}>
       <JotaiProvider store={store}>
         <TooltipProvider>
-          <div data-plugin-right-panel-toggle-portal={panelStateId} />
-          <PluginPanelRightPanelHost
-            panelPath={panelPath}
-            pluginId="demo"
-            subPath={subPath}
-          >
-            <div>Plugin page</div>
-            <FileIntentButtons />
-          </PluginPanelRightPanelHost>
+          <MemoryRouter initialEntries={["/plugins/demo/board"]}>
+            <RouteNavigationProvider>
+              <CurrentPath />
+              <div data-plugin-right-panel-toggle-portal={panelStateId} />
+              <PluginPanelRightPanelHost
+                panelPath={panelPath}
+                pluginId="demo"
+                subPath={subPath}
+              >
+                <div>Plugin page</div>
+                <PluginDetailNavigationLink />
+                <FileIntentButtons />
+              </PluginPanelRightPanelHost>
+            </RouteNavigationProvider>
+          </MemoryRouter>
         </TooltipProvider>
       </JotaiProvider>
     </QueryClientProvider>,
@@ -609,8 +660,10 @@ describe("PluginPanelRightPanelHost", () => {
     fixedTabState.registrations = [];
     fixedTabState.fileOpeners = [];
     fixedTabState.newThreadPanelActions = [];
+    secondaryPanelState.collapseEnabled = false;
     secondaryPanelState.fixedTabs = [];
     secondaryPanelState.splitPanelStateId = undefined;
+    secondaryPanelState.showsCollapseControl = false;
     secondaryPanelState.tabKinds = [];
     localStorage.clear();
     resetFixedPanelTabsStateForTest();
@@ -687,6 +740,44 @@ describe("PluginPanelRightPanelHost", () => {
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
     ).toBeTruthy();
+  });
+
+  it("opens plugin detail links in a header-controlled tab without leaving the plugin page", async () => {
+    renderHost();
+
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/plugins/demo/board",
+    );
+    fireEvent.click(
+      screen.getByRole("link", { name: "Open Secrets plugin" }),
+    );
+
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(screen.getByText("Plugin page")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("shared-secondary-panel-region")
+        .hasAttribute("hidden"),
+    ).toBe(false);
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/plugins/demo/board",
+    );
+    expect(secondaryPanelState.tabKinds).toContain(
+      "marketplace-plugin-detail",
+    );
+    expect(secondaryPanelState.splitPanelStateId).toBeUndefined();
+    expect(secondaryPanelState.collapseEnabled).toBe(true);
+    expect(secondaryPanelState.showsCollapseControl).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Secrets" }));
+
+    expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/plugins/demo/board",
+    );
   });
 
   it("closes the compact drawer when its remaining tab closes", async () => {
