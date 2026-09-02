@@ -230,7 +230,7 @@ src/
                          message CRUD with optimistic transactions,
                          notifications — push registration policy
                          (decidePushSync / syncPushRegistration / controller),
-                         push store, SDK push-subscriptions wrapper,
+                         push store, plugin RPC wrapper,
                          notification payload → profile resolution, badge count);
                          see src/data/README.md
   lib/                   pure TypeScript, vitest-tested (no react-native imports)
@@ -677,23 +677,24 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
 
 - Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)
   registers the phone's Expo push token with each enabled server through
-  Settings → This device → Notifications and the SDK area
-  `sdk.notifications.pushSubscriptions` (`POST/GET/DELETE
-  /api/v1/notifications/push-subscriptions`). It syncs on connect, on
+  Settings → This device → Notifications. It calls the `push-notifications`
+  plugin RPC methods `pushSubscriptions.add`, `pushSubscriptions.list`, and
+  `pushSubscriptions.remove` through `sdk.plugins.callRpc`. It syncs on
+  connect, on
   AppState active, when the OS rolls the token (re-register), and when the
   toggle flips; profiles removed from the app get their server row deleted
   by the stored server URL. A direct profile must use HTTPS, unless it uses
   `127.0.0.1`, `localhost`, or `::1`. Tailscale Serve and bb connect profiles
   work normally. Other HTTP profiles show "Push needs HTTPS or bb connect"
   and do not register. The server also needs outbound access to `exp.host`.
-  The server setting `pushNotifications` controls sends without a restart.
+  The server must enable the `push-notifications` plugin.
   The one-time "Get notified…" sheet appears only after the first successful
   connection. The sheet never appears on launch. The OS prompt starts only
   after the user selects "Turn on notifications".
 - Privacy: the registration request contains the full Expo token. The list
-  route and `bb notifications push-subscriptions list` return only the last
-  six token characters in `tokenSuffix`. A token can receive pushes but
-  cannot read server data.
+  RPC method and `bb push-notifications list` return only the last six token
+  characters in `tokenSuffix`. A token can receive pushes but cannot read
+  server data.
 - Handling: a foreground arrival becomes a toast with "Open" (no system
   banner); a tap on a background / cold-start notification opens
   `/threads/<threadId>` on the profile that owns it. The phone first matches
@@ -802,8 +803,9 @@ push key); nobody needs a local Xcode signing setup to ship.
   number on EAS, `version` in `app.json` is the marketing version).
 - **Push release check**: confirm the APNs key with `pnpm exec eas credentials
   -p ios`. Use `development-device` for a physical iPhone. Keep the server
-  `pushNotifications` setting on, and use an HTTPS or bb connect profile.
-  Confirm that the subscription list shows a token suffix, not a full token.
+  `push-notifications` plugin enabled, and use an HTTPS or bb connect profile.
+  Run `bb push-notifications list`. Confirm that it shows a token suffix, not
+  a full token.
 - **TestFlight by hand**: `pnpm exec eas build -p ios --profile production`,
   then `pnpm exec eas submit -p ios --latest`. The submit profile reads the
   App Store Connect API key from the gitignored `apps/mobile/asc-api-key.p8`

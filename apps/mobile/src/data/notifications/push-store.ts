@@ -1,5 +1,5 @@
-import { pushSubscriptionPlatformSchema } from "@bb/server-contract";
 import { z } from "zod";
+import { pushPlatformSchema } from "./push-contract";
 
 export interface PushStorage {
   getString(key: string): string | undefined;
@@ -11,7 +11,7 @@ export const pushRegistrationRecordSchema = z.object({
   subscriptionId: z.string().min(1).nullable(),
   expoPushToken: z.string().min(1),
   tokenSuffix: z.string().min(1).max(6),
-  platform: pushSubscriptionPlatformSchema,
+  platform: pushPlatformSchema,
   serverUrl: z.string().min(1),
   registeredAt: z.number().int().nonnegative(),
 });

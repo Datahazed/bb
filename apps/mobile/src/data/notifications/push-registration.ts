@@ -1,6 +1,9 @@
 import type { PushPlatform } from "./push-contract";
 import type { PushRegistrationRecord, PushStore } from "./push-store";
-import type { PushSubscriptionsApi } from "./push-subscriptions-api";
+import {
+  PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS,
+  type PushSubscriptionsApi,
+} from "./push-subscriptions-api";
 
 export type PushPermissionState = "granted" | "denied" | "undetermined";
 
@@ -234,6 +237,11 @@ export function describePushStatus(input: {
     return "Notifications are blocked in system settings";
   }
   if (input.lastOutcome?.action === "failed") {
+    if (
+      input.lastOutcome.error === PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS
+    ) {
+      return PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS;
+    }
     return `Could not register: ${input.lastOutcome.error}`;
   }
   if (input.registration) return "On · registered with this server";

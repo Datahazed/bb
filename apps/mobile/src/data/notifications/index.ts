@@ -3,7 +3,6 @@ export type {
   PushPlatform,
   PushSubscriptionInput,
   PushSubscriptionRecord,
-  RegisteredPushSubscription,
   PushSubscriptionRef,
 } from "./push-contract";
 export {
@@ -45,6 +44,7 @@ export {
 } from "./push-store";
 export {
   createPushSubscriptionsApi,
+  PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS,
   type PushSubscriptionsApi,
 } from "./push-subscriptions-api";
 export {

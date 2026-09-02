@@ -156,9 +156,10 @@ Conventions:
   `push-registration-controller.ts` coalesces concurrent syncs per profile
   and reconciles removed profiles / token rolls. `push-store.ts` is the
   injected-storage store (MMKV `bb.preferences` in the app, a Map in tests).
-  `push-subscriptions-api.ts` wraps `sdk.notifications.pushSubscriptions`
-  keyed by server URL (not by profile client, which may be disposed). Its
-  list reads `PushSubscriptionSummary` records with `tokenSuffix`.
+  `push-subscriptions-api.ts` calls the `push-notifications` plugin RPC
+  through `sdk.plugins.callRpc`. It keys clients by server URL, not by a
+  profile client that the app can dispose. Its list reads local validated
+  records with `tokenSuffix`.
   `push-notification-target.ts` parses a payload's `data` and picks the
   profile (matching server hint → probe active first).
   `app-badge.ts` counts unread finished root threads + pending interactions

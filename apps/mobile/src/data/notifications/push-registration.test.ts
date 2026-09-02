@@ -11,7 +11,10 @@ import {
   type PushPermissionState,
 } from "./push-registration";
 import { createMemoryPushStorage, createPushStore } from "./push-store";
-import type { PushSubscriptionsApi } from "./push-subscriptions-api";
+import {
+  PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS,
+  type PushSubscriptionsApi,
+} from "./push-subscriptions-api";
 
 interface FakeModuleOptions {
   projectId?: string | null;
@@ -389,6 +392,30 @@ describe("syncPushRegistration", () => {
     });
     expect(ok.store.getRegistration(profile.id)).toBeNull();
     expect(api.register).not.toHaveBeenCalled();
+  });
+
+  it("reports when the server disables the push notifications plugin", async () => {
+    const { store, deps, api } = setup();
+    store.setEnabled(profile.id, true);
+    api.register.mockRejectedValueOnce(
+      new Error(PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS),
+    );
+    const outcome = await syncPushRegistration(deps, profile);
+    expect(outcome).toEqual({
+      action: "failed",
+      step: "register",
+      error: PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS,
+    });
+    expect(
+      describePushStatus({
+        profile,
+        projectId: "eas-project",
+        enabled: true,
+        permission: "granted",
+        registration: null,
+        lastOutcome: outcome,
+      }),
+    ).toBe(PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS);
   });
 
   it("unregisters a removed profile from the server it was registered with", async () => {
