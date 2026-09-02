@@ -235,7 +235,11 @@ export function AppSidebar({
         onNewChat={handleNewChat}
         onSearchThreads={closeOnMobile}
       />
-      <SidebarContent className="border-t border-sidebar-border/70">
+      <div
+        aria-hidden="true"
+        className="mx-2 shrink-0 border-t border-sidebar-border/40"
+      />
+      <SidebarContent>
         <PluginThreadList
           replacement={threadListReplacement}
           original={originalThreadList}
