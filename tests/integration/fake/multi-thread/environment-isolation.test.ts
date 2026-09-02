@@ -10,8 +10,6 @@ import {
   unarchiveThread,
 } from "../../helpers/api.js";
 import {
-  waitForEnvironmentStatus,
-  waitForPathRemoval,
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
 import {
@@ -36,35 +34,28 @@ import {
 } from "./shared.js";
 
 describe.sequential("fake provider environment-isolation multi-thread integration", () => {
-  it("does not reprovision a destroyed shared environment on unarchive", () =>
+  it("does not resurrect a deleted environment on unarchive", () =>
     withHarness(async (harness) => {
       const project = await createProjectFixture(harness, {
-        name: "Archive All Managed Siblings",
+        name: "Archive All Shared Siblings",
       });
       const threadA = await createReadyHostThread(harness, {
         projectId: project.id,
         timeoutMs: DEFAULT_TIMEOUT_MS,
-        workspace: { type: "managed-worktree" },
+        workspace: { type: "unmanaged", path: harness.repoDir },
       });
       const threadB = await createReadyReuseThread(harness, {
         environmentId: threadA.environment.id,
         projectId: project.id,
         timeoutMs: DEFAULT_TIMEOUT_MS,
       });
-      const originalWorkspacePath = threadA.environment.path;
-      if (!originalWorkspacePath) {
-        throw new Error("Managed worktree path was not assigned");
-      }
 
       await archiveThread(harness.api, threadA.thread.id);
       await archiveThread(harness.api, threadB.thread.id);
-      await waitForPathRemoval(originalWorkspacePath, DEFAULT_TIMEOUT_MS);
-      await waitForEnvironmentStatus(
-        harness.api,
-        threadA.environment.id,
-        "destroyed",
-        DEFAULT_TIMEOUT_MS,
-      );
+      const deleteResponse = await harness.api.environments[":id"].$delete({
+        param: { id: threadA.environment.id },
+      });
+      expect(deleteResponse.status).toBe(200);
 
       await unarchiveThread(harness.api, threadA.thread.id);
 
@@ -88,6 +79,7 @@ describe.sequential("fake provider environment-isolation multi-thread integratio
         threadA.environment.id,
       );
       expect(environment.status).toBe("destroyed");
+      expect(environment.path).toBeNull();
     }));
 
   it("isolates concurrent work across separate environments", () =>

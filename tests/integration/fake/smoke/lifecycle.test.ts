@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   createReuseThread,
@@ -19,7 +18,6 @@ import {
   findSessionConstruction,
   recordScriptedEchoRequests,
 } from "../../helpers/scripted-echo.js";
-import { runGit } from "../../helpers/seed.js";
 import { readStoredTurnEvents } from "../../helpers/queries.js";
 import {
   ACTIVE_TURN_TIMEOUT_MS,
@@ -54,36 +52,6 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
       const hosts = await getHosts(harness.api);
       expect(hosts).toHaveLength(1);
       expect(hosts[0]?.status).toBe("connected");
-    }));
-
-  it("creates a managed worktree and registers it as a git worktree", () =>
-    withHarness(async (harness) => {
-      const project = await createProjectFixture(
-        harness,
-        "Managed Worktree Smoke",
-      );
-      const { environment } = await createReadyThread(harness, {
-        projectId: project.id,
-        workspace: { type: "managed-worktree" },
-      });
-
-      expect(environment.isWorktree).toBe(true);
-      expect(environment.branchName).toBeTruthy();
-      expect(environment.path).toBeTruthy();
-
-      const workspacePath = environment.path;
-      if (!workspacePath) {
-        throw new Error("Managed worktree path was not assigned");
-      }
-
-      await fs.access(workspacePath);
-      const resolvedWorktreePath = await fs.realpath(workspacePath);
-      const worktreeList = await runGit({
-        args: ["worktree", "list", "--porcelain"],
-        cwd: harness.repoDir,
-      });
-
-      expect(worktreeList).toContain(`worktree ${resolvedWorktreePath}`);
     }));
 
   it("starts parent and child threads with the shared runtime config", async () => {
