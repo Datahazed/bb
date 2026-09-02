@@ -238,7 +238,7 @@ export function AppSidebar({
       <div
         aria-hidden="true"
         data-sidebar-navigation-divider="threads"
-        className="mx-2 h-px shrink-0 bg-sidebar-border"
+        className="mx-2 h-px shrink-0 bg-sidebar-border/40"
       />
       <SidebarContent>
         <PluginThreadList

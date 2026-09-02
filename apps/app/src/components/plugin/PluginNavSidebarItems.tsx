@@ -244,7 +244,7 @@ function PluginNavSidebarItemList({
       <div
         aria-hidden="true"
         data-sidebar-navigation-divider="plugins"
-        className="mx-2 h-px shrink-0 bg-sidebar-border"
+        className="mx-2 h-px shrink-0 bg-sidebar-border/40"
       />
       <div
         className="shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
