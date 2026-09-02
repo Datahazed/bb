@@ -686,6 +686,71 @@ function liftThreadListPlaceholder(
   };
 }
 
+export async function loadThreadDetailBootstrap({
+  queryClient,
+  signal,
+  threadId,
+}: {
+  queryClient: QueryClient;
+  signal?: AbortSignal;
+  threadId: string;
+}): Promise<ThreadWithIncludesResponse> {
+  void queryClient.prefetchQuery({
+    queryKey: threadTimelineQueryKey(threadId),
+    queryFn: () =>
+      fetchThreadTimeline({
+        queryClient,
+        signal,
+        threadId,
+      }),
+  });
+  void queryClient.prefetchQuery({
+    queryKey: threadQueuedMessagesQueryKey(threadId),
+    queryFn: () =>
+      sdk.threads.queuedMessages.list({
+        threadId,
+        signal,
+      }),
+  });
+  void queryClient.prefetchQuery({
+    queryKey: threadPendingInteractionsQueryKey(threadId),
+    queryFn: () =>
+      sdk.threads.interactions.list({
+        threadId,
+        signal,
+      }),
+  });
+
+  const thread = await sdk.threads.get({
+    include: "environment,host",
+    threadId,
+    signal,
+  });
+  ingestThreadDetailBootstrap({
+    queryClient,
+    thread,
+  });
+  return thread;
+}
+
+export function prefetchThreadDetailBootstrap(
+  queryClient: QueryClient,
+  threadId: string,
+): void {
+  void queryClient.prefetchQuery({
+    queryKey: threadDetailBootstrapQueryKey(threadId),
+    queryFn: ({ signal }) =>
+      loadThreadDetailBootstrap({
+        queryClient,
+        signal,
+        threadId,
+      }),
+    staleTime: Infinity,
+    retry: shouldRetryTransientReadQuery,
+    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
+  });
+}
+
 export function useThreadDetailBootstrap(
   id: string,
   options?: ThreadDetailBootstrapQueryOptions,
@@ -696,45 +761,12 @@ export function useThreadDetailBootstrap(
 
   return useQuery<ThreadWithIncludesResponse>({
     queryKey: threadDetailBootstrapQueryKey(id),
-    queryFn: async ({ signal }) => {
-      const threadId = requireThreadId(id, "useThreadDetailBootstrap");
-      void queryClient.prefetchQuery({
-        queryKey: threadTimelineQueryKey(threadId),
-        queryFn: () =>
-          fetchThreadTimeline({
-            queryClient,
-            signal,
-            threadId,
-          }),
-      });
-      void queryClient.prefetchQuery({
-        queryKey: threadQueuedMessagesQueryKey(threadId),
-        queryFn: () =>
-          sdk.threads.queuedMessages.list({
-            threadId,
-            signal,
-          }),
-      });
-      void queryClient.prefetchQuery({
-        queryKey: threadPendingInteractionsQueryKey(threadId),
-        queryFn: () =>
-          sdk.threads.interactions.list({
-            threadId,
-            signal,
-          }),
-      });
-
-      const thread = await sdk.threads.get({
-        include: "environment,host",
-        threadId,
-        signal,
-      });
-      ingestThreadDetailBootstrap({
+    queryFn: ({ signal }) =>
+      loadThreadDetailBootstrap({
         queryClient,
-        thread,
-      });
-      return thread;
-    },
+        signal,
+        threadId: requireThreadId(id, "useThreadDetailBootstrap"),
+      }),
     enabled,
     staleTime: Infinity,
     retry: shouldRetryTransientReadQuery,

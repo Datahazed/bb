@@ -13,6 +13,7 @@ import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
+  threadDetailBootstrapQueryKey,
   threadQueuedMessagesQueryKey,
   threadTimelineQueryKey,
 } from "../queries/query-keys";
@@ -44,6 +45,8 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
         },
         send: vi.fn(),
         spawn: vi.fn(),
+        get: vi.fn(),
+        timeline: vi.fn(),
       },
     },
   };
@@ -167,6 +170,12 @@ beforeEach(() => {
     delivery: "sent",
   });
   vi.mocked(sdk.threads.spawn).mockResolvedValue(makeThreadResponse());
+  vi.mocked(sdk.threads.get).mockResolvedValue({
+    ...makeThreadResponse(),
+    environment: null,
+    host: null,
+  });
+  vi.mocked(sdk.threads.timeline).mockResolvedValue(makeBannerTimeline());
   vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
   );
@@ -203,6 +212,34 @@ describe("thread runtime mutations", () => {
     expect(
       queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
     ).toEqual([makeQueuedMessage()]);
+  });
+
+  it("starts thread bootstrap before the created thread view mounts", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(() => useCreateThread(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        projectId: "project-1",
+        environment: { type: "project-default" },
+        input: [{ type: "text", text: "Hello", mentions: [] }],
+      });
+    });
+
+    await waitFor(() => {
+      expect(sdk.threads.get).toHaveBeenCalledWith({
+        include: "environment,host",
+        signal: expect.any(AbortSignal),
+        threadId: "thread-1",
+      });
+    });
+    expect(
+      queryClient.getQueryData(threadDetailBootstrapQueryKey("thread-1")),
+    ).toEqual({
+      ...makeThreadResponse(),
+      environment: null,
+      host: null,
+    });
   });
 
   it("keeps the existing timeline while an edit is pending and lets connected realtime own success", async () => {
