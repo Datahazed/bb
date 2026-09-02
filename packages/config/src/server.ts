@@ -16,7 +16,6 @@ import {
   BB_APP_URL_ENV,
   BB_APP_SURFACE_ENV,
   BB_APP_VERSION_ENV,
-  BB_EXPO_PUSH_URL_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INHERITED_SKILLS_ROOTS_ENV,
   BB_INFERENCE_FALLBACK_ENV,
@@ -30,7 +29,6 @@ import {
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
-  DEFAULT_BB_EXPO_PUSH_URL,
   DEFAULT_BB_EXTERNAL_URL,
   DEFAULT_BB_INFERENCE_FALLBACK,
   DEFAULT_BB_INFERENCE,
@@ -55,7 +53,6 @@ export interface ServerConfig
   BB_APP_SURFACE: AppSurface;
   BB_APP_VERSION: string;
   BB_DEV_APP_PORT?: number;
-  BB_EXPO_PUSH_URL: string;
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
   BB_INHERITED_SKILLS_ROOTS: string[];
@@ -124,12 +121,6 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_APP_VERSION,
       definition: BB_APP_VERSION_ENV,
-      env: loader.env,
-    }),
-    BB_EXPO_PUSH_URL: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_EXPO_PUSH_URL,
-      definition: BB_EXPO_PUSH_URL_ENV,
       env: loader.env,
     }),
     BB_EXTERNAL_URL: readEnvVarWithDefault({

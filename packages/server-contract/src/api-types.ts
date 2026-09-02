@@ -4,7 +4,6 @@ export * from "./api/skills.js";
 export * from "./api/environments.js";
 export * from "./api/files.js";
 export * from "./api/hosts.js";
-export * from "./api/notifications.js";
 export * from "./api/plugins.js";
 export * from "./api/system.js";
 export * from "./api/terminals.js";

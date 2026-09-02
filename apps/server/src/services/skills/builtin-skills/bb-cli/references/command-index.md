@@ -78,14 +78,6 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb updates status`
 - `bb updates apply`
 
-## notifications
-
-- `bb notifications`
-- `bb notifications push-subscriptions`
-- `bb notifications push-subscriptions list`
-- `bb notifications push-subscriptions add`
-- `bb notifications push-subscriptions remove`
-
 ## terminal
 
 - `bb terminal`

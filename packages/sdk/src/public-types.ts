@@ -4,11 +4,6 @@ export type {
   PermissionMode,
   PromptInput,
   PromptTextMention,
-  PushNotificationData,
-  PushNotificationKind,
-  PushSubscription,
-  PushSubscriptionPlatform,
-  PushSubscriptionSummary,
   ReasoningLevel,
   ServiceTier,
   ThreadStatus,
@@ -27,7 +22,6 @@ export type * from "./areas/environments.js";
 export type * from "./areas/files.js";
 export type * from "./areas/guide.js";
 export type * from "./areas/hosts.js";
-export type * from "./areas/notifications.js";
 export type * from "./areas/plugins.js";
 export type * from "./areas/projects.js";
 export type * from "./areas/providers.js";

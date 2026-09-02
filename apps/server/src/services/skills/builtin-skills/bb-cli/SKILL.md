@@ -42,15 +42,6 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   configuration, runtime, and contributed commands.
 - Read references/app-settings.md for complete app setting keys and effects.
 
-## Mobile push notifications
-
-Use `bb notifications push-subscriptions list` to inspect registered devices.
-The list shows token suffixes only. Use `add` to register a full Expo token.
-Use `remove <id>` to delete a registration.
-
-Use `bb settings general pushNotifications <true|false>` to control delivery.
-The setting takes effect without a server restart.
-
 ## Command habits
 
 - Resolve names and IDs with a list or show command before mutation.

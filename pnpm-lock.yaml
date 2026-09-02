@@ -1095,9 +1095,6 @@ importers:
       semver:
         specifier: ^7.7.0
         version: 7.7.4
-      undici:
-        specifier: ^7.28.0
-        version: 7.28.0
       ws:
         specifier: ^8.19.0
         version: 8.21.0
@@ -19610,7 +19607,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

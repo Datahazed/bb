@@ -15,7 +15,6 @@ export const managedBranchPrefixSchema = z
 export const appSettingsSchema = z
   .object({
     showKeyboardHints: z.boolean(),
-    pushNotifications: z.boolean(),
     steerActiveThreadOnEnter: z.boolean(),
     showUnhandledProviderEvents: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
@@ -28,7 +27,6 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
-  pushNotifications: true,
   steerActiveThreadOnEnter: true,
   showUnhandledProviderEvents: false,
   providerOrder: [],

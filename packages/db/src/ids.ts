@@ -65,7 +65,3 @@ export function createHostDaemonSessionId(): string {
 export function createTerminalSessionId(): string {
   return createId("term");
 }
-
-export function createPushSubscriptionId(): string {
-  return createId("push");
-}

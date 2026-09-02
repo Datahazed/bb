@@ -203,7 +203,6 @@ function useSettingsStoryState() {
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
   const [richTextEditing, setRichTextEditing] = useState(false);
-  const [pushNotifications, setPushNotifications] = useState(true);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [streamerMode, setStreamerMode] = useState(false);
@@ -232,7 +231,6 @@ function useSettingsStoryState() {
     preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
     richTextEditing,
-    pushNotifications,
     steerActiveThreadOnEnter,
     streamerMode,
     showUnhandledProviderEvents,
@@ -246,7 +244,6 @@ function useSettingsStoryState() {
     setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
     setRichTextEditing,
-    setPushNotifications,
     setSteerActiveThreadOnEnter,
     setStreamerMode,
     setShowUnhandledProviderEvents,
@@ -290,14 +287,11 @@ function GeneralSettingsStory({
           state.setNavigateToThreadAfterCreate
         }
         onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
-        onPushNotificationsChange={state.setPushNotifications}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onRichTextEditingChange={state.setRichTextEditing}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
         onStreamerModeChange={state.setStreamerMode}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
-        pushNotifications={state.pushNotifications}
-        pushNotificationsDisabled={false}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         richTextEditing={state.richTextEditing}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}

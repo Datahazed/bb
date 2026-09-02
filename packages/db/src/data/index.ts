@@ -120,7 +120,6 @@ export type {
 export {
   getAppKeybindingOverrides,
   getAppSettings,
-  getPushNotificationsEnabled,
   setAppKeybindingOverrides,
   setAppSettings,
 } from "./app-settings.js";
@@ -445,17 +444,3 @@ export {
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
-
-export {
-  deletePushSubscription,
-  deletePushSubscriptionByToken,
-  getPushSubscription,
-  getPushSubscriptionByToken,
-  listPushSubscriptions,
-  upsertPushSubscription,
-} from "./push-subscriptions.js";
-export type {
-  PushSubscriptionRow,
-  UpsertPushSubscriptionInput,
-  UpsertPushSubscriptionResult,
-} from "./push-subscriptions.js";

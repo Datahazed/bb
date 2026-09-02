@@ -568,10 +568,10 @@ describe("builtin plugin reconciliation", () => {
   });
 
   it("ships Push notifications enabled on a fresh database", () => {
-    const pushNotifications = BUILTIN_PLUGINS.find(
+    const pushPlugin = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "push-notifications",
     );
-    expect(pushNotifications?.defaultEnabled).toBe(true);
+    expect(pushPlugin?.defaultEnabled).toBe(true);
   });
 
   it("loads the builtin connect plugin like other builtins", async () => {
