@@ -5,8 +5,11 @@ import type { DbConnection } from "./connection.js";
 import {
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
+  searchThreadsWithPendingInteractionState,
   type ListThreadsForProjectsOptions,
   type ListThreadsOptions,
+  type SearchThreadsWithPendingInteractionStateArgs,
+  type ThreadSearchResults,
   type ThreadWithPendingInteractionState,
 } from "./data/threads.js";
 import type {
@@ -16,7 +19,7 @@ import type {
 
 type PendingRead = {
   reject: (error: Error) => void;
-  resolve: (result: ThreadWithPendingInteractionState[]) => void;
+  resolve: (result: unknown) => void;
 };
 
 let worker: Worker | null = null;
@@ -74,7 +77,7 @@ export function startSqliteReadWorker(args: {
     }
     pending.delete(response.id);
     if (response.ok) {
-      request.resolve(response.result as ThreadWithPendingInteractionState[]);
+      request.resolve(response.result);
       return;
     }
     request.reject(new Error(response.error));
@@ -102,9 +105,9 @@ export async function stopSqliteReadWorker(): Promise<void> {
   await current.terminate();
 }
 
-async function request(
+async function request<T>(
   message: Omit<SqliteReadRequest, "id">,
-): Promise<ThreadWithPendingInteractionState[]> {
+): Promise<T> {
   const current = worker;
   if (current === null) {
     throw new Error("sqlite read worker is not running");
@@ -124,7 +127,7 @@ export async function listThreadsWithPendingInteractionStateOffThread(
   if (worker === null) {
     return listThreadsWithPendingInteractionState(db, options);
   }
-  return request({
+  return request<ThreadWithPendingInteractionState[]>({
     name: "listThreadsWithPendingInteractionState",
     args: options,
   });
@@ -137,8 +140,21 @@ export async function listThreadsWithPendingInteractionStateForProjectsOffThread
   if (worker === null) {
     return listThreadsWithPendingInteractionStateForProjects(db, options);
   }
-  return request({
+  return request<ThreadWithPendingInteractionState[]>({
     name: "listThreadsWithPendingInteractionStateForProjects",
     args: options,
+  });
+}
+
+export async function searchThreadsWithPendingInteractionStateOffThread(
+  db: DbConnection,
+  args: SearchThreadsWithPendingInteractionStateArgs,
+): Promise<ThreadSearchResults> {
+  if (worker === null) {
+    return searchThreadsWithPendingInteractionState(db, args);
+  }
+  return request<ThreadSearchResults>({
+    name: "searchThreadsWithPendingInteractionState",
+    args,
   });
 }
