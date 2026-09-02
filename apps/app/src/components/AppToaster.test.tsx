@@ -25,7 +25,9 @@ async function renderToaster(isCompactViewport: boolean) {
   });
 
   return waitFor(() => {
-    const toaster = document.querySelector("[data-sonner-toaster]");
+    const toaster = document.querySelector<HTMLElement>(
+      "[data-sonner-toaster]",
+    );
     expect(toaster).not.toBeNull();
     return toaster;
   });
@@ -36,6 +38,12 @@ describe("AppToaster", () => {
     const toaster = await renderToaster(true);
     expect(toaster?.getAttribute("data-x-position")).toBe("center");
     expect(toaster?.getAttribute("data-y-position")).toBe("top");
+    expect(toaster?.style.getPropertyValue("--offset-top")).toBe(
+      "calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) + 16px)",
+    );
+    expect(toaster?.style.getPropertyValue("--mobile-offset-top")).toBe(
+      "calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) + 16px)",
+    );
   });
 
   it("preserves the configured desktop toast position", async () => {
