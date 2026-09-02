@@ -8,5 +8,5 @@ export type FeatureFlags = z.infer<typeof featureFlagsSchema>;
 
 export const defaultFeatureFlags: FeatureFlags = {
   placeholder: false,
-  timelineWindowEventBudget: 1_500,
+  timelineWindowEventBudget: 400,
 };
