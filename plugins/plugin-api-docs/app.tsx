@@ -1,9 +1,7 @@
 import {
   copyPluginSurfaceAgentReference,
   firstPartyPluginId,
-  parseProductMapRoute,
   ProductMap,
-  productMapSubPathForSurface,
 } from "@bb/plugin-api-map";
 import { useCallback, useEffect, useState } from "react";
 import { definePluginApp, useBbNavigate } from "@get-bb/plugin-sdk/app";
@@ -46,7 +44,6 @@ function useResolvablePluginIds(): ReadonlySet<string> | null {
 function PluginApiMapPage({ subPath }: { subPath: string }) {
   const resolvable = useResolvablePluginIds();
   const bbNavigate = useBbNavigate();
-  const route = parseProductMapRoute(subPath, window.location.hash);
   const pluginPageHref = useCallback(
     (displayName: string) => {
       const id = firstPartyPluginId(displayName);
@@ -59,19 +56,10 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     (slideId: string) => {
       bbNavigate.toPluginPanel("plugin-api", {
         subPath: slideId,
+        replace: true,
       });
     },
     [bbNavigate],
-  );
-  const onSurfaceChange = useCallback(
-    (surfaceId: string | null) => {
-      const nextSubPath = surfaceId
-        ? productMapSubPathForSurface(surfaceId)
-        : (route.slideId ?? "");
-      if (nextSubPath === null) return;
-      bbNavigate.toPluginPanel("plugin-api", { subPath: nextSubPath });
-    },
-    [bbNavigate, route.slideId],
   );
   return (
     <div
@@ -80,10 +68,8 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     >
       <ProductMap
         pluginPageHref={pluginPageHref}
-        initialSlideId={route.slideId ?? undefined}
-        initialSurfaceId={route.surfaceId ?? undefined}
+        initialSlideId={subPath.split("/")[0] || undefined}
         onSlideChange={onSlideChange}
-        onSurfaceChange={onSurfaceChange}
         onCopyForAgent={copyPluginSurfaceAgentReference}
       />
     </div>

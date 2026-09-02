@@ -3,10 +3,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { SurfaceCard, SURFACE_GROUPS } from "../src/index";
+import { toggleSurfaceCardId } from "../src/surface-card";
 
 const surfaces = SURFACE_GROUPS[0]!.surfaces;
 
 describe("SurfaceCard annotation navigation", () => {
+  it("toggles the selected annotation closed", () => {
+    expect(toggleSurfaceCardId(null, "nav-panel")).toBe("nav-panel");
+    expect(toggleSurfaceCardId("nav-panel", "nav-panel")).toBeNull();
+    expect(toggleSurfaceCardId("nav-panel", "sidebar-navigation")).toBe(
+      "sidebar-navigation",
+    );
+  });
+
   it("renders compact previous and next annotation actions", () => {
     const markup = renderToStaticMarkup(
       createElement(SurfaceCard, {

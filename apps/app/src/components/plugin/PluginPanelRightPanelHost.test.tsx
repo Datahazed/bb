@@ -147,12 +147,7 @@ vi.mock("@/hooks/queries/plugin-catalog-queries", () => ({
       data: [
         {
           pluginId,
-          displayName:
-            pluginId === "secrets"
-              ? "Secrets"
-              : pluginId === "simple-notes"
-                ? "Docs"
-                : pluginId,
+          displayName: pluginId === "secrets" ? "Secrets" : pluginId,
           icon: pluginId === "secrets" ? "Key" : null,
         },
       ],
@@ -807,30 +802,22 @@ describe("PluginPanelRightPanelHost", () => {
     expect(secondaryPanelState.showsCollapseControl).toBe(true);
     expect(catalogQueryState.queries).toEqual(["secrets"]);
 
+    fireEvent.click(screen.getByRole("link", { name: "Open Docs plugin" }));
+    expect(await screen.findByText("Details for simple-notes")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close simple-notes" }),
+    );
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Close simple-notes" }),
+    ).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "Close Secrets" }));
 
     expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
     ).toBeTruthy();
-    expect(screen.getByTestId("current-path").textContent).toBe(
-      "/plugins/demo/board",
-    );
-  });
-
-  it("selects the adjacent plugin detail when the active tab closes", async () => {
-    renderHost("board", "", createStore(), true);
-
-    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
-    expect(await screen.findByText("Details for secrets")).toBeTruthy();
-    fireEvent.click(screen.getByRole("link", { name: "Open Docs plugin" }));
-    expect(await screen.findByText("Details for simple-notes")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Close Docs" }));
-
-    expect(await screen.findByText("Details for secrets")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Close Docs" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Close Secrets" })).toBeTruthy();
     expect(screen.getByTestId("current-path").textContent).toBe(
       "/plugins/demo/board",
     );

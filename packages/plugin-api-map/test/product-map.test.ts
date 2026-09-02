@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  annotationNeighbors,
-  nextProductMapSurfaceId,
-  panCarets,
-  parseProductMapRoute,
-  productMapSelection,
-  productMapSubPathForSurface,
-  SURFACE_GROUPS,
-} from "../src/index";
+import { annotationNeighbors, panCarets, SURFACE_GROUPS } from "../src/index";
 
 const LAST = SURFACE_GROUPS.length - 1;
 
@@ -59,49 +51,5 @@ describe("annotationNeighbors", () => {
       previous: surfaces.at(-2),
       next: null,
     });
-  });
-});
-
-describe("product map routes", () => {
-  it("closes an annotation when its selected marker is clicked again", () => {
-    expect(nextProductMapSurfaceId(null, "nav-panel")).toBe("nav-panel");
-    expect(nextProductMapSurfaceId("nav-panel", "nav-panel")).toBeNull();
-    expect(nextProductMapSurfaceId("nav-panel", "sidebar-navigation")).toBe(
-      "sidebar-navigation",
-    );
-  });
-
-  it("restores a page and annotation from the panel sub-path", () => {
-    expect(parseProductMapRoute("composer/composer-plus-menu")).toEqual({
-      slideId: "composer",
-      surfaceId: "composer-plus-menu",
-    });
-    expect(productMapSelection("composer", "composer-plus-menu")).toEqual({
-      index: SURFACE_GROUPS.findIndex((group) => group.id === "composer"),
-      surfaceId: "composer-plus-menu",
-    });
-  });
-
-  it("restores copied legacy annotation hashes", () => {
-    expect(
-      parseProductMapRoute("composer", "#surface-composer-plus-menu"),
-    ).toEqual({
-      slideId: "composer",
-      surfaceId: "composer-plus-menu",
-    });
-  });
-
-  it("uses the annotation's owning page when route segments disagree", () => {
-    expect(parseProductMapRoute("settings/composer-plus-menu")).toEqual({
-      slideId: "composer",
-      surfaceId: "composer-plus-menu",
-    });
-  });
-
-  it("builds canonical annotation sub-paths", () => {
-    expect(productMapSubPathForSurface("composer-plus-menu")).toBe(
-      "composer/composer-plus-menu",
-    );
-    expect(productMapSubPathForSurface("missing-surface")).toBeNull();
   });
 });

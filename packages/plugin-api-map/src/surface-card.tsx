@@ -262,13 +262,19 @@ export function SurfaceCard({
   );
 }
 
-export function useSurfaceCard(initialOpenId: string | null = null) {
-  const [openId, setOpenId] = useState<string | null>(initialOpenId);
-  const open = useCallback((id: string) => setOpenId(id), []);
-  const close = useCallback(() => setOpenId(null), []);
+export function toggleSurfaceCardId(
+  currentId: string | null,
+  selectedId: string,
+): string | null {
+  return currentId === selectedId ? null : selectedId;
+}
+
+export function useSurfaceCard() {
+  const [openId, setOpenId] = useState<string | null>(null);
   return {
     openId,
-    open,
-    close,
+    open: (id: string) =>
+      setOpenId((currentId) => toggleSurfaceCardId(currentId, id)),
+    close: () => setOpenId(null),
   };
 }

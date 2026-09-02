@@ -1,6 +1,5 @@
 import {
   Fragment,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -66,58 +65,6 @@ export function annotationNeighbors(
   return {
     previous: surfaces[currentIndex - 1] ?? null,
     next: surfaces[currentIndex + 1] ?? null,
-  };
-}
-
-export function parseProductMapRoute(
-  subPath: string,
-  hash = "",
-): { slideId: string | null; surfaceId: string | null } {
-  const [subPathSlideId, subPathSurfaceId] = subPath.split("/");
-  const hashSurfaceId = hash.startsWith("#surface-")
-    ? hash.slice("#surface-".length)
-    : null;
-  const surfaceId = subPathSurfaceId || hashSurfaceId;
-  const surfaceGroup = surfaceId
-    ? GROUP_BY_SURFACE_ID.get(surfaceId)
-    : undefined;
-  const slideId = surfaceGroup
-    ? surfaceGroup.id
-    : SURFACE_GROUPS.some((group) => group.id === subPathSlideId)
-      ? subPathSlideId
-      : null;
-  return {
-    slideId,
-    surfaceId: surfaceGroup ? (surfaceId ?? null) : null,
-  };
-}
-
-export function productMapSubPathForSurface(surfaceId: string): string | null {
-  const group = GROUP_BY_SURFACE_ID.get(surfaceId);
-  return group ? `${group.id}/${surfaceId}` : null;
-}
-
-export function nextProductMapSurfaceId(
-  openSurfaceId: string | null,
-  selectedSurfaceId: string,
-): string | null {
-  return openSurfaceId === selectedSurfaceId ? null : selectedSurfaceId;
-}
-
-export function productMapSelection(
-  initialSlideId?: string,
-  initialSurfaceId?: string,
-): { index: number; surfaceId: string | null } {
-  const surfaceGroup = initialSurfaceId
-    ? GROUP_BY_SURFACE_ID.get(initialSurfaceId)
-    : undefined;
-  const slideId = surfaceGroup?.id ?? initialSlideId;
-  return {
-    index: Math.max(
-      0,
-      SURFACE_GROUPS.findIndex((slide) => slide.id === slideId),
-    ),
-    surfaceId: surfaceGroup ? (initialSurfaceId ?? null) : null,
   };
 }
 
@@ -541,18 +488,14 @@ export function ProductMap({
   header,
   pluginPageHref,
   initialSlideId,
-  initialSurfaceId,
   onSlideChange,
-  onSurfaceChange,
   onCopyForAgent,
   tone = "primary",
 }: {
   header?: ReactNode;
   pluginPageHref?: (displayName: string) => string | null;
   initialSlideId?: string;
-  initialSurfaceId?: string;
   onSlideChange?: (slideId: string) => void;
-  onSurfaceChange?: (surfaceId: string | null) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
   tone?: "primary" | "supporting";
 }) {
@@ -561,22 +504,16 @@ export function ProductMap({
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
   const pageListRef = useRef<HTMLDivElement>(null);
   const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const initialSelection = productMapSelection(
-    initialSlideId,
-    initialSurfaceId,
-  );
-  const card = useSurfaceCard(initialSelection.surfaceId);
+  const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
   const pageListEdges = useScrollEdges(pageListRef);
-  const [index, setIndex] = useState(() => initialSelection.index);
+  const [index, setIndex] = useState(() =>
+    Math.max(
+      0,
+      slides.findIndex((slide) => slide.id === initialSlideId),
+    ),
+  );
   const stage = useStageHeight(index, slideRefs);
-
-  useBrowserLayoutEffect(() => {
-    const selection = productMapSelection(initialSlideId, initialSurfaceId);
-    setIndex(selection.index);
-    if (selection.surfaceId) card.open(selection.surfaceId);
-    else card.close();
-  }, [card.close, card.open, initialSlideId, initialSurfaceId]);
 
   useEffect(() => {
     const list = pageListRef.current;
@@ -597,47 +534,20 @@ export function ProductMap({
     if (next < 0 || next >= slides.length) {
       return;
     }
-    if (next === index && card.openId === null) return;
-    if (onSlideChange) {
-      onSlideChange(slides[next].id);
-      return;
-    }
     card.close();
     setHoverId(null);
     setIndex(next);
+    onSlideChange?.(slides[next].id);
   };
 
   const goToSurface = (id: string) => {
-    const nextSurfaceId = nextProductMapSurfaceId(card.openId, id);
-    if (nextSurfaceId === null) {
-      if (onSurfaceChange) onSurfaceChange(null);
-      else card.close();
-      return;
-    }
-    const group = GROUP_BY_SURFACE_ID.get(nextSurfaceId);
+    const group = GROUP_BY_SURFACE_ID.get(id);
     if (!group) return;
     const target = slides.findIndex((slide) => slide.id === group.id);
     if (target === -1) return;
-    if (onSurfaceChange) {
-      onSurfaceChange(nextSurfaceId);
-      return;
-    }
-    if (target !== index) {
-      card.close();
-      setHoverId(null);
-      setIndex(target);
-    }
-    card.open(nextSurfaceId);
+    if (target !== index) show(target);
+    card.open(id);
   };
-
-  const closeSurface = useCallback(() => {
-    if (card.openId === null) return;
-    if (onSurfaceChange) {
-      onSurfaceChange(null);
-      return;
-    }
-    card.close();
-  }, [card.close, card.openId, onSurfaceChange]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "ArrowRight") {
@@ -655,7 +565,7 @@ export function ProductMap({
       setActiveId: setHoverId,
       expandedId: card.openId,
       numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
-      onSelect: goToSurface,
+      onSelect: card.open,
       pluginPageHref,
       currentGroupId: slides[index].id,
       onGoToSurface: goToSurface,
@@ -668,7 +578,7 @@ export function ProductMap({
     <SurfaceCard
       surface={openSurface}
       number={SURFACE_NUMBERS.get(openSurface.id) ?? null}
-      onDismiss={closeSurface}
+      onDismiss={card.close}
       onCopyForAgent={onCopyForAgent}
       navigation={{
         ...annotationNeighbors(slides[index].surfaces, openSurface.id),
@@ -687,11 +597,12 @@ export function ProductMap({
       if (!(target instanceof Element)) return;
       if (target.closest('[role="dialog"]')) return;
       if (target.closest('a[href^="#surface-"]')) return;
-      closeSurface();
+      card.close();
     };
     scope.addEventListener("pointerdown", onPointerDown);
     return () => scope.removeEventListener("pointerdown", onPointerDown);
-  }, [card.openId, closeSurface]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.openId]);
 
   return (
     <SurfaceMapContext.Provider value={mapState}>
