@@ -117,6 +117,30 @@ export function didThreadDetailBootstrapRefreshAfterMount(query: {
   );
 }
 
+export function resolveThreadDetailQueryMount(args: {
+  bootstrap: {
+    dataUpdatedAt: number;
+    isError: boolean;
+    isFetchedAfterMount: boolean;
+    isSuccess: boolean;
+  };
+  queryClient: QueryClient;
+  threadId: string;
+}): { enabled: boolean; refetchOnMount: boolean | "always" } {
+  const bootstrapSettled = args.bootstrap.isSuccess || args.bootstrap.isError;
+  const hasCachedThread =
+    Boolean(args.threadId) &&
+    args.queryClient.getQueryData(threadQueryKey(args.threadId)) !== undefined;
+  return {
+    enabled: hasCachedThread || bootstrapSettled,
+    refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(args.bootstrap)
+      ? false
+      : bootstrapSettled
+        ? "always"
+        : false,
+  };
+}
+
 type ThreadTimelineQueryOptions = QueryOptions;
 
 type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
