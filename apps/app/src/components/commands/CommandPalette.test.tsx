@@ -104,6 +104,7 @@ const modeState = vi.hoisted(() => ({
   drafts: [] as PaletteNewThreadDraft[],
   searchResponse: undefined as ThreadSearchResponse | undefined,
 }));
+const openPaneContentInSplitMock = vi.hoisted(() => vi.fn());
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
 const routeNavigateMock = vi.hoisted(() => vi.fn());
 
@@ -154,6 +155,10 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 
 vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
   openThreadInSplit: openThreadInSplitMock,
+}));
+
+vi.mock("@/lib/split-layout/openPaneContentInSplit", () => ({
+  openPaneContentInSplit: openPaneContentInSplitMock,
 }));
 
 vi.mock("@/components/ui/app-route-anchor", () => ({
@@ -336,6 +341,7 @@ afterEach(() => {
   modeState.archivedRecents = [];
   modeState.drafts = [];
   modeState.searchResponse = undefined;
+  openPaneContentInSplitMock.mockReset();
   openThreadInSplitMock.mockReset();
   routeNavigateMock.mockReset();
   window.localStorage.clear();
