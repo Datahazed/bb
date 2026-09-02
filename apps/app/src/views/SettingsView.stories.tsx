@@ -207,6 +207,9 @@ function useSettingsStoryState() {
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [streamerMode, setStreamerMode] = useState(false);
+  const [managedBranchPrefix, setManagedBranchPrefix] = useState(
+    defaultAppSettings.managedBranchPrefix,
+  );
   const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
     useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
@@ -223,6 +226,7 @@ function useSettingsStoryState() {
     directoryTargetId,
     experiments,
     fileTargetId,
+    managedBranchPrefix,
     navigateToThreadAfterCreate,
     openLinksInAppBrowser,
     preferredAudioInputDeviceId,
@@ -236,6 +240,7 @@ function useSettingsStoryState() {
     setDirectoryTargetId,
     setExperiments,
     setFileTargetId,
+    setManagedBranchPrefix,
     setNavigateToThreadAfterCreate,
     setOpenLinksInAppBrowser,
     setPreferredAudioInputDeviceId,
@@ -277,6 +282,9 @@ function GeneralSettingsStory({
     <>
       <GeneralSettingsSection
         desktopBrowserAvailable={desktopBrowserAvailable}
+        managedBranchPrefix={state.managedBranchPrefix}
+        managedBranchPrefixDisabled={false}
+        onManagedBranchPrefixChange={state.setManagedBranchPrefix}
         navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
         onNavigateToThreadAfterCreateChange={
           state.setNavigateToThreadAfterCreate
