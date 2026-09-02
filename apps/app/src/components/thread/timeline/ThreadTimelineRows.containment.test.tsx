@@ -106,7 +106,7 @@ describe("ThreadTimelineRows row containment", () => {
     );
     await act(nextAnimationFrame);
     const armedClassNames = TOP_LEVEL_TIMELINE_ROW_CLASS_NAME.split(" ");
-    expect(armedClassNames).toContain("max-md:[content-visibility:auto]");
+    expect(armedClassNames).toContain("[content-visibility:auto]");
     expect(armedClassNames).toContain(
       TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
     );
@@ -137,7 +137,7 @@ describe("ThreadTimelineRows row containment", () => {
     ).toBe(true);
     expect(
       rowWrapper(view.container, "assistant_1").classList.contains(
-        "max-md:[content-visibility:auto]",
+        "[content-visibility:auto]",
       ),
     ).toBe(true);
 
@@ -191,7 +191,7 @@ describe("ThreadTimelineRows row containment", () => {
       expect(classes).toContain(
         TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
       );
-      expect(classes).not.toContain("max-md:[content-visibility:auto]");
+      expect(classes).not.toContain("[content-visibility:auto]");
     }
   });
 });
