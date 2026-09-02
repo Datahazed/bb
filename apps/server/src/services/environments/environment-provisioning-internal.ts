@@ -5,7 +5,6 @@ import {
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
-  getAppSettings,
   getEnvironment,
   getThread,
   listStoredThreadProvisioningRowsByProvisioningId,

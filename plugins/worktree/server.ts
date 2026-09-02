@@ -69,16 +69,24 @@ function slugFromTitle(title: string | null): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-function branchNamesForThread(thread: {
+interface BranchNameSubject {
   id: string;
   title: string | null;
   titleFallback: string | null;
-}): BranchNamePlan {
+}
+
+function branchNamesForThread(
+  thread: BranchNameSubject,
+  branchPrefix: string,
+): BranchNamePlan {
   const slug = slugFromTitle(thread.title ?? thread.titleFallback);
   if (slug === null) {
-    return { primary: `bb/${thread.id}`, retry: null };
+    return { primary: `${branchPrefix}${thread.id}`, retry: null };
   }
-  return { primary: `bb/${slug}`, retry: `bb/${slug}-${thread.id.slice(-4)}` };
+  return {
+    primary: `${branchPrefix}${slug}`,
+    retry: `${branchPrefix}${slug}-${thread.id.slice(-4)}`,
+  };
 }
 
 function isBranchExistsError(error: unknown): boolean {
@@ -120,15 +128,37 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     return source.path;
   }
 
+  async function branchPrefix(): Promise<string> {
+    try {
+      const config = await bb.sdk.system.config();
+      return config.generalSettings.managedBranchPrefix;
+    } catch (error) {
+      bb.log.warn(
+        `Could not read the configured branch prefix, using bb/: ${errorMessage(error)}`,
+      );
+      return "bb/";
+    }
+  }
+
   async function create(
     threadId: string,
     projectId: string,
     configuration: WorktreeConfiguration,
-    branchNames: BranchNamePlan,
+    thread: BranchNameSubject,
+    recordedBranchName: string | undefined,
   ): Promise<void> {
     const key = launchKey(threadId);
     launchingThreadIds.add(threadId);
     try {
+      const computed = branchNamesForThread(thread, await branchPrefix());
+      const branchNames: BranchNamePlan =
+        recordedBranchName === undefined
+          ? computed
+          : {
+              primary: recordedBranchName,
+              retry:
+                computed.retry === recordedBranchName ? null : computed.retry,
+            };
       await bb.storage.kv.set(key, {
         phase: "creating",
         progress: "Creating worktree…",
@@ -219,23 +249,20 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       const launch = await bb.storage.kv.get<Launch>(launchKey(thread.id));
       if (launch === undefined) {
         if (!launchingThreadIds.has(thread.id)) {
-          void create(thread.id, project.id, parsed.data, branchNamesForThread(thread));
+          void create(thread.id, project.id, parsed.data, thread, undefined);
         }
         return { action: "wait", reason: "Creating worktree…" };
       }
       switch (launch.phase) {
         case "creating":
           if (!launchingThreadIds.has(thread.id)) {
-            const computed = branchNamesForThread(thread);
-            const recorded = launch.branchName;
-            const branchNames: BranchNamePlan =
-              recorded === undefined
-                ? computed
-                : {
-                    primary: recorded,
-                    retry: computed.retry === recorded ? null : computed.retry,
-                  };
-            void create(thread.id, project.id, parsed.data, branchNames);
+            void create(
+              thread.id,
+              project.id,
+              parsed.data,
+              thread,
+              launch.branchName,
+            );
           }
           return { action: "wait", reason: launch.progress };
         case "failed":

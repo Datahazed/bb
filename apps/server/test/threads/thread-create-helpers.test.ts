@@ -9,7 +9,6 @@ import {
   noopNotifier,
   upsertHost,
 } from "@bb/db";
-import { DEFAULT_MANAGED_BRANCH_PREFIX } from "@bb/domain";
 import { ApiError } from "../../src/errors.js";
 import {
   buildThreadBranchName,

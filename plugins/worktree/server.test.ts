@@ -211,6 +211,39 @@ describe("worktree server entry", () => {
     await host.harness.dispose();
   });
 
+  it("honors the configured managed branch prefix", async () => {
+    const host = createFakePluginHost({
+      pluginId: "worktree",
+      sdk: {
+        projects: { get: async () => projectWithSource() },
+        system: {
+          config: async () => ({
+            generalSettings: { managedBranchPrefix: "sawyer/wt-" },
+          }),
+        },
+      },
+      experimental_callHostRpc: () => ({
+        path: "/hosts/worktrees/thread-1/repo",
+        log: "",
+      }),
+    });
+    await plugin(host.bb);
+    const target =
+      host.harness.registrations.environmentTargets.get("worktree");
+
+    await target!.provision(
+      provisionContext(CONFIGURATION, { title: "Fix Login Flow" }),
+    );
+    await vi.waitFor(() => {
+      expect(host.harness.recheckCount).toBe(1);
+    });
+    expect(host.harness.experimental_hostRpcCalls[0]).toMatchObject({
+      method: "create",
+      input: { branchName: "sawyer/wt-fix-login-flow" },
+    });
+    await host.harness.dispose();
+  });
+
   it("retries once with a thread-id suffix when the branch already exists", async () => {
     let createCalls = 0;
     const host = createFakePluginHost({
