@@ -309,6 +309,11 @@ export {
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
 } from "./events.js";
+export {
+  deleteExpiredRetainedEventOutputs,
+  hydrateRetainedEventOutputRows,
+} from "./retained-event-outputs.js";
+export type { DeleteExpiredRetainedEventOutputsResult } from "./retained-event-outputs.js";
 export type {
   AcceptedDaemonEvent,
   AppendDaemonEventInput,
