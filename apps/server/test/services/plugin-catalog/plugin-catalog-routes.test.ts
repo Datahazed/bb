@@ -13,7 +13,7 @@ import {
   OFFICIAL_PLUGINS,
 } from "../../../src/services/plugins/builtin-registry.js";
 
-const MANIFEST_URL = "https://marketplace.test/marketplace/v1/marketplace.json";
+const MANIFEST_URL = "https://marketplace.test/marketplace.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h16v16H0z"/></svg>',
@@ -76,6 +76,7 @@ describe("plugin catalog routes", () => {
     const search = await app.request("/plugin-catalog/search?q=memory");
     await expect(search.json()).resolves.toMatchObject({
       results: [{ entryId: "memory", installed: false }],
+      collections: [],
     });
 
     const refresh = await app.request("/plugin-catalog/refresh", {

@@ -6,6 +6,7 @@ import {
   getPluginMarketplace,
   markInstalledPluginRemoved,
   migrate,
+  upsertPluginMarketplace,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
@@ -13,6 +14,10 @@ import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
+import {
+  CURATED_MARKETPLACE_V1_URL,
+  CURATED_MARKETPLACE_V2_URL,
+} from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 import {
   BUILTIN_PLUGINS,
@@ -22,9 +27,13 @@ import {
   listBundledPluginRegistrations,
 } from "../../../src/services/plugins/builtin-registry.js";
 
-const MANIFEST_URL = "https://marketplace.test/marketplace/v1/marketplace.json";
-const ICON_URL = "https://marketplace.test/marketplace/v1/icons/widgets.svg";
-const STATS_URL = "https://marketplace.test/marketplace/v1/stats.json";
+const MANIFEST_URL = "https://marketplace.test/marketplace.json";
+const ICON_URL = "https://marketplace.test/icons/widgets.svg";
+const STATS_URL = "https://marketplace.test/stats.json";
+const V1_MANIFEST_URL = CURATED_MARKETPLACE_V1_URL;
+const V2_MANIFEST_URL = CURATED_MARKETPLACE_V2_URL;
+const CUSTOM_V1_MANIFEST_URL =
+  "https://marketplace.test/marketplace/v1/marketplace.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 
 const VALID_SVG = Buffer.from(
@@ -56,6 +65,19 @@ function manifest(plugins: unknown[]): unknown {
     name: "bb-community",
     displayName: "BB Community",
     plugins,
+  };
+}
+
+function manifestV2(
+  plugins: unknown[],
+  overrides: Record<string, unknown> = {},
+): unknown {
+  return {
+    schemaVersion: 2,
+    name: "bb-community",
+    displayName: "BB Community",
+    plugins,
+    ...overrides,
   };
 }
 
@@ -94,12 +116,13 @@ describe("plugin catalog service", () => {
       typeof createPluginCatalogService
     >[0]["bundledPlugins"];
     fetch?: MarketplaceFetch;
+    marketplaceUrl?: string;
     warn?: (message: string) => void;
   }) {
     return createPluginCatalogService({
       db,
       appVersion: "1.0.0",
-      marketplaceUrl: MANIFEST_URL,
+      marketplaceUrl: options?.marketplaceUrl ?? MANIFEST_URL,
       dataDir,
       plugins: {
         installOfficialPlugin: async (name: string) => {
@@ -302,6 +325,207 @@ describe("plugin catalog service", () => {
   });
 
   describe("refresh", () => {
+    it("keeps the saved v1 catalog during an offline v2 URL upgrade", async () => {
+      const savedManifest = manifest([remoteEntry({ icon: "Zap" })]);
+      upsertPluginMarketplace(db, {
+        name: "bb-community",
+        sourceKind: "https",
+        manifestUrl: V1_MANIFEST_URL,
+        sourceGitRef: null,
+        sourceGitCommit: null,
+        manifestJson: JSON.stringify(savedManifest),
+        statsJson: null,
+        etag: '"v1"',
+        lastModified: "Wed, 02 Sep 2026 00:00:00 GMT",
+        lastSuccessfulRefreshAt: 1_000,
+        lastAttemptedRefreshAt: 1_000,
+        lastError: null,
+      });
+
+      const catalog = service({
+        marketplaceUrl: V2_MANIFEST_URL,
+        fetch: async () => new Response(null, { status: 503 }),
+      });
+
+      expect(await catalog.search("widgets")).toHaveLength(1);
+      expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
+        manifestUrl: V2_MANIFEST_URL,
+        manifestJson: JSON.stringify(savedManifest),
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt: 1_000,
+      });
+      await expect(catalog.refresh(2_000)).rejects.toThrow("HTTP 503");
+      expect(await catalog.search("widgets")).toHaveLength(1);
+    });
+
+    it("requests v2 first and falls back to v1 only after a 404", async () => {
+      const requests: string[] = [];
+      const catalog = service({
+        marketplaceUrl: V2_MANIFEST_URL,
+        fetch: async (url) => {
+          requests.push(url);
+          if (url === V2_MANIFEST_URL) {
+            return new Response(null, { status: 404 });
+          }
+          if (url === V1_MANIFEST_URL) {
+            return jsonResponse(manifest([remoteEntry({ icon: "Zap" })]));
+          }
+          return new Response(null, { status: 404 });
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect(requests.slice(0, 2)).toEqual([V2_MANIFEST_URL, V1_MANIFEST_URL]);
+      expect(await catalog.search("widgets")).toHaveLength(1);
+    });
+
+    it("keeps a stored v2 catalog after a transient v2 404", async () => {
+      const requests: string[] = [];
+      const warnings: string[] = [];
+      let v2Available = true;
+      const catalog = service({
+        marketplaceUrl: V2_MANIFEST_URL,
+        warn: (message) => warnings.push(message),
+        fetch: async (url) => {
+          requests.push(url);
+          if (url === V2_MANIFEST_URL) {
+            return v2Available
+              ? jsonResponse(
+                  manifestV2([
+                    remoteEntry({ icon: "Zap", category: "security" }),
+                  ]),
+                )
+              : new Response(null, { status: 404 });
+          }
+          if (url === V1_MANIFEST_URL) {
+            return jsonResponse(manifest([remoteEntry({ icon: "Zap" })]));
+          }
+          return new Response(null, { status: 404 });
+        },
+      });
+
+      await catalog.refresh(1_000);
+      v2Available = false;
+      requests.length = 0;
+      await catalog.refresh(2_000);
+
+      expect(
+        requests.filter(
+          (url) => url === V1_MANIFEST_URL || url === V2_MANIFEST_URL,
+        ),
+      ).toEqual([V2_MANIFEST_URL]);
+      expect(await catalog.search("widgets")).toMatchObject([
+        { entryId: "widgets", categoryId: "security" },
+      ]);
+      expect(
+        JSON.parse(
+          getPluginMarketplace(db, "bb-community")?.manifestJson ?? "null",
+        ),
+      ).toMatchObject({ schemaVersion: 2 });
+      expect(warnings).toContainEqual(
+        expect.stringContaining("kept the stored v2 catalog"),
+      );
+    });
+
+    it("does not fall back to v1 after a v2 server error", async () => {
+      const requests: string[] = [];
+      const catalog = service({
+        marketplaceUrl: V2_MANIFEST_URL,
+        fetch: async (url) => {
+          requests.push(url);
+          return new Response(null, { status: 500 });
+        },
+      });
+
+      await expect(catalog.refresh(1_000)).rejects.toThrow("HTTP 500");
+      expect(requests).toEqual([V2_MANIFEST_URL]);
+    });
+
+    it("requests a custom configured v1 URL without a v2 rewrite", async () => {
+      const requests: string[] = [];
+      const catalog = service({
+        marketplaceUrl: CUSTOM_V1_MANIFEST_URL,
+        fetch: async (url) => {
+          requests.push(url);
+          return jsonResponse(manifest([remoteEntry({ icon: "Zap" })]));
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect(requests[0]).toBe(CUSTOM_V1_MANIFEST_URL);
+      expect(requests).toHaveLength(2);
+      expect(await catalog.search("widgets")).toHaveLength(1);
+    });
+
+    it("projects v2 categories, screenshots, dates, and collections", async () => {
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(
+                manifestV2(
+                  [
+                    remoteEntry({
+                      icon: "Zap",
+                      category: "acme-tools",
+                      screenshots: ["./screenshots/widgets/widgets.webp"],
+                      publishedAt: "2026-08-20T11:47:04-07:00",
+                      updatedAt: "2026-08-27T16:12:00Z",
+                    }),
+                    remoteEntry({
+                      id: "uncategorized",
+                      icon: "Zap",
+                      category: "missing-category",
+                    }),
+                  ],
+                  {
+                    categories: [
+                      {
+                        id: "acme-tools",
+                        displayName: "Acme tools",
+                        description: "Tools from Acme.",
+                      },
+                    ],
+                    collections: [
+                      {
+                        id: "featured",
+                        displayName: "Featured",
+                        pluginIds: ["missing-plugin", "widgets"],
+                      },
+                    ],
+                  },
+                ),
+              )
+            : new Response(null, { status: 404 }),
+      });
+
+      await catalog.refresh(1_000);
+      const widgets = (await catalog.search("widgets")).find(
+        (entry) => entry.entryId === "widgets",
+      );
+      expect(widgets).toMatchObject({
+        categoryId: "acme-tools",
+        category: "Acme tools",
+        screenshots: [
+          "https://marketplace.test/screenshots/widgets/widgets.webp",
+        ],
+        collections: [{ id: "featured", rank: 0 }],
+        publishedAt: "2026-08-20T11:47:04-07:00",
+        updatedAt: "2026-08-27T16:12:00Z",
+      });
+      const uncategorized = (await catalog.search("uncategorized"))[0];
+      expect(uncategorized).not.toHaveProperty("categoryId");
+      expect(uncategorized).not.toHaveProperty("category");
+      expect(uncategorized?.collections).toEqual([]);
+      expect(catalog.collections()).toEqual([
+        {
+          id: "featured",
+          displayName: "Featured",
+          pluginIds: ["widgets"],
+        },
+      ]);
+    });
+
     it("tints a catalog SVG but keeps a raster icon's own colors", async () => {
       const PNG = Buffer.from([
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
