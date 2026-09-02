@@ -490,6 +490,7 @@ export function createPluginApi(options: {
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
+    "interaction.pending": [],
     "message.queued": [],
     "message.dispatched": [],
     "turn.failed": [],

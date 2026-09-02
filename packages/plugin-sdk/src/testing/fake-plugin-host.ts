@@ -1645,6 +1645,7 @@ function createFakePluginHostInternal(
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
+    "interaction.pending": [],
     "message.queued": [],
     "message.dispatched": [],
     "turn.failed": [],
@@ -2034,6 +2035,8 @@ function createFakePluginHostInternal(
           "thread.failed": threadEventHandlers["thread.failed"].length,
           "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
+          "interaction.pending":
+            threadEventHandlers["interaction.pending"].length,
           "message.queued": threadEventHandlers["message.queued"].length,
           "message.dispatched":
             threadEventHandlers["message.dispatched"].length,

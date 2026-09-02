@@ -637,6 +637,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Subscribe to threads being created, going active or idle, failing, being archived, or being deleted",
           "Subscribe to messages being queued behind a wait and dispatching when it clears",
+          "Subscribe when a thread receives a pending interaction",
           "Subscribe to a turn failing, with the provider's error and rate-limit windows attached",
           "Respond by sending a notification, asking for a retry, or writing to its own storage",
         ],
@@ -645,7 +646,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadEventPayloads",
           "PluginTurnFailedEvent",
         ],
-        firstParty: ["Automations", "Provider retry", "Tasks", "Workflows"],
+        firstParty: [
+          "Automations",
+          "Provider retry",
+          "Push notifications",
+          "Tasks",
+          "Workflows",
+        ],
       },
       {
         id: "dispatch-hook",
