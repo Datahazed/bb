@@ -49,6 +49,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     app: { hasApp: false, bundle: null },
     ...overrides,
     lastProblem: overrides.lastProblem ?? null,
+    errorsSinceInstall: overrides.errorsSinceInstall ?? 0,
   };
 }
 

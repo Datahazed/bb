@@ -224,7 +224,7 @@ added/updated/unchanged counts.
                                  --yes). Use outdated to preview; pinned
                                  installs stay put
   bb plugin list                 Status, services, schedules, handler timings,
-                                 stored handler errors, and the last problem.
+                                 errors since install, and the last problem.
                                  `bb status` also names enabled plugins that
                                  are incompatible, failed, or missing
   bb plugin source <id> [--json] Show requested/resolved source, subdirectory,

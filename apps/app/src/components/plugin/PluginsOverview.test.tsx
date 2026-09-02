@@ -56,6 +56,8 @@ const AUTOMATIONS_PLUGIN = {
   enabled: true,
   status: "running",
   statusDetail: null,
+  lastProblem: null,
+  errorsSinceInstall: 0,
   description: "Schedule recurring and one-shot agent or script work.",
   name: "Automations",
   icon: "Clock",

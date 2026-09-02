@@ -441,7 +441,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         count: 0,
         totalMs: 0,
         maxMs: 0,
-        errorCount: getInstalledPlugin(deps.db, id)?.handlerErrorCount ?? 0,
+        errorCount: 0,
       };
       handlerStats.set(id, stats);
     }

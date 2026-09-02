@@ -30,6 +30,7 @@ const pluginList = (id: string, source: string) => ({
       status: "running",
       statusDetail: null,
       lastProblem: null,
+      errorsSinceInstall: 0,
       handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
       services: [],
       schedules: [],
@@ -59,12 +60,7 @@ describe("bb plugin update commands", () => {
     const result = pluginList("notify", "npm:notify@^1");
     const installed = result.plugins[0];
     if (installed === undefined) throw new Error("missing plugin fixture");
-    installed.handlerStats = {
-      count: 0,
-      totalMs: 0,
-      maxMs: 0,
-      errorCount: 2,
-    };
+    installed.errorsSinceInstall = 2;
     Object.assign(installed, {
       lastProblem: {
         class: "error",
@@ -77,9 +73,8 @@ describe("bb plugin update commands", () => {
     await runCommand(["plugin", "list"], register);
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output).toContain(
-      "handlers: 0 calls / 0ms total / 0ms max, 2 errors",
-    );
+    expect(output).toContain("2 errors since install");
+    expect(output).not.toContain("handlers: 0 calls");
     expect(output).toContain(
       "last problem: error at 2026-08-25T12:00:00.000Z — notification handler failed",
     );

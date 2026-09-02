@@ -358,6 +358,7 @@ const PLUGIN: PluginListItem = {
   status: "running",
   statusDetail: null,
   lastProblem: null,
+  errorsSinceInstall: 0,
   description: "Browse GitHub issues and pull requests without leaving bb.",
   name: "GitHub",
   icon: "Github",

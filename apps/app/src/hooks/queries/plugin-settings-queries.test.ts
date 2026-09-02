@@ -38,6 +38,7 @@ const ROW = {
   status: "running",
   statusDetail: null,
   lastProblem: null,
+  errorsSinceInstall: 0,
   provenance: "direct",
   publisherLabel: null,
   isOrphanedBuiltin: false,
@@ -182,6 +183,7 @@ describe("fetchPluginList envelope", () => {
               message: "sync failed",
               at: 1752300000000,
             },
+            errorsSinceInstall: 2,
             services: [{ name: "sync", state: "backoff" }],
             schedules: [
               {
@@ -204,6 +206,7 @@ describe("fetchPluginList envelope", () => {
     expect(plugin?.source).toBe("path:/plugins/linear");
     expect(plugin?.rootDir).toBe("/plugins/linear");
     expect(plugin?.handlerStats.errorCount).toBe(1);
+    expect(plugin?.errorsSinceInstall).toBe(2);
     expect(plugin?.lastProblem).toEqual({
       class: "error",
       message: "sync failed",

@@ -71,9 +71,9 @@ function installedPluginProblemLine(
       attentionCount: null,
     };
   }
-  if (plugin.status === "running" && plugin.handlerStats.errorCount > 0) {
-    const count = plugin.handlerStats.errorCount;
-    const countText = `${count} ${count === 1 ? "error" : "errors"}`;
+  if (plugin.status === "running" && plugin.errorsSinceInstall > 0) {
+    const count = plugin.errorsSinceInstall;
+    const countText = `${count} ${count === 1 ? "error" : "errors"} since install`;
     const last =
       plugin.lastProblem === null
         ? ""
@@ -130,7 +130,7 @@ function installedPluginProblemLine(
     case "needs-configuration":
       return {
         text: withProblemTime(
-          "Not running — needs configuration in its settings",
+          `Not running — ${message || "needs configuration in its settings"}`,
           plugin,
           now,
         ),

@@ -36,6 +36,7 @@ export interface PluginListItem {
   status: InstalledPlugin["status"];
   statusDetail: string | null;
   lastProblem: InstalledPlugin["lastProblem"];
+  errorsSinceInstall: InstalledPlugin["errorsSinceInstall"];
   description: string | null;
   name: string | null;
   icon: string | null;
@@ -93,6 +94,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     status: plugin.status,
     statusDetail: plugin.statusDetail,
     lastProblem: plugin.lastProblem,
+    errorsSinceInstall: plugin.errorsSinceInstall,
     description: plugin.description,
     name: plugin.name,
     icon: plugin.icon,

@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -353,6 +353,7 @@ export function upsertInstalledPlugin(
         version: plugin.version,
         enabled: plugin.enabled,
         ...normalized,
+        handlerErrorCount: 0,
         removedAt: null,
         updatedAt: now,
       },
@@ -463,7 +464,18 @@ export function setInstalledPluginLastProblem(
       lastProblemMessage: problem.message,
       lastProblemAt: problem.at,
     })
-    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .where(
+      and(
+        eq(installedPlugins.id, id),
+        isNull(installedPlugins.removedAt),
+        or(
+          isNull(installedPlugins.lastProblemClass),
+          ne(installedPlugins.lastProblemClass, problem.class),
+          isNull(installedPlugins.lastProblemMessage),
+          ne(installedPlugins.lastProblemMessage, problem.message),
+        ),
+      ),
+    )
     .run();
   return result.changes > 0;
 }

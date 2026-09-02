@@ -41,6 +41,7 @@ const GITHUB_PLUGIN = {
   status: "running",
   statusDetail: null,
   lastProblem: null,
+  errorsSinceInstall: 0,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",

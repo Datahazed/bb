@@ -20,6 +20,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     status: "running",
     statusDetail: null,
     lastProblem: null,
+    errorsSinceInstall: 0,
     description: null,
     name: "Linear",
     icon: null,

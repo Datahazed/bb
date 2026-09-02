@@ -6,6 +6,7 @@ import {
   getInstalledPluginRegistration,
   getInstalledPlugin,
   listPluginArtifacts,
+  recordInstalledPluginHandlerError,
   upsertInstalledPlugin,
   type DbConnection,
 } from "../../src/index.js";
@@ -87,6 +88,37 @@ describe("normalized plugin persistence", () => {
     expect(getInstalledPluginRegistration(db, "linear")?.activeArtifactId).toBe(
       null,
     );
+  });
+
+  it("resets the handler error count when a plugin is updated", () => {
+    const plugin: UpsertInstalledPluginInput = {
+      id: "notify",
+      source: "path:/plugins/notify",
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: "/plugins/notify" },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/notify",
+      version: "1.0.0",
+      enabled: true,
+    };
+    upsertInstalledPlugin(db, plugin);
+    recordInstalledPluginHandlerError(db, "notify", {
+      class: "error",
+      message: "failed",
+      at: 100,
+    });
+    expect(getInstalledPlugin(db, "notify")?.handlerErrorCount).toBe(1);
+
+    upsertInstalledPlugin(db, { ...plugin, version: "1.1.0" });
+
+    expect(getInstalledPlugin(db, "notify")?.handlerErrorCount).toBe(0);
   });
 
   it("rejects an npm artifact without registry integrity at runtime", () => {

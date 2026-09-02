@@ -91,6 +91,8 @@ const INSTALLED_MEMORY_PLUGIN = {
   icon: MEMORY_ENTRY.icon,
   status: "running",
   statusDetail: null,
+  lastProblem: null,
+  errorsSinceInstall: 0,
   handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
   services: [],
   schedules: [],

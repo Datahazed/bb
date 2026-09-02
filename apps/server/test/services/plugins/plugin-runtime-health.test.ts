@@ -50,7 +50,10 @@ describe("plugin runtime health", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  function createRuntime(settingsChanged: () => void = () => {}) {
+  function createRuntime(
+    settingsChanged: () => void = () => {},
+    now: () => number = () => 1234,
+  ) {
     return createPluginRuntime({
       deps: {
         db,
@@ -68,7 +71,7 @@ describe("plugin runtime health", () => {
         telemetry: createNoopTelemetryService(),
         dataDir,
         appVersion: "0.9.0",
-        now: () => 1234,
+        now,
       },
       settingsChanged,
       nextCronRunAt: () => Number.MAX_SAFE_INTEGER,
@@ -78,9 +81,13 @@ describe("plugin runtime health", () => {
 
   it("stores compact status problems and excludes disabled details", () => {
     let changeCount = 0;
-    const runtime = createRuntime(() => {
-      changeCount += 1;
-    });
+    let currentTime = 1234;
+    const runtime = createRuntime(
+      () => {
+        changeCount += 1;
+      },
+      () => currentTime,
+    );
     const rootDir = join(dataDir, "plugins", "demo");
     runtime.setStatus(
       "demo",
@@ -93,6 +100,11 @@ describe("plugin runtime health", () => {
       lastProblemMessage: "missing at ~/plugins/demo and ~/private.txt",
       lastProblemAt: 1234,
     });
+    expect(changeCount).toBe(1);
+
+    currentTime = 5678;
+    runtime.setDevBuildProblem("demo", "host", "build failed");
+    expect(getInstalledPlugin(db, "demo")?.lastProblemAt).toBe(1234);
     expect(changeCount).toBe(1);
 
     runtime.setStatus("demo", "disabled", "disabled detail");

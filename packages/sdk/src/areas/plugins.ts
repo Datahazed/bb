@@ -52,6 +52,7 @@ import type { CreateSdkAreaArgs } from "./common.js";
  */
 const installedPluginResponseSchema = installedPluginSchema.extend({
   lastProblem: installedPluginSchema.shape.lastProblem.default(null),
+  errorsSinceInstall: installedPluginSchema.shape.errorsSinceInstall.default(0),
   providerIds: z.array(z.string()).default([]),
   icons: z.record(z.string(), z.string()).default({}),
 });

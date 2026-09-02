@@ -76,6 +76,7 @@ describe("issue #1662: plugin install against a pre-0.38.0 server", () => {
       publisherLabel: null,
       providerIds: [],
       lastProblem: null,
+      errorsSinceInstall: 0,
       // Likewise for the declared-icon map, added later still.
       icons: {},
     });

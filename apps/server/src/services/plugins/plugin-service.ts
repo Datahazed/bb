@@ -1243,13 +1243,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   message: row.lastProblemMessage,
                   at: row.lastProblemAt,
                 },
+          errorsSinceInstall: row.handlerErrorCount,
           handlerStats: stats
             ? { ...stats }
             : {
                 count: 0,
                 totalMs: 0,
                 maxMs: 0,
-                errorCount: row.handlerErrorCount,
+                errorCount: 0,
               },
           services: (loadedPlugin?.services ?? []).map((service) => ({
             name: service.record.name,

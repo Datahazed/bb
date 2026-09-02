@@ -105,8 +105,9 @@
     install. A local path plugin is never removed to change it: edit it in
     place and `bb plugin reload <id>`, or `bb plugin install path:<new dir>`
     to move it; both keep its configuration.
-  - `bb plugin list` — status, background services, schedules, handler timings,
-    and each plugin's contributed `bb` command.
+  - `bb plugin list` — status, background services, schedules, session handler
+    timings, errors since install, the last problem, and each contributed `bb`
+    command.
   - `bb plugin source <id> [--json]` — requested and resolved source, the
     repository subdirectory for a nested plugin, the semver range with its tag
     prefix and resolved tag for a Git range install, engine ranges, install

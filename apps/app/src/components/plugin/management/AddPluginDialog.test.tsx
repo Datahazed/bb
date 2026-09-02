@@ -71,6 +71,7 @@ const INSTALLED_PLUGIN_RESPONSE = {
     status: "running",
     statusDetail: null,
     lastProblem: null,
+    errorsSinceInstall: 0,
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
     services: [],
     schedules: [],

@@ -20,6 +20,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     status: "running",
     statusDetail: null,
     lastProblem: null,
+    errorsSinceInstall: 0,
     description: "Desktop notifications when a thread needs you.",
     name: "Notify",
     icon: null,
@@ -97,7 +98,8 @@ describe("InstalledPluginRow", () => {
   it("shows the stored handler error count and problem", () => {
     renderRow(
       plugin({
-        handlerStats: { count: 5, totalMs: 10, maxMs: 4, errorCount: 2 },
+        errorsSinceInstall: 2,
+        handlerStats: { count: 5, totalMs: 10, maxMs: 4, errorCount: 0 },
         lastProblem: {
           class: "error",
           message: "notification handler failed",
@@ -106,9 +108,9 @@ describe("InstalledPluginRow", () => {
       }),
     );
 
-    expect(screen.getByText("2 errors")).toBeTruthy();
+    expect(screen.getByText("2 errors since install")).toBeTruthy();
     expect(screen.getByTestId("plugin-problem-line-notify").textContent).toBe(
-      "2 errors, last just now — notification handler failed",
+      "2 errors since install, last just now — notification handler failed",
     );
   });
 
@@ -121,8 +123,16 @@ describe("InstalledPluginRow", () => {
     );
 
     expect(screen.getByTestId("plugin-problem-line-notify").textContent).toBe(
-      "Not running — needs configuration in its settings",
+      "Not running — Set an API token.",
     );
     expect(screen.queryByTestId("plugin-not-running-notify")).toBeNull();
+  });
+
+  it("uses a fallback when a needs-configuration plugin has no message", () => {
+    renderRow(plugin({ status: "needs-configuration" }));
+
+    expect(screen.getByTestId("plugin-problem-line-notify").textContent).toBe(
+      "Not running — needs configuration in its settings",
+    );
   });
 });

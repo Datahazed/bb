@@ -174,6 +174,7 @@ export const installedPluginSchema = z.object({
   status: pluginRuntimeStatusSchema,
   statusDetail: z.string().nullable(),
   lastProblem: pluginLastProblemSchema.nullable(),
+  errorsSinceInstall: z.number().int().nonnegative(),
   handlerStats: pluginHandlerStatsSchema,
   services: z.array(pluginServiceEntrySchema),
   schedules: z.array(pluginScheduleEntrySchema),

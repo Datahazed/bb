@@ -668,6 +668,11 @@ function printPlugin(plugin: PluginEntry): void {
       `  handlers: ${stats.count} calls / ${formatMs(stats.totalMs)} total / ${formatMs(stats.maxMs)} max${errors}`,
     );
   }
+  if (plugin.errorsSinceInstall > 0) {
+    console.log(
+      `  ${plugin.errorsSinceInstall} ${plugin.errorsSinceInstall === 1 ? "error" : "errors"} since install`,
+    );
+  }
   if (plugin.lastProblem !== null) {
     console.log(
       `  last problem: ${plugin.lastProblem.class} at ${formatAbsoluteDate(plugin.lastProblem.at)} — ${plugin.lastProblem.message}`,
