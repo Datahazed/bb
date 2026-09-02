@@ -699,6 +699,9 @@ function ThreadRowComponent({
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         data-sidebar-thread-shortcut-target=""
         data-sidebar-thread-id={thread.id}
+        onFocus={() => {
+          prefetchThreadDetailBootstrap(queryClient, thread.id);
+        }}
         onClick={(event) => {
           if (isEditing) {
             event.preventDefault();

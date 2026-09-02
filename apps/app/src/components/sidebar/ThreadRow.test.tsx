@@ -305,6 +305,27 @@ describe("ThreadRow", () => {
     );
   });
 
+  it("starts thread bootstrap on keyboard focus before activation", () => {
+    const phase = createPerfPhaseLog();
+    prefetchThreadDetailBootstrap.mockImplementation(() => {
+      phase.mark("bootstrap-prefetch");
+    });
+    renderThreadRow({ thread: createThread({ id: "thr_focus" }) });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+
+    fireEvent.focus(link);
+    phase.mark("focus-complete");
+    fireEvent.keyDown(link, { key: "Enter" });
+    phase.mark("activate-complete");
+
+    phase.expectBefore("bootstrap-prefetch", "focus-complete");
+    phase.expectBefore("focus-complete", "activate-complete");
+    expect(prefetchThreadDetailBootstrap).toHaveBeenCalledWith(
+      expect.anything(),
+      "thr_focus",
+    );
+  });
+
   it("does not prefetch thread bootstrap on a non-primary pointer", () => {
     renderThreadRow({});
     fireEvent.pointerDown(screen.getByRole("link", { name: "Open Thread" }), {
