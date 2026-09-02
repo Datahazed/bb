@@ -9,7 +9,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
@@ -47,6 +48,18 @@ import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
+import { createPerfPhaseLog } from "@/test/perf-phase";
+
+const prefetchThreadDetailBootstrap = vi.hoisted(() => vi.fn());
+
+vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/hooks/queries/thread-queries")>();
+  return {
+    ...actual,
+    prefetchThreadDetailBootstrap,
+  };
+});
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
@@ -133,20 +146,37 @@ function ThreadRowTestHarness({
     : EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS;
 
   return (
-    <MemoryRouter>
-      <TooltipProvider>
-        <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
-          <ThreadRow
-            projectId={thread.projectId}
-            thread={thread}
-            crossProjectId={crossProjectId}
-            isActive={isActive}
-            hasComposerDraft={hasComposerDraft}
-            options={options}
-          />
-        </SidebarThreadShortcutKeysContext.Provider>
-      </TooltipProvider>
-    </MemoryRouter>
+    <ThreadRowQueryProvider>
+      <MemoryRouter>
+        <TooltipProvider>
+          <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
+            <ThreadRow
+              projectId={thread.projectId}
+              thread={thread}
+              crossProjectId={crossProjectId}
+              isActive={isActive}
+              hasComposerDraft={hasComposerDraft}
+              options={options}
+            />
+          </SidebarThreadShortcutKeysContext.Provider>
+        </TooltipProvider>
+      </MemoryRouter>
+    </ThreadRowQueryProvider>
+  );
+}
+
+function ThreadRowQueryProvider({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      }),
+  );
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 }
 
@@ -245,6 +275,7 @@ function renderSplitThreadRow({
 afterEach(() => {
   cleanup();
   mocks.renameThread.mockReset();
+  prefetchThreadDetailBootstrap.mockReset();
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
@@ -253,6 +284,35 @@ afterEach(() => {
 });
 
 describe("ThreadRow", () => {
+  it("starts thread bootstrap on pointerdown before click would navigate", () => {
+    const phase = createPerfPhaseLog();
+    prefetchThreadDetailBootstrap.mockImplementation(() => {
+      phase.mark("bootstrap-prefetch");
+    });
+    renderThreadRow({ thread: createThread({ id: "thr_open" }) });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+
+    fireEvent.pointerDown(link);
+    phase.mark("pointerdown-complete");
+    fireEvent.click(link);
+    phase.mark("click-complete");
+
+    phase.expectBefore("bootstrap-prefetch", "pointerdown-complete");
+    phase.expectBefore("pointerdown-complete", "click-complete");
+    expect(prefetchThreadDetailBootstrap).toHaveBeenCalledWith(
+      expect.anything(),
+      "thr_open",
+    );
+  });
+
+  it("does not prefetch thread bootstrap on a non-primary pointer", () => {
+    renderThreadRow({});
+    fireEvent.pointerDown(screen.getByRole("link", { name: "Open Thread" }), {
+      button: 2,
+    });
+    expect(prefetchThreadDetailBootstrap).not.toHaveBeenCalled();
+  });
+
   const splitWorkingCases: Array<{
     label: string;
     pluginStatus?: PluginComposerThreadRowStatus;

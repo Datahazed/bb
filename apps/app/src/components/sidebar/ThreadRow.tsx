@@ -8,6 +8,7 @@ import {
   type ReactNode,
   useRef,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
@@ -53,6 +54,7 @@ import {
 } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { prefetchThreadDetailBootstrap } from "@/hooks/queries/thread-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
@@ -522,6 +524,7 @@ function ThreadRowComponent({
   onProjectSelect,
   options,
 }: ThreadRowProps) {
+  const queryClient = useQueryClient();
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const { renameThread } = useThreadActions();
@@ -580,6 +583,15 @@ function ThreadRowComponent({
       threadId: thread.id,
       title: labelTitle,
     });
+  const handleRowPointerDown = useCallback<PointerEventHandler<HTMLElement>>(
+    (event) => {
+      if (event.button === 0) {
+        prefetchThreadDetailBootstrap(queryClient, thread.id);
+      }
+      onSplitDragPointerDown?.(event);
+    },
+    [onSplitDragPointerDown, queryClient, thread.id],
+  );
   const splitAvailable = onSplitDragPointerDown !== undefined;
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
@@ -853,7 +865,7 @@ function ThreadRowComponent({
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,
-    onSplitDragPointerDown,
+    onSplitDragPointerDown: handleRowPointerDown,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });
