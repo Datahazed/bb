@@ -1,18 +1,24 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { ThreadPullRequest } from "@bb/domain";
+import { QueryClient } from "@tanstack/react-query";
+import type { Environment, ThreadPullRequest } from "@bb/domain";
 import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { environmentPullRequestQueryKey } from "./query-keys";
+import {
+  environmentPullRequestQueryKey,
+  environmentQueryKey,
+} from "./query-keys";
 import {
   buildEnvironmentFilePreview,
   getEnvironmentPullRequestRefetchInterval,
   getEnvironmentPullRequestStaleTime,
+  resolveEnvironmentQueryMount,
   useEnvironmentPullRequest,
 } from "./environment-queries";
+import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { environments: { pullRequest: vi.fn() } },
@@ -230,5 +236,66 @@ describe("buildEnvironmentFilePreview", () => {
 
     expect(preview.kind).toBe("image");
     expect(preview.url).toBe(`data:image/png;base64,${pngBase64}`);
+  });
+});
+
+const CACHED_ENVIRONMENT: Environment = {
+  id: "env-1",
+  name: "Workspace",
+  projectId: "project-1",
+  hostId: "host-1",
+  path: "/tmp/workspace",
+  managed: true,
+  isGitRepo: true,
+  isWorktree: false,
+  workspaceProvisionType: "unmanaged",
+  branchName: "main",
+  baseBranch: "main",
+  defaultBranch: "main",
+  mergeBaseBranch: null,
+  status: "ready",
+  createdAt: 1,
+  updatedAt: 1,
+};
+
+describe("resolveEnvironmentQueryMount", () => {
+  it("enables a cached environment while bootstrap is still in flight and does not refetch", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(environmentQueryKey("env-1"), CACHED_ENVIRONMENT);
+    expect(
+      resolveEnvironmentQueryMount({
+        bootstrapSettled: false,
+        environmentId: "env-1",
+        queryClient,
+      }),
+    ).toEqual({ enabled: true, refetchOnMount: false });
+    expect(
+      resolveGitDiffTabStatus({
+        environmentId: "env-1",
+        environmentIsGitRepo: CACHED_ENVIRONMENT.isGitRepo,
+        environmentLoadFailed: false,
+        hasResolvedThread: true,
+      }),
+    ).toBe("eligible");
+  });
+
+  it("does not start an environment read until bootstrap when the cache is empty", () => {
+    expect(
+      resolveEnvironmentQueryMount({
+        bootstrapSettled: false,
+        environmentId: "env-1",
+        queryClient: new QueryClient(),
+      }),
+    ).toEqual({ enabled: false, refetchOnMount: false });
+  });
+
+  it("enables after bootstrap settles so a cold open can fetch", () => {
+    expect(
+      resolveEnvironmentQueryMount({
+        bootstrapSettled: true,
+        environmentId: "env-1",
+        queryClient: new QueryClient(),
+      }),
+    ).toEqual({ enabled: true, refetchOnMount: true });
   });
 });

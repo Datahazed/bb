@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import type {
   Environment,
   ThreadPullRequest,
@@ -49,7 +49,25 @@ import {
 } from "./query-policies";
 
 interface EnvironmentQueryOptions extends QueryOptions {
+  refetchOnMount?: boolean | "always";
   staleTime?: number;
+}
+
+export function resolveEnvironmentQueryMount(args: {
+  bootstrapSettled: boolean;
+  environmentId: string | null | undefined;
+  queryClient: QueryClient;
+}): { enabled: boolean; refetchOnMount: boolean } {
+  const hasCachedEnvironment =
+    Boolean(args.environmentId) &&
+    args.queryClient.getQueryData(environmentQueryKey(args.environmentId)) !==
+      undefined;
+  return {
+    enabled:
+      Boolean(args.environmentId) &&
+      (hasCachedEnvironment || args.bootstrapSettled),
+    refetchOnMount: args.bootstrapSettled,
+  };
 }
 
 interface BranchQueryOptions extends QueryOptions {
@@ -95,6 +113,7 @@ export function useEnvironment(
         signal,
       }),
     enabled,
+    refetchOnMount: options?.refetchOnMount,
     staleTime: options?.staleTime,
   });
 }
