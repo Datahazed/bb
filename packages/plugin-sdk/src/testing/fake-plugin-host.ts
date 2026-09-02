@@ -5,7 +5,6 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
-import { z } from "zod";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
 import {
   adoptHttpRouteResponse,
@@ -44,6 +43,7 @@ import {
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
   validateSettingsUpdate,
+  zodSchemaToJsonSchema,
   type NormalizedPluginProviderDeclaration,
 } from "../internal/host-policy.js";
 import type {
@@ -987,10 +987,9 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<
-          [],
-          { id: number; statement_hash: string | null }
-        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .prepare<[], { id: number; statement_hash: string | null }>(
+          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+        )
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -1040,10 +1039,40 @@ function createFakePluginHostInternal(
   > = [];
   const storedSettings = persistentState.storedSettings;
 
+  async function setSettingsValues(
+    values: Record<string, unknown>,
+  ): Promise<void> {
+    const errors = validateSettingsUpdate(settingsDescriptors, values);
+    if (errors.length > 0) {
+      throw new Error(errors.join("; "));
+    }
+    const prev = readSettingsValues(settingsDescriptors, storedSettings);
+    for (const [key, value] of Object.entries(values)) {
+      if (value === null) storedSettings.delete(key);
+      else if (typeof value === "string" || typeof value === "boolean") {
+        storedSettings.set(key, value);
+      } else {
+        throw new Error(`setting "${key}" has an unsupported value`);
+      }
+    }
+    const next = readSettingsValues(settingsDescriptors, storedSettings);
+    if (JSON.stringify(next) === JSON.stringify(prev)) return;
+    for (const listener of settingsListeners) {
+      try {
+        listener(next, prev);
+      } catch (error) {
+        emitLog(
+          "warn",
+          `settings onChange listener failed: ${errorMessage(error)}`,
+        );
+      }
+    }
+  }
+
   const settings: PluginSettings = {
     define(descriptors) {
       assertLive();
-      registerSettingDescriptors(
+      const validated = registerSettingDescriptors(
         settingsDescriptors,
         descriptors as Record<string, unknown>,
       );
@@ -1051,10 +1080,20 @@ function createFakePluginHostInternal(
       return {
         async get() {
           assertLive();
-          return readSettingsValues(
-            settingsDescriptors,
-            storedSettings,
-          ) as Values;
+          return readSettingsValues(validated, storedSettings) as Values;
+        },
+        async experimental_set(values) {
+          assertLive();
+          const rawValues: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(values)) {
+            rawValues[key] = value;
+          }
+          const errors = validateSettingsUpdate(validated, rawValues);
+          if (errors.length > 0) {
+            throw new Error(errors.join("; "));
+          }
+          await setSettingsValues(rawValues);
+          return readSettingsValues(validated, storedSettings) as Values;
         },
         onChange(listener) {
           assertLive();
@@ -1461,16 +1500,14 @@ function createFakePluginHostInternal(
       let parse: FakeAgentToolRecord["parse"];
       if (isZodSchemaLike(parameters)) {
         try {
-          inputSchema = z.toJSONSchema(parameters as z.ZodType, {
-            io: "input",
-          });
+          inputSchema = zodSchemaToJsonSchema(parameters);
         } catch (error) {
           throw new Error(
             `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${errorMessage(error)}) — use zod 4, or pass a plain JSON-schema object`,
           );
         }
         parse = (input) => {
-          const result = (parameters as z.ZodType).safeParse(input);
+          const result = parameters.safeParse(input);
           if (result.success) return { ok: true, value: result.data };
           return { ok: false, error: summarizeParseIssues(result.error) };
         };
@@ -2061,27 +2098,7 @@ function createFakePluginHostInternal(
     },
 
     async setSettings(values) {
-      const errors = validateSettingsUpdate(settingsDescriptors, values);
-      if (errors.length > 0) {
-        throw new Error(errors.join("; "));
-      }
-      const prev = readSettingsValues(settingsDescriptors, storedSettings);
-      for (const [key, value] of Object.entries(values)) {
-        if (value === null) storedSettings.delete(key);
-        else storedSettings.set(key, value);
-      }
-      const next = readSettingsValues(settingsDescriptors, storedSettings);
-      if (JSON.stringify(next) === JSON.stringify(prev)) return;
-      for (const listener of settingsListeners) {
-        try {
-          listener(next, prev);
-        } catch (error) {
-          emitLog(
-            "warn",
-            `settings onChange listener failed: ${errorMessage(error)}`,
-          );
-        }
-      }
+      await setSettingsValues(values);
     },
 
     async callRpc(method, input) {

@@ -383,6 +383,7 @@ export {
   getQueuedThreadMessage,
   hasQueuedRetryOfTurnRequest,
   hasQueuedThreadMessages,
+  isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
   listQueuedThreadMessageCountsByThreadIds,
