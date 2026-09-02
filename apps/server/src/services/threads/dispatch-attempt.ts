@@ -1,4 +1,5 @@
 import {
+  createThreadProvisioningId,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
   getThread,
@@ -17,6 +18,7 @@ import {
   type ResolvedThreadExecutionOptions,
   type Thread,
   type ThreadQueuedMessage,
+  provisioningTranscriptEntrySchema,
 } from "@bb/domain";
 import type {
   SendMessageRequest,
@@ -45,7 +47,11 @@ import {
 } from "./queue-waits.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import { getActiveTurnId, isManualCompactionActive } from "./thread-events.js";
+import {
+  appendThreadProvisioningEvent,
+  getActiveTurnId,
+  isManualCompactionActive,
+} from "./thread-events.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import {
   advanceThreadProvisioning,
@@ -90,6 +96,7 @@ import type { TurnRequestRetryMarker } from "./thread-events.js";
 export const pendingThreadStartContextSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
   fork: threadForkDescriptorSchema.nullable(),
+  launchLog: z.array(provisioningTranscriptEntrySchema).default([]),
   /** Provider-facing input when it differs from the persisted start seed. */
   providerInput: z.array(promptInputSchema).optional(),
   startedOnBehalfOf: startedOnBehalfOfSchema.nullable(),
@@ -744,6 +751,36 @@ async function admitPendingThread(
 }
 
 /**
+ * Reusing a ready environment attaches without any provisioning run, so a
+ * launch log accumulated by a plugin target would have no event to ride —
+ * this is the one admission shape that must write the log itself. Every
+ * other intent flows the log into its provisioning run's first event.
+ */
+function emitLaunchLogForAttachedEnvironment(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: {
+    startContext: PendingThreadStartContext;
+    startingThread: Thread;
+  },
+): void {
+  const intent = args.startContext.environmentIntent;
+  if (args.startContext.launchLog.length === 0 || intent.type !== "reuse") {
+    return;
+  }
+  const environment = getEnvironment(deps.db, intent.environmentId);
+  if (environment === null || environment.status === "provisioning") {
+    return;
+  }
+  appendThreadProvisioningEvent(deps, {
+    threadId: args.startingThread.id,
+    environmentId: environment.id,
+    provisioningId: createThreadProvisioningId(),
+    status: "completed",
+    entries: args.startContext.launchLog,
+  });
+}
+
+/**
  * The launching half: the existing provisioning machinery takes over with the
  * message riding the cold-start command, exactly as creation has always done
  * it. Deliberately outside the evaluation lock — provisioning can take as long
@@ -755,9 +792,11 @@ async function launchAdmittedThread(
   admission: PendingThreadAdmission,
 ): Promise<void> {
   const { claimedRow, startContext, startingThread } = admission;
+  emitLaunchLogForAttachedEnvironment(deps, { startContext, startingThread });
   const context = requestThreadProvision(deps, {
     thread: startingThread,
     environmentIntent: startContext.environmentIntent,
+    launchEntries: startContext.launchLog,
     execution: admission.execution,
     fork: startContext.fork,
     input: admission.input,

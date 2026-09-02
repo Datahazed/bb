@@ -365,7 +365,8 @@ describe("generated thread titles", () => {
       });
 
       const context = requestThreadProvision(harness.deps, {
-        environmentIntent: {
+        launchEntries: [],
+      environmentIntent: {
           type: "reuse",
           environmentId: environment.id,
         },
@@ -499,7 +500,8 @@ describe("generated thread titles", () => {
       });
 
       const context = requestThreadProvision(harness.deps, {
-        environmentIntent: {
+        launchEntries: [],
+      environmentIntent: {
           type: "reuse",
           environmentId: environment.id,
         },

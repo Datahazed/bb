@@ -50,7 +50,8 @@ describe("thread provisioning state", () => {
       { db, hub },
       {
         thread,
-        environmentIntent: {
+        launchEntries: [],
+      environmentIntent: {
           type: "direct-unmanaged",
           hostId: host.id,
           path: "/tmp/source",

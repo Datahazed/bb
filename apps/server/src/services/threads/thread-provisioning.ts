@@ -6,6 +6,7 @@ import {
   type Thread,
   type ThreadTurnInitiator,
   type TurnRequestTarget,
+  type ProvisioningTranscriptEntry,
 } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
@@ -41,6 +42,7 @@ import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
+  launchEntries: ProvisioningTranscriptEntry[];
   execution: ResolvedThreadExecutionOptions;
   fork: ThreadForkDescriptor | null;
   input: PromptInput[];

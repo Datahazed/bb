@@ -21,7 +21,9 @@ export const worktreeHostContract = defineRpcContract({
         setupScript: z.string().min(1),
       })
       .strict(),
-    output: z.object({ path: z.string().min(1) }).strict(),
+    output: z
+      .object({ path: z.string().min(1), log: z.string() })
+      .strict(),
   },
   teardown: {
     input: z

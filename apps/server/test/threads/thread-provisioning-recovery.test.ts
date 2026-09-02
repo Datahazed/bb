@@ -111,7 +111,8 @@ describe("thread provisioning recovery", () => {
       });
       const requestedContext = createMetadataPendingContext({
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-        environmentIntent: {
+        launchEntries: [],
+      environmentIntent: {
           type: "reuse",
           environmentId: environment.id,
         },
@@ -234,7 +235,8 @@ describe("thread provisioning recovery", () => {
       });
       const requestedContext = createMetadataPendingContext({
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-        environmentIntent: {
+        launchEntries: [],
+      environmentIntent: {
           type: "reuse",
           environmentId: environment.id,
         },

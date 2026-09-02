@@ -6,6 +6,7 @@ import {
 } from "@bb/db";
 import {
   QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH,
+  type ProvisioningTranscriptEntry,
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
@@ -34,14 +35,104 @@ type TargetDeps = LoggedPendingInteractionWorkSessionDeps;
 const TARGET_UNAVAILABLE_RETRY_MS = 30_000;
 
 const provisionDecisionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("ready"), environment: environmentArgsSchema }),
+  z.object({
+    action: z.literal("ready"),
+    environment: environmentArgsSchema,
+    log: z.string().optional(),
+  }),
   z.object({
     action: z.literal("wait"),
     reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
     sendAt: z.number().int().nonnegative().nullable().optional(),
+    log: z.string().optional(),
   }),
   z.object({ action: z.literal("reject"), message: z.string().min(1) }),
 ]);
+
+const LAUNCH_LOG_MAX_ENTRIES = 120;
+const LAUNCH_LOG_MAX_TEXT = 24_576;
+const LAUNCH_LOG_CHUNK_MAX_TEXT = 16_384;
+
+function launchLogSize(entries: readonly ProvisioningTranscriptEntry[]): number {
+  return entries.reduce((total, entry) => total + entry.text.length, 0);
+}
+
+/**
+ * The launch log a target writes while it provisions, capped so a chatty
+ * launch cannot bloat the pending start context: oldest output lines fall
+ * away first, steps last, because the step sequence is the story and the
+ * output is its detail.
+ */
+function appendLaunchEntries(
+  existing: readonly ProvisioningTranscriptEntry[],
+  additions: readonly ProvisioningTranscriptEntry[],
+): ProvisioningTranscriptEntry[] {
+  const merged = [...existing, ...additions];
+  while (
+    merged.length > LAUNCH_LOG_MAX_ENTRIES ||
+    launchLogSize(merged) > LAUNCH_LOG_MAX_TEXT
+  ) {
+    const oldestOutput = merged.findIndex((entry) => entry.type === "output");
+    merged.splice(oldestOutput === -1 ? 0 : oldestOutput, 1);
+  }
+  return merged;
+}
+
+function launchAdditionsForDecision(args: {
+  existing: readonly ProvisioningTranscriptEntry[];
+  reason: string | null;
+  log: string | undefined;
+}): ProvisioningTranscriptEntry[] {
+  const additions: ProvisioningTranscriptEntry[] = [];
+  const lastStep = [...args.existing]
+    .reverse()
+    .find((entry) => entry.type === "step");
+  if (args.reason !== null && lastStep?.text !== args.reason) {
+    additions.push({
+      type: "step",
+      key: `launch-step-${args.existing.length + additions.length}`,
+      text: args.reason,
+      status: "completed",
+      startedAt: Date.now(),
+    });
+  }
+  if (args.log !== undefined && args.log.length > 0) {
+    additions.push({
+      type: "output",
+      key: `launch-output-${args.existing.length + additions.length}`,
+      text: args.log.slice(-LAUNCH_LOG_CHUNK_MAX_TEXT),
+    });
+  }
+  return additions;
+}
+
+function persistLaunchLog(
+  deps: TargetDeps,
+  args: { threadId: string; launchLog: ProvisioningTranscriptEntry[] },
+): void {
+  deps.db.transaction(
+    (tx) => {
+      const stored = getThreadPendingStartContext(tx, args.threadId);
+      if (stored === null) {
+        return;
+      }
+      const storedContext = pendingThreadStartContextSchema.parse(
+        JSON.parse(stored),
+      );
+      if (storedContext.environmentIntent.type !== "plugin-target") {
+        return;
+      }
+      setThreadPendingStartContext(tx, {
+        threadId: args.threadId,
+        pendingStartContext: JSON.stringify({
+          ...storedContext,
+          launchLog: args.launchLog,
+        }),
+      });
+    },
+    { behavior: "immediate" },
+  );
+}
 
 export type PluginTargetDispatchResolution =
   | {
@@ -165,6 +256,17 @@ export async function resolvePluginTargetEnvironment(
     });
   }
   if (decision.action === "wait") {
+    const additions = launchAdditionsForDecision({
+      existing: args.startContext.launchLog,
+      reason: decision.reason,
+      log: decision.log,
+    });
+    if (additions.length > 0) {
+      persistLaunchLog(deps, {
+        threadId: args.thread.id,
+        launchLog: appendLaunchEntries(args.startContext.launchLog, additions),
+      });
+    }
     return {
       kind: "wait",
       pluginId: intent.pluginId,
@@ -180,6 +282,14 @@ export async function resolvePluginTargetEnvironment(
   const nextContext: PendingThreadStartContext = {
     ...args.startContext,
     environmentIntent: placement.environmentIntent,
+    launchLog: appendLaunchEntries(
+      args.startContext.launchLog,
+      launchAdditionsForDecision({
+        existing: args.startContext.launchLog,
+        reason: null,
+        log: decision.log,
+      }),
+    ),
   };
   const buffer = new NotificationBuffer();
   const applied = deps.db.transaction(

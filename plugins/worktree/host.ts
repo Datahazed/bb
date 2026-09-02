@@ -5,6 +5,7 @@ import { createWorktree, removeWorktree, runGit } from "@bb/host-workspace";
 import { BRANCH_EXISTS_ERROR_MARKER, worktreeHostContract } from "./contract.js";
 
 const LIFECYCLE_SCRIPT_TIMEOUT_MS = 15 * 60 * 1000;
+const LOG_MAX_CHARS = 16_384;
 
 interface BranchExistsArgs {
   sourcePath: string;
@@ -72,7 +73,8 @@ export function createWorktreeHostEntry(deps: WorktreeHostDependencies) {
             `${BRANCH_EXISTS_ERROR_MARKER}: branch ${input.branchName} already exists in ${sourcePath}`,
           );
         }
-        return deps.createWorktree({
+        const logLines: string[] = [];
+        const { path: createdPath } = await deps.createWorktree({
           sourcePath,
           targetPath,
           branchName: input.branchName,
@@ -82,7 +84,16 @@ export function createWorktreeHostEntry(deps: WorktreeHostDependencies) {
           setupScriptName,
           pruneEmptyParent: true,
           signal: context.signal,
+          onProgress: (entry) => {
+            if (entry.text.length > 0) {
+              logLines.push(entry.text);
+            }
+          },
         });
+        return {
+          path: createdPath,
+          log: logLines.join("\n").slice(-LOG_MAX_CHARS),
+        };
       },
       async teardown(input) {
         const teardownScriptName = resolveScriptName(

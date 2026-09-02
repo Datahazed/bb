@@ -54,6 +54,7 @@ describe("worktree host entry", () => {
       }),
     ).resolves.toEqual({
       path: "/test/plugin-data/worktrees/thread-9/repo",
+      log: "",
     });
     expect(createCalls).toHaveLength(1);
     expect(createCalls[0]).toMatchObject({

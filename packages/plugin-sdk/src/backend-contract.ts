@@ -338,10 +338,18 @@ export interface PluginEnvironmentProvisionContext {
  * the message with `reason` on its card; `sendAt` (epoch ms) is when core
  * should ask again unprompted, which is the retry timer for a failed launch.
  * `reject` refuses the message outright with `message` shown verbatim.
+ *
+ * `log` on `wait` and `ready` appends multi-line output to the thread's
+ * launch log — setup-script output, clone progress, whatever the launch
+ * produced since the last answer. Core also records every change of a
+ * `wait`'s `reason` as a step. When the thread starts, the accumulated log
+ * becomes the opening entries of its workspace-setup timeline block, so the
+ * launch story is visible in the thread after the fact. Core caps the log;
+ * send deltas, not the whole transcript each time.
  */
 export type PluginEnvironmentProvisionDecision =
-  | { action: "ready"; environment: EnvironmentArgs }
-  | { action: "wait"; reason: string; sendAt?: number | null }
+  | { action: "ready"; environment: EnvironmentArgs; log?: string }
+  | { action: "wait"; reason: string; sendAt?: number | null; log?: string }
   | { action: "reject"; message: string };
 
 /**

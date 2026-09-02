@@ -22,7 +22,7 @@ type WorktreeConfiguration = z.infer<typeof configurationSchema>;
 
 type Launch =
   | { phase: "creating"; progress: string; branchName?: string }
-  | { phase: "ready"; hostId: string; path: string }
+  | { phase: "ready"; hostId: string; path: string; log?: string }
   | { phase: "failed"; error: string; failedAt: number };
 
 interface BranchNamePlan {
@@ -152,8 +152,9 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           { hostId: configuration.hostId },
         );
       let path: string;
+      let log: string;
       try {
-        ({ path } = await attempt(branchNames.primary));
+        ({ path, log } = await attempt(branchNames.primary));
       } catch (error) {
         if (
           branchNames.retry === null ||
@@ -167,7 +168,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           progress: "Creating worktree…",
           branchName: branchNames.retry,
         } satisfies Launch);
-        ({ path } = await attempt(branchNames.retry));
+        ({ path, log } = await attempt(branchNames.retry));
       }
       const pending = await bb.storage.kv.get<Launch>(key);
       if (pending === undefined) {
@@ -183,6 +184,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         phase: "ready",
         hostId: configuration.hostId,
         path,
+        log,
       } satisfies Launch);
       await bb.storage.kv.set(worktreeKey(configuration.hostId, path), {
         hostId: configuration.hostId,
@@ -250,6 +252,9 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               hostId: launch.hostId,
               workspace: { type: "unmanaged", path: launch.path },
             },
+            ...(launch.log !== undefined && launch.log.length > 0
+              ? { log: launch.log }
+              : {}),
           };
       }
     },

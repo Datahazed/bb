@@ -331,6 +331,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
     const startContext: PendingThreadStartContext = {
       environmentIntent: args.environmentIntent,
       fork: args.fork?.descriptor ?? null,
+      launchLog: [],
       ...(args.providerInput !== undefined
         ? { providerInput: args.providerInput }
         : {}),

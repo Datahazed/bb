@@ -134,7 +134,10 @@ describe("worktree server entry", () => {
     const host = createFakePluginHost({
       pluginId: "worktree",
       sdk: { projects: { get: async () => projectWithSource() } },
-      experimental_callHostRpc: () => ({ path: "/hosts/worktrees/thread-1/repo" }),
+      experimental_callHostRpc: () => ({
+        path: "/hosts/worktrees/thread-1/repo",
+        log: "worktree ready\nscripts/setup.sh completed",
+      }),
     });
     await plugin(host.bb);
     await host.harness.setSettings({ setupScript: "scripts/setup.sh" });
@@ -173,6 +176,7 @@ describe("worktree server entry", () => {
         hostId: "host-1",
         workspace: { type: "unmanaged", path: "/hosts/worktrees/thread-1/repo" },
       },
+      log: "worktree ready\nscripts/setup.sh completed",
     });
     await expect(
       host.bb.storage.kv.get("worktree:host-1:/hosts/worktrees/thread-1/repo"),
@@ -184,7 +188,10 @@ describe("worktree server entry", () => {
     const host = createFakePluginHost({
       pluginId: "worktree",
       sdk: { projects: { get: async () => projectWithSource() } },
-      experimental_callHostRpc: () => ({ path: "/hosts/worktrees/thread-1/repo" }),
+      experimental_callHostRpc: () => ({
+        path: "/hosts/worktrees/thread-1/repo",
+        log: "worktree ready\nscripts/setup.sh completed",
+      }),
     });
     await plugin(host.bb);
     const target =
@@ -217,7 +224,7 @@ describe("worktree server entry", () => {
             "worktree-branch-exists: branch bb/fix-login-flow already exists in /checkouts/repo",
           );
         }
-        return { path: "/hosts/worktrees/thread-abcd/repo" };
+        return { path: "/hosts/worktrees/thread-abcd/repo", log: "" };
       },
     });
     await plugin(host.bb);
@@ -284,7 +291,10 @@ describe("worktree server entry", () => {
     const host = createFakePluginHost({
       pluginId: "worktree",
       sdk: { projects: { get: async () => projectWithSource() } },
-      experimental_callHostRpc: () => ({ path: "/hosts/worktrees/thread-1/repo" }),
+      experimental_callHostRpc: () => ({
+        path: "/hosts/worktrees/thread-1/repo",
+        log: "worktree ready\nscripts/setup.sh completed",
+      }),
     });
     await plugin(host.bb);
     await host.bb.storage.kv.set("launch:thread-1", {
@@ -750,7 +760,7 @@ describe("worktree server entry", () => {
       experimental_callHostRpc: async ({ method }) => {
         if (method === "teardown") return null;
         await created;
-        return { path: "/hosts/worktrees/thread-1/repo" };
+        return { path: "/hosts/worktrees/thread-1/repo", log: "" };
       },
     });
     await plugin(host.bb);

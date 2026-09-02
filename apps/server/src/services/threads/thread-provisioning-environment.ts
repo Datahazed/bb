@@ -449,7 +449,10 @@ function appendProvisioningStartedEvent(
     environmentId: args.environment.id,
     provisioningId: args.context.state.provisioningId,
     status: "active",
-    entries: initialProvisioningEntries(args.environment),
+    entries: [
+      ...args.context.request.launchEntries,
+      ...initialProvisioningEntries(args.environment),
+    ],
   });
   const updatedContext = createEnvironmentProvisioningContext(args.context, {
     provisionEventSequence: appendedSequence,
@@ -511,7 +514,10 @@ function createProvisioningEnvironment(
         environmentId: environment.id,
         provisioningId: attachedContext.state.provisioningId,
         status: "active",
-        entries: initialProvisioningEntries(environment),
+        entries: [
+          ...attachedContext.request.launchEntries,
+          ...initialProvisioningEntries(environment),
+        ],
       });
       const context = createEnvironmentProvisioningContext(attachedContext, {
         provisionEventSequence: appendedSequence,

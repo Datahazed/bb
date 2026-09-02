@@ -8,6 +8,8 @@ import {
   type ClientTurnRequestId,
   type PromptInput,
   type ResolvedThreadExecutionOptions,
+  provisioningTranscriptEntrySchema,
+  type ProvisioningTranscriptEntry,
 } from "@bb/domain";
 import {
   baseBranchSpecSchema,
@@ -86,6 +88,7 @@ const threadProvisionCommonPayloadSchema = z.object({
   inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
   titleProvided: z.boolean(),
   seedWithoutRun: z.boolean().default(false),
+  launchEntries: z.array(provisioningTranscriptEntrySchema).default([]),
 });
 
 export type ThreadForkDescriptor = z.infer<typeof threadForkDescriptorSchema>;
@@ -187,6 +190,7 @@ interface CreateMetadataPendingContextArgs {
   execution: ResolvedThreadExecutionOptions;
   fork: ThreadForkDescriptor | null;
   input: PromptInput[];
+  launchEntries: ProvisioningTranscriptEntry[];
   seedWithoutRun: boolean;
   titleProvided: boolean;
 }
@@ -295,6 +299,7 @@ export function createMetadataPendingContext(
       input: args.input,
       titleProvided: args.titleProvided,
       seedWithoutRun: args.seedWithoutRun,
+      launchEntries: args.launchEntries,
     },
     state: {
       environmentId: null,

@@ -705,3 +705,17 @@ in the plugin:
   `starting` with streamed provisioning steps; rows wedged in `error` are
   no longer auto-restored on send (`throwEnvironmentNotReady` instead) —
   re-asking a target for a dead environment is the follow-up if wanted.
+
+## Implementation notes (2026-09-01, launch log)
+
+The cutover's "coarser progress" delta is closed by the launch log: core
+records every change of a `wait` decision's `reason` as a step, `wait` and
+`ready` carry an optional multi-line `log` for output deltas, and the capped
+per-launch log (steps survive, oldest output drops first) rides the pending
+start context. When the thread starts, the log becomes the opening entries
+of its workspace-setup timeline block — prepended to the provisioning run's
+first event, or written as its own completed provisioning event for the one
+admission shape with no run (reuse of a ready environment). The worktree
+plugin streams `createWorktree`/setup-script progress off the host entry
+into `ready.log`, so setup output is back in the timeline, after the fact
+rather than live.

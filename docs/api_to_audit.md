@@ -310,7 +310,12 @@ isolation and decision box as a `message.dispatch` hook, invoked targeted —
 only the plugin the thread's intent names — rather than as a chain; an
 unavailable plugin yields a core-authored wait with a 30s backoff. `recheck()`
 asks core to re-attempt this plugin's waiting rows now, exactly like
-`experimental_hooks.recheck`. Selections travel as the
+`experimental_hooks.recheck`. `wait` and `ready` carry an optional `log`
+(multi-line output deltas); together with each `wait`'s `reason` changes it
+forms a capped per-launch log that lands as the opening entries of the
+thread's workspace-setup timeline block once the thread starts — including
+the one admission shape with no provisioning run (reuse of a ready
+environment), which writes the log as its own completed provisioning event. Selections travel as the
 `{ type: "plugin-target", pluginId, targetId, configuration }` member of the
 create-environment union, so `threads.spawn`, `bb thread spawn --target`, the
 New Thread picker and automations all accept them. First-party consumers:

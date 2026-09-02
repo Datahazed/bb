@@ -172,6 +172,9 @@ bb.experimental_environments.registerTarget({
     return { action: "wait", reason: "Starting container…", sendAt: Date.now() + 30_000 };
     // or { action: "ready", environment: { type: "host", hostId, workspace: { type: "unmanaged", path } } }
     // or { action: "reject", message: "Choose a container image." }
+    // `wait`/`ready` also take `log` — multi-line output deltas (setup-script
+    // output, clone progress). Reason changes and log chunks become the
+    // thread's workspace-setup timeline entries once it starts.
   },
 });
 await bb.experimental_environments.recheck(); // re-attempt my waiting rows now

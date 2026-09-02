@@ -1,6 +1,8 @@
 import {
   claimQueuedThreadMessageGroup,
   getThread,
+  getThreadPendingStartContext,
+  listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
 import type { JsonValue } from "@bb/domain";
@@ -9,7 +11,7 @@ import type {
   PluginEnvironmentProvisionDecision,
   PluginHookName,
 } from "@get-bb/plugin-sdk";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
   setPluginEnvironmentTargetProvider,
@@ -287,6 +289,95 @@ describe("plugin environment targets at the dispatch checkpoint", () => {
       );
       expect(asks).toHaveLength(2);
       expect(asks[1]?.queuedMessage?.id).toBe(row.id);
+    });
+  });
+
+  it("lands the launch log in the thread's provisioning timeline once it starts", async () => {
+    await withTestHarness(async (harness) => {
+      let ask = 0;
+      const { host, project } = seedTargetFixture(harness, "host-target-log");
+      installTarget({
+        provision: () => {
+          ask += 1;
+          if (ask === 1) {
+            return { action: "wait", reason: "Starting container…" };
+          }
+          if (ask === 2) {
+            return {
+              action: "wait",
+              reason: "Cloning repository…",
+              log: "cloned 100 objects",
+            };
+          }
+          return {
+            action: "ready",
+            environment: {
+              type: "host",
+              hostId: host.id,
+              workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+            },
+            log: "scripts/setup.sh: done",
+          };
+        },
+      });
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+      });
+
+      const drain = async () => {
+        const row = onlyQueuedRow(harness, created.id);
+        const claimed = claimQueuedThreadMessageGroup(
+          harness.db,
+          harness.deps.hub,
+          row.id,
+        );
+        expect(claimed).not.toBeNull();
+        const pending = getThread(harness.db, created.id);
+        if (!pending) throw new Error("expected the pending thread");
+        return attemptDispatch(harness.deps, {
+          thread: pending,
+          payload: { input: textInput("Do the thing"), mode: "start" },
+          source: { kind: "drain", claimed: claimed!, sendNow: false },
+          queuePayload: { kind: "inline" },
+          origin: null,
+          originPluginId: null,
+          startedOnBehalfOf: null,
+          trigger: "auto-dispatch",
+        });
+      };
+
+      expect((await drain()).kind).toBe("queued");
+      const stored = getThreadPendingStartContext(harness.db, created.id);
+      expect(
+        (
+          JSON.parse(stored ?? "null") as {
+            launchLog: Array<{ type: string; text: string }>;
+          }
+        ).launchLog.map((entry) => [entry.type, entry.text]),
+      ).toEqual([
+        ["step", "Starting container…"],
+        ["step", "Cloning repository…"],
+        ["output", "cloned 100 objects"],
+      ]);
+
+      expect((await drain()).kind).toBe("dispatched");
+      await vi.waitFor(() => {
+        const provisioning = listEvents(harness.db, { threadId: created.id }).find(
+          (event) => event.type === "system/thread-provisioning",
+        );
+        expect(provisioning).toBeDefined();
+        const entries = (
+          JSON.parse(provisioning?.data ?? "null") as {
+            entries: Array<{ type: string; text: string }>;
+          }
+        ).entries.map((entry) => [entry.type, entry.text]);
+        expect(entries.slice(0, 4)).toEqual([
+          ["step", "Starting container…"],
+          ["step", "Cloning repository…"],
+          ["output", "cloned 100 objects"],
+          ["output", "scripts/setup.sh: done"],
+        ]);
+      });
     });
   });
 
