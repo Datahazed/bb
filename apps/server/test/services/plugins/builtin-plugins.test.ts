@@ -239,7 +239,7 @@ describe("builtin plugin reconciliation", () => {
       ["provider-codex", "./icons/codex.svg"],
       ["provider-pi", "./icons/pi.svg"],
       ["provider-retry", "ArrowReloadHorizontal"],
-      ["push-notifications", "Smartphone"],
+      ["push-notifications", "BellDot"],
       ["scheduled-send", "Calendar"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
