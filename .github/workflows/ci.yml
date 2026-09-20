@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 env:
@@ -13,14 +11,11 @@ env:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  # Superseded pull request pushes are wasted work, but superseded main pushes
-  # are not: a cancelled run never reaches its post step, so it never saves a
-  # Turbo cache. Cancelling them let a burst of merges leave every pull request
-  # restoring from a main commit well behind HEAD.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Checks (ubuntu-latest, Node 22.x)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
@@ -96,6 +91,7 @@ jobs:
   # suites are CPU-bound and previously fought each other (and the builds) for
   # the same 4 vCPUs, which made tests the critical path of every run.
   tests:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
@@ -149,6 +145,7 @@ jobs:
   # evicted each other. `smoke:tarball` is itself `"cache": false`, so only its
   # build dependencies could ever have been reused.
   package-smoke:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Package Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -229,3 +226,35 @@ jobs:
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
+
+  required:
+    name: CI required
+    if: ${{ always() }}
+    needs: [checks, tests, package-smoke, node-compat-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require the applicable validation jobs
+        env:
+          IS_DRAFT: ${{ github.event.pull_request.draft == true }}
+          EVENT_NAME: ${{ github.event_name }}
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+          PACKAGE_RESULT: ${{ needs.package-smoke.result }}
+          COMPAT_RESULT: ${{ needs.node-compat-smoke.result }}
+        run: |
+          if [[ "$IS_DRAFT" == "true" ]]; then
+            echo "::error::Draft PRs do not run paid validation. Mark ready for review to run the complete PR suite."
+            exit 1
+          fi
+          for result in "$CHECKS_RESULT" "$TESTS_RESULT" "$PACKAGE_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::Required validation did not succeed: $result"
+              exit 1
+            fi
+          done
+          if [[ "$EVENT_NAME" != "pull_request" && "$COMPAT_RESULT" != "success" ]]; then
+            echo "::error::Manually requested compatibility validation did not succeed: $COMPAT_RESULT"
+            exit 1
+          fi

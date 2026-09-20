@@ -2,7 +2,7 @@ name: Mobile E2E
 
 # iOS simulator end-to-end run for apps/mobile (Maestro flows against the
 # integration harness backend). Label-gated on pull requests (`mobile-e2e`),
-# manual, and nightly — the macOS runner is slow and paid, and the Linux
+# and manual — the macOS runner is slow and paid, and the Linux
 # `checks` / `tests` jobs in ci.yml already typecheck, lint and unit-test
 # @bb/mobile on every pull request (turbo picks the package up; the
 # `packages` test shard covers it).
@@ -15,16 +15,13 @@ name: Mobile E2E
 # exposes the e2e-only affordances, exactly like the local Metro setup.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   workflow_dispatch:
     inputs:
       flows:
         description: Space-separated flow names (default = the CI set; see apps/mobile/e2e/scripts/ci-run-flows.sh)
         required: false
         default: ""
-  schedule:
-    # Nightly, 09:17 UTC (runs on the default branch).
-    - cron: "17 9 * * *"
 
 permissions:
   contents: read
@@ -55,7 +52,9 @@ jobs:
     name: iOS simulator flows
     if: >-
       github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'mobile-e2e')
+      (github.event.pull_request.draft == false &&
+      contains(github.event.pull_request.labels.*.name, 'mobile-e2e') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'mobile-e2e'))
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 90
 
